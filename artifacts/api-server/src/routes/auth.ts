@@ -19,10 +19,24 @@ function formatUser(user: typeof usersTable.$inferSelect) {
   };
 }
 
+function slugifyName(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") || "barber";
+}
+
+async function uniqueUsername(baseName: string): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const suffix = Math.floor(Math.random() * 9000) + 1000;
+    const candidate = `${slugifyName(baseName)}_${suffix}`;
+    const [exists] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.username, candidate)).limit(1);
+    if (!exists) return candidate;
+  }
+  return `barber_${Date.now()}`;
+}
+
 router.post("/register", async (req, res) => {
   try {
-    const { name, username, brandName, password, mode, lang } = req.body;
-    if (!name || !username || !password || !mode) {
+    const { name, username: providedUsername, brandName, password, mode, lang } = req.body;
+    if (!name || !password || !mode) {
       res.status(400).json({ error: "validation", message: "Missing required fields" });
       return;
     }
@@ -30,10 +44,15 @@ router.post("/register", async (req, res) => {
       res.status(400).json({ error: "validation", message: "Password must be at least 6 characters" });
       return;
     }
-    const [existing] = await db.select().from(usersTable).where(eq(usersTable.username, username)).limit(1);
-    if (existing) {
-      res.status(409).json({ error: "conflict", message: "Username already taken" });
-      return;
+    // Use provided username or auto-generate a unique one
+    let username = providedUsername || "";
+    if (!username) {
+      username = await uniqueUsername(name);
+    } else {
+      const [existing] = await db.select().from(usersTable).where(eq(usersTable.username, username)).limit(1);
+      if (existing) {
+        username = await uniqueUsername(name);
+      }
     }
     const passwordHash = hashPassword(password);
     const [user] = await db.insert(usersTable).values({
@@ -63,7 +82,11 @@ router.post("/login", async (req, res) => {
       res.status(400).json({ error: "validation", message: "Missing credentials" });
       return;
     }
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.username, username)).limit(1);
+    // Allow login by username OR by display name (case-insensitive)
+    const { ilike, or } = await import("drizzle-orm");
+    const [user] = await db.select().from(usersTable)
+      .where(or(eq(usersTable.username, username), ilike(usersTable.name, username)))
+      .limit(1);
     if (!user) {
       res.status(401).json({ error: "unauthorized", message: "Invalid credentials" });
       return;

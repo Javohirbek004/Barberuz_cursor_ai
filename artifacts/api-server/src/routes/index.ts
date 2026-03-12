@@ -6,6 +6,7 @@ import bookingsRouter from "./bookings";
 import servicesRouter from "./services";
 import statsRouter from "./stats";
 import settingsRouter from "./settings";
+import telegramRouter from "./telegram";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use("/bookings", bookingsRouter);
 router.use("/services", servicesRouter);
 router.use("/stats", statsRouter);
 router.use("/settings", settingsRouter);
+router.use("/telegram", telegramRouter);
 
 export default router;

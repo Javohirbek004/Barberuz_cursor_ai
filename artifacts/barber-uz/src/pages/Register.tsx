@@ -10,6 +10,16 @@ import { motion } from "framer-motion";
 import { Loader2, User, Users, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+function generateUsername(name: string): string {
+  const base = name
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+  const suffix = Math.floor(Math.random() * 9000) + 1000;
+  return `${base || "barber"}_${suffix}`;
+}
+
 export default function Register() {
   const { t } = useTranslation();
   const [, navigate] = useLocation();
@@ -17,7 +27,6 @@ export default function Register() {
 
   const [formData, setFormData] = useState({
     name: "",
-    username: "",
     brandName: "",
     password: "",
     confirmPassword: "",
@@ -26,12 +35,7 @@ export default function Register() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-
-  const [touched, setTouched] = useState({
-    name: false,
-    password: false,
-    confirmPassword: false,
-  });
+  const [touched, setTouched] = useState({ name: false, password: false, confirmPassword: false });
 
   const registerMutation = useRegisterUser({
     mutation: {
@@ -44,27 +48,12 @@ export default function Register() {
       onError: () => {
         toast({
           title: t("error"),
-          description: "Foydalanuvchi nomi allaqachon band.",
+          description: "Ro'yxatdan o'tishda xatolik yuz berdi.",
           variant: "destructive",
         });
       },
     },
   });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isFormValid) return;
-    registerMutation.mutate({
-      data: {
-        name: formData.name,
-        username: formData.username,
-        brandName: formData.brandName || undefined,
-        password: formData.password,
-        mode: formData.mode,
-        lang: "uz",
-      },
-    });
-  };
 
   const update = (field: keyof typeof formData, value: string) =>
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -74,14 +63,27 @@ export default function Register() {
 
   const pwdTooShort = formData.password.length > 0 && formData.password.length < 6;
   const pwdMismatch =
-    formData.confirmPassword.length > 0 &&
-    formData.password !== formData.confirmPassword;
+    formData.confirmPassword.length > 0 && formData.password !== formData.confirmPassword;
 
   const isFormValid =
     formData.name.trim().length > 0 &&
-    formData.username.trim().length > 0 &&
     formData.password.length >= 6 &&
     formData.password === formData.confirmPassword;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isFormValid) return;
+    registerMutation.mutate({
+      data: {
+        name: formData.name,
+        username: generateUsername(formData.name),
+        brandName: formData.brandName || undefined,
+        password: formData.password,
+        mode: formData.mode,
+        lang: (localStorage.getItem("barber_lang") as "uz" | "ru") || "uz",
+      },
+    });
+  };
 
   return (
     <div className="min-h-screen relative flex items-center justify-center p-4 py-12">
@@ -119,17 +121,6 @@ export default function Register() {
               />
             </div>
 
-            {/* Username */}
-            <div className="space-y-2">
-              <Label className="text-white/80">{t("register.username")} *</Label>
-              <Input
-                value={formData.username}
-                onChange={(e) => update("username", e.target.value)}
-                placeholder={t("register.username_placeholder")}
-                className="bg-black/20 border-white/10 focus-visible:ring-primary h-12 rounded-xl"
-              />
-            </div>
-
             {/* Brand name (optional) */}
             <div className="space-y-2">
               <Label className="text-white/80">{t("register.brandName")}</Label>
@@ -163,7 +154,7 @@ export default function Register() {
                 </button>
               </div>
               {touched.password && pwdTooShort && (
-                <p className="text-red-400 text-xs mt-1">{t("register.error.pwd_short")}</p>
+                <p className="text-red-400 text-xs">{t("register.error.pwd_short")}</p>
               )}
             </div>
 
@@ -189,7 +180,7 @@ export default function Register() {
                 </button>
               </div>
               {pwdMismatch && (
-                <p className="text-red-400 text-xs mt-1">{t("register.error.pwd_mismatch")}</p>
+                <p className="text-red-400 text-xs">{t("register.error.pwd_mismatch")}</p>
               )}
             </div>
           </div>
@@ -206,11 +197,7 @@ export default function Register() {
                     : "border-white/5 bg-black/20 hover:border-white/20"
                 }`}
               >
-                <User
-                  className={`w-8 h-8 mb-3 ${
-                    formData.mode === "solo" ? "text-primary" : "text-muted-foreground"
-                  }`}
-                />
+                <User className={`w-8 h-8 mb-3 ${formData.mode === "solo" ? "text-primary" : "text-muted-foreground"}`} />
                 <div className="font-bold text-foreground">{t("register.mode.solo")}</div>
                 <div className="text-xs text-muted-foreground mt-1">{t("register.mode.solo_sub")}</div>
               </div>
@@ -223,11 +210,7 @@ export default function Register() {
                     : "border-white/5 bg-black/20 hover:border-white/20"
                 }`}
               >
-                <Users
-                  className={`w-8 h-8 mb-3 ${
-                    formData.mode === "team" ? "text-primary" : "text-muted-foreground"
-                  }`}
-                />
+                <Users className={`w-8 h-8 mb-3 ${formData.mode === "team" ? "text-primary" : "text-muted-foreground"}`} />
                 <div className="font-bold text-foreground">{t("register.mode.team")}</div>
                 <div className="text-xs text-muted-foreground mt-1">{t("register.mode.team_sub")}</div>
               </div>
@@ -239,9 +222,7 @@ export default function Register() {
             disabled={registerMutation.isPending || !isFormValid}
             className="w-full h-14 text-lg font-bold rounded-xl bg-gradient-to-r from-primary to-amber-600 hover:shadow-xl hover:shadow-primary/30 text-black border-0 mt-4 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {registerMutation.isPending ? (
-              <Loader2 className="w-5 h-5 animate-spin mr-2" />
-            ) : null}
+            {registerMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
             {t("register.submit")}
           </Button>
 

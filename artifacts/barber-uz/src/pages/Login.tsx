@@ -71,11 +71,11 @@ export default function Login() {
         <div className="glass-panel p-6 sm:p-8 rounded-3xl">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <Label className="text-white/80">{t('register.username')}</Label>
+              <Label className="text-white/80">{t('register.name')}</Label>
               <Input 
                 value={username}
                 onChange={e => setUsername(e.target.value)}
-                placeholder={t('register.username_placeholder')}
+                placeholder={t('register.name_placeholder')}
                 className="bg-black/20 border-white/10 focus-visible:ring-primary h-12 rounded-xl"
               />
             </div>
