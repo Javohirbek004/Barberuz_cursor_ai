@@ -38,7 +38,7 @@ function AppRoutes() {
       
       {/* Root redirect logic handled within pages, or simple redirect if token exists */}
       <Route path="/">
-        {localStorage.getItem('barber_token') ? <Redirect to="/dashboard" /> : <Redirect to="/login" />}
+        {localStorage.getItem('barber_token') ? <Redirect to="/dashboard" /> : <Redirect to="/register" />}
       </Route>
 
       <Route path="/dashboard" component={Dashboard} />

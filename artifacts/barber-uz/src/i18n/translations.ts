@@ -21,7 +21,11 @@ export const translations = {
     'register.mode.team': "👥 Jamoa",
     'register.mode.team_sub': "2 va undan ko'p sheriklarim bilan",
     'register.submit': "Ro'yxatdan o'tish",
-    'register.have_account': "Akkauntingiz bormi?",
+    'register.have_account': "Allaqachon hisobingiz bormi?",
+    'register.login_link': "Kirish",
+    'register.error.pwd_short': "Parol kamida 6 ta belgidan iborat bo'lishi kerak",
+    'register.error.pwd_mismatch': "Parollar mos kelmayapti",
+    'register.error.fill_required': "Majburiy maydonlarni to'ldiring",
     
     // Login
     'login.title': "Tizimga kirish",
@@ -124,6 +128,10 @@ export const translations = {
     'register.mode.team_sub': "С 2 и более партнерами",
     'register.submit': "Зарегистрироваться",
     'register.have_account': "Уже есть аккаунт?",
+    'register.login_link': "Войти",
+    'register.error.pwd_short': "Пароль должен содержать не менее 6 символов",
+    'register.error.pwd_mismatch': "Пароли не совпадают",
+    'register.error.fill_required': "Заполните обязательные поля",
 
     // Login
     'login.title': "Вход в систему",
