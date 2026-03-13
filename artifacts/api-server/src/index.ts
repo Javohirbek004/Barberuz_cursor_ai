@@ -25,15 +25,17 @@ app.listen(port, async () => {
     return;
   }
 
-  // Auto-register webhook using the public Replit domain
-  const domain = process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS?.split(",")[0];
-  if (domain) {
-    const webhookUrl = `https://${domain}/api/telegram/webhook`;
-    await registerWebhook(webhookUrl);
-  } else {
-    console.warn(
-      "[TelegramBot] Cannot auto-register webhook — REPLIT_DEV_DOMAIN not available. " +
-      "Call GET /api/telegram/setup manually.",
-    );
-  }
+  // Delay webhook registration slightly to avoid rate-limit on rapid restarts
+  setTimeout(async () => {
+    const domain = process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS?.split(",")[0];
+    if (domain) {
+      const webhookUrl = `https://${domain}/api/telegram/webhook`;
+      await registerWebhook(webhookUrl);
+    } else {
+      console.warn(
+        "[TelegramBot] Cannot auto-register webhook — REPLIT_DEV_DOMAIN not available. " +
+        "Call GET /api/telegram/setup manually.",
+      );
+    }
+  }, 3000);
 });
