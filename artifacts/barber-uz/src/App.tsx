@@ -29,17 +29,21 @@ const queryClient = new QueryClient({
   },
 });
 
+/** Smart root redirect — checks for token without blocking render */
+function RootRedirect() {
+  const token = localStorage.getItem('barber_token');
+  return token ? <Redirect to="/dashboard" /> : <Redirect to="/register" />;
+}
+
 function AppRoutes() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/verify-telegram" component={TelegramVerify} />
-      
-      {/* Root redirect logic handled within pages, or simple redirect if token exists */}
-      <Route path="/">
-        {localStorage.getItem('barber_token') ? <Redirect to="/dashboard" /> : <Redirect to="/register" />}
-      </Route>
+
+      {/* Root: go to dashboard if logged in, otherwise registration */}
+      <Route path="/" component={RootRedirect} />
 
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/calendar" component={Calendar} />

@@ -29,7 +29,9 @@ function getTelegramApi(): string {
 }
 
 function getAppUrl(): string {
-  return process.env.APP_URL || "https://barber.uz";
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  return "https://barber.uz";
 }
 
 // In-memory map: Telegram chatId → barber userId (lives for the session)

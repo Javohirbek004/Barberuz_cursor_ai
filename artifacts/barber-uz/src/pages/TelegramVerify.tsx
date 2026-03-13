@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { useGetTelegramStatus, useGetCurrentUser } from "@workspace/api-client-react";
@@ -6,22 +6,52 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 
+function getStoredUserId(): string {
+  try {
+    const u = JSON.parse(localStorage.getItem("barber_user") || "null");
+    return u?.id || "";
+  } catch {
+    return "";
+  }
+}
+
+function getStoredUserName(): string {
+  try {
+    const u = JSON.parse(localStorage.getItem("barber_user") || "null");
+    return u?.name || "";
+  } catch {
+    return "";
+  }
+}
+
 export default function TelegramVerify() {
   const { t, lang } = useTranslation();
   const [, navigate] = useLocation();
 
-  // Try to get userId from localStorage first (faster than a network call)
-  const storedUser = (() => {
-    try { return JSON.parse(localStorage.getItem("barber_user") || "null"); } catch { return null; }
-  })();
+  // Initialise from localStorage — works even if the API hasn't responded yet
+  const [userId, setUserId] = useState<string>(getStoredUserId);
+  const [userName, setUserName] = useState<string>(getStoredUserName);
 
+  // Fallback: if localStorage is empty (e.g. page refresh), fetch from API
   const { data: currentUser } = useGetCurrentUser({
-    query: { retry: false, staleTime: 30_000, enabled: !storedUser?.id }
+    query: {
+      retry: false,
+      staleTime: 30_000,
+      enabled: !userId, // only fires if localStorage has no id
+    },
   });
 
-  const userId = storedUser?.id || currentUser?.id || "";
-  const userName = storedUser?.name || currentUser?.name || "";
+  // Sync from API response into state + localStorage
+  useEffect(() => {
+    if (currentUser && !userId) {
+      setUserId(currentUser.id);
+      setUserName(currentUser.name);
+      // Keep localStorage in sync
+      localStorage.setItem("barber_user", JSON.stringify(currentUser));
+    }
+  }, [currentUser, userId]);
 
+  // Poll verification status every 3 s
   const { data: status } = useGetTelegramStatus(userId, {
     query: {
       refetchInterval: 3000,
@@ -29,7 +59,7 @@ export default function TelegramVerify() {
     },
   });
 
-  // If already verified when landing here, go straight to dashboard
+  // Auto-redirect as soon as DB says verified
   const redirected = useRef(false);
   useEffect(() => {
     if (status?.verified && !redirected.current) {
@@ -50,7 +80,7 @@ export default function TelegramVerify() {
         {/* Telegram icon */}
         <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto shadow-xl shadow-blue-500/20 bg-[#2AABEE]/10 border border-[#2AABEE]/20">
           <svg viewBox="0 0 24 24" className="w-12 h-12 fill-[#2AABEE]">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.21-1.12-.33-1.08-.7.02-.19.27-.39.75-.59 2.95-1.28 4.91-2.13 5.89-2.52 2.8-1.13 3.38-1.33 3.76-1.33.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .24z"/>
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.21-1.12-.33-1.08-.7.02-.19.27-.39.75-.59 2.95-1.28 4.91-2.13 5.89-2.52 2.8-1.13 3.38-1.33 3.76-1.33.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .24z" />
           </svg>
         </div>
 
@@ -65,19 +95,42 @@ export default function TelegramVerify() {
 
         {/* Steps */}
         <div className="glass-panel rounded-2xl p-5 text-left space-y-3">
-          <Step n={1} text={lang === "uz"
-            ? "Quyidagi tugmani bosib botni oching"
-            : "Нажмите кнопку ниже, чтобы открыть бота"} />
-          <Step n={2} text={lang === "uz"
-            ? `Bot sizga salom beradi va "📱 Raqamni yuborish" tugmasini ko'rasiz`
-            : `Бот поприветствует вас и покажет кнопку "📱 Отправить номер"`} />
-          <Step n={3} text={lang === "uz"
-            ? "Raqamni yuboring — sahifa avtomatik ochiladi"
-            : "Отправьте номер — страница откроется автоматически"} />
+          <Step
+            n={1}
+            text={
+              lang === "uz"
+                ? "Quyidagi tugmani bosib botni oching"
+                : "Нажмите кнопку ниже, чтобы открыть бота"
+            }
+          />
+          <Step
+            n={2}
+            text={
+              lang === "uz"
+                ? `Bot sizga salom beradi va "📱 Raqamni yuborish" tugmasini ko'rasiz`
+                : `Бот поприветствует вас и покажет кнопку "📱 Отправить номер"`
+            }
+          />
+          <Step
+            n={3}
+            text={
+              lang === "uz"
+                ? "Raqamni yuboring — sahifa avtomatik ochiladi"
+                : "Отправьте номер — страница откроется автоматически"
+            }
+          />
         </div>
 
-        <a href={botLink} target="_blank" rel="noopener noreferrer" className="block w-full">
-          <Button className="w-full h-14 text-lg font-bold rounded-xl bg-[#2AABEE] hover:bg-[#229ED9] text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5 transition-all">
+        <a
+          href={userId ? botLink : "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block w-full"
+        >
+          <Button
+            disabled={!userId}
+            className="w-full h-14 text-lg font-bold rounded-xl bg-[#2AABEE] hover:bg-[#229ED9] text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-50"
+          >
             {t("verify.btn")}
           </Button>
         </a>
