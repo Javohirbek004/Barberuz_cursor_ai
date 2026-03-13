@@ -1,7 +1,7 @@
 /**
- * Telegram Bot Handler for @Barberuzbot
+ * Telegram Bot Handler for @Barberuz_yordamchi_bot
  *
- * Deep-link format: https://t.me/barberuzbot?start=reg_{uuid}_{lang}
+ * Deep-link format: https://t.me/Barberuz_yordamchi_bot?start=reg_{uuid}_{lang}
  *   uuid = standard UUID-v4 (hex + dashes, 36 chars)
  *   lang = "uz" | "ru"
  *
@@ -69,11 +69,12 @@ async function callTelegram(
 // Message senders
 // ──────────────────────────────────────────────────────────────
 
-/** Send greeting + ReplyKeyboard with contact-request button */
-async function sendContactRequest(chatId: number) {
+/** Send greeting (with user's name) + ReplyKeyboard with contact-request button */
+async function sendContactRequest(chatId: number, userName: string) {
   return callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Assalomu alaykum! Ilovani to\u02BBliq ishlatish uchun telefon raqamingizni tasdiqlang.",
+    text: `Assalomu alaykum, <b>${userName}</b>! Ilovani to\u02BBliq foydalanish uchun telefon raqamingizni tasdiqlang.`,
+    parse_mode: "HTML",
     reply_markup: {
       keyboard: [
         [{ text: "\uD83D\uDCF1 Raqamni yuborish", request_contact: true }],
@@ -193,7 +194,7 @@ export async function handleTelegramUpdate(update: unknown) {
         // Store pending verification
         pendingVerifications.set(chatId, userId);
         console.log(`[TelegramBot] Stored pending verification chatId=${chatId} → userId=${userId}`);
-        await sendContactRequest(chatId);
+        await sendContactRequest(chatId, user.name);
         return;
       }
 

@@ -38,7 +38,7 @@ export default function TelegramVerify() {
     }
   }, [status, navigate]);
 
-  const botLink = `https://t.me/barberuzbot?start=reg_${userId}_${lang}`;
+  const botLink = `https://t.me/Barberuz_yordamchi_bot?start=reg_${userId}_${lang}`;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-background">
