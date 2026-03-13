@@ -34,10 +34,14 @@ export const translations = {
     'login.telegram': "Telegram orqali kirish",
     
     // Telegram Verify
-    'verify.wait': "Akkauntingiz deyarli tayyor! 🚀",
-    'verify.message': "Mijozlaringiz sizni topishi va xabarlar olishingiz uchun Telegram botni faollashtiring.",
-    'verify.btn': "🔵 Telegram botni ochish",
-    'verify.checking': "Tekshirilmoqda...",
+    'verify.wait': "Barber.uz akkauntingiz deyarli tayyor! 🚀",
+    'verify.message': "Mijozlaringiz bilan bog'lanish va bronlar haqida tezkor xabarnomalar olish uchun telegram botni faollashtiring. Bu atigi 10 soniya vaqt oladi:",
+    'verify.btn': "Telegram orqali faollashtirish",
+    'verify.checking': "Tasdiqlanish kutilmoqda...",
+    'verify.step1': "Quyidagi tugmani bosib botni oching.",
+    'verify.step2': "'Boshlash' tugmasini bosing va bot ishga tushadi.",
+    'verify.step3': "'📱 Raqamni yuborish' tugmasini bosib telefon raqamni yuboring.",
+    'verify.step4': "Bot profilni tasdiqlaydi va tayyor sahifangiz linkini beradi.",
 
     // Navigation
     'nav.dashboard': "Asosiy",
@@ -140,10 +144,14 @@ export const translations = {
     'login.telegram': "Войти через Telegram",
 
     // Telegram Verify
-    'verify.wait': "Ваш аккаунт почти готов! 🚀",
-    'verify.message': "Активируйте Telegram-бота, чтобы клиенты могли вас найти и вы получали уведомления.",
-    'verify.btn': "🔵 Открыть Telegram бота",
-    'verify.checking': "Проверка...",
+    'verify.wait': "Ваш аккаунт Barber.uz почти готов! 🚀",
+    'verify.message': "Активируйте Telegram-бота для связи с клиентами и мгновенных уведомлений о бронированиях. Это займёт всего 10 секунд:",
+    'verify.btn': "Активировать через Telegram",
+    'verify.checking': "Ожидание подтверждения...",
+    'verify.step1': "Нажмите кнопку ниже, чтобы открыть бота.",
+    'verify.step2': "Нажмите кнопку 'Начать', чтобы запустить бота.",
+    'verify.step3': "Нажмите '📱 Отправить номер' и поделитесь своим номером телефона.",
+    'verify.step4': "Бот подтвердит профиль и отправит ссылку на вашу готовую страницу.",
 
     // Navigation
     'nav.dashboard': "Главная",
