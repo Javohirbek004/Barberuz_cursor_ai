@@ -28,16 +28,16 @@ export const translations = {
     'register.error.fill_required': "Majburiy maydonlarni to'ldiring",
     'register.error.register_failed': "Ro'yxatdan o'tishda xatolik yuz berdi. Qayta urinib ko'ring.",
     'login.error.invalid_credentials': "Ism yoki parol noto'g'ri. Qayta urinib ko'ring.",
-    
+
     // Login
     'login.title': "Tizimga kirish",
     'login.submit': "Kirish",
     'login.no_account': "Akkauntingiz yo'qmi?",
     'login.telegram': "Telegram orqali kirish",
     'login.telegram.waiting.title': "Telegram kutilmoqda",
-    'login.telegram.waiting.desc': "Bot \'✅ Ha, kirish\' tugmasini bosing — sahifa avtomatik ochiladi.",
+    'login.telegram.waiting.desc': "Bot '✅ Ha, kirish' tugmasini bosing — sahifa avtomatik ochiladi.",
     'login.telegram.cancel': "Bekor qilish",
-    
+
     // Telegram Verify
     'verify.wait': "Barber.uz akkauntingiz deyarli tayyor! 🚀",
     'verify.message': "Mijozlaringiz bilan bog'lanish va bronlar haqida tezkor xabarnomalar olish uchun telegram botni faollashtiring. Bu atigi 10 soniya vaqt oladi:",
@@ -51,6 +51,7 @@ export const translations = {
     // Navigation
     'nav.dashboard': "Asosiy",
     'nav.calendar': "Kalendar",
+    'nav.calendar.team': "Jamoa",
     'nav.clients': "Mijozlar",
     'nav.settings': "Sozlamalar",
 
@@ -65,7 +66,7 @@ export const translations = {
     // Calendar
     'cal.title': "Kalendar",
     'cal.add': "Yangi bron",
-    
+
     // Clients
     'clients.title': "Mijozlar bazasi",
     'clients.search': "Ism yoki telefon...",
@@ -75,15 +76,35 @@ export const translations = {
     'clients.filter.blacklist': "Qora ro'yxat 🧊",
     'clients.add_quick': "Tezkor mijoz qo'shish",
     'clients.visits': "tashrif",
-    
-    // Settings
+
+    // Settings — main list
     'settings.title': "Sozlamalar",
-    'settings.profile': "👤 Mening profilim",
-    'settings.page': "🌐 Mening sahifam",
-    'settings.notifications': "🔔 Bildirishnomalar",
-    'settings.analytics': "📊 Tahlil va Statistika",
-    'settings.security': "🛡 Xavfsizlik",
-    'settings.logout': "🚪 Chiqish",
+    'settings.profile.solo': "Mening profilim",
+    'settings.profile.team': "Barbershop profili",
+    'settings.page.solo': "Mening sahifam",
+    'settings.page.team': "Barbershop sahifasi",
+    'settings.notifications': "Bildirishnomalar",
+    'settings.analytics': "Tahlil va statistika",
+    'settings.barbers': "Ustalar boshqaruvi",
+    'settings.bonus': "Bonus dasturi",
+    'settings.feedback': "Fikr va takliflar",
+    'settings.logout': "Hisobdan chiqish",
+
+    // Settings — appearance
+    'settings.appearance': "Ilova ko'rinishi",
+    'settings.appearance.system': "Tizim",
+    'settings.appearance.light': "Yorug'",
+    'settings.appearance.dark': "Qorong'i",
+
+    // Settings — salon (team)
+    'settings.salon.name': "Barbershop nomi",
+    'settings.salon.name_placeholder': "Masalan: Royal Barbershop",
+
+    // Placeholder pages
+    'coming_soon': "Tez kunda!",
+    'settings.bonus.desc': "Doimiy mijozlaringizni mukofotlash tizimi tez orada ishga tushadi.",
+    'settings.feedback.desc': "Sizning fikringiz bizga juda muhim. Bu bo'lim tez orada ochiladi.",
+    'settings.barbers.desc': "Jamoa a'zolari va ularning jadvallarini bu yerdan boshqarasiz.",
 
     // Profile Settings
     'profile.title': "Profil",
@@ -166,6 +187,7 @@ export const translations = {
     // Navigation
     'nav.dashboard': "Главная",
     'nav.calendar': "Календарь",
+    'nav.calendar.team': "Команда",
     'nav.clients': "Клиенты",
     'nav.settings': "Настройки",
 
@@ -191,14 +213,34 @@ export const translations = {
     'clients.add_quick': "Быстро добавить",
     'clients.visits': "визитов",
 
-    // Settings
+    // Settings — main list
     'settings.title': "Настройки",
-    'settings.profile': "👤 Мой профиль",
-    'settings.page': "🌐 Моя страница",
-    'settings.notifications': "🔔 Уведомления",
-    'settings.analytics': "📊 Аналитика",
-    'settings.security': "🛡 Безопасность",
-    'settings.logout': "🚪 Выйти",
+    'settings.profile.solo': "Мой профиль",
+    'settings.profile.team': "Профиль барбершопа",
+    'settings.page.solo': "Моя страница",
+    'settings.page.team': "Страница барбершопа",
+    'settings.notifications': "Уведомления",
+    'settings.analytics': "Аналитика и статистика",
+    'settings.barbers': "Управление мастерами",
+    'settings.bonus': "Бонусная программа",
+    'settings.feedback': "Отзывы и предложения",
+    'settings.logout': "Выйти из аккаунта",
+
+    // Settings — appearance
+    'settings.appearance': "Внешний вид",
+    'settings.appearance.system': "Система",
+    'settings.appearance.light': "Светлая",
+    'settings.appearance.dark': "Тёмная",
+
+    // Settings — salon (team)
+    'settings.salon.name': "Название барбершопа",
+    'settings.salon.name_placeholder': "Например: Royal Barbershop",
+
+    // Placeholder pages
+    'coming_soon': "Скоро!",
+    'settings.bonus.desc': "Система поощрения постоянных клиентов скоро будет запущена.",
+    'settings.feedback.desc': "Ваше мнение очень важно для нас. Этот раздел скоро откроется.",
+    'settings.barbers.desc': "Здесь вы будете управлять мастерами и их расписанием.",
 
     // Profile Settings
     'profile.title': "Профиль",

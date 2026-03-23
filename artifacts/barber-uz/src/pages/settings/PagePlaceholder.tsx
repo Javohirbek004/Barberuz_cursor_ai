@@ -17,7 +17,7 @@ export default function PagePlaceholder() {
             <ChevronLeft className="w-5 h-5" />
           </Button>
         </Link>
-        <h1 className="text-xl font-bold font-display">{t('settings.page')}</h1>
+        <h1 className="text-xl font-bold font-display">{t('settings.page.solo')}</h1>
       </div>
 
       <div className="flex flex-col items-center justify-center py-20 text-center">

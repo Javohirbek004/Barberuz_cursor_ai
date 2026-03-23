@@ -19,6 +19,9 @@ import NotificationSettings from "@/pages/settings/NotificationSettings";
 import AnalyticsPage from "@/pages/settings/Analytics";
 import SecuritySettings from "@/pages/settings/Security";
 import PagePlaceholder from "@/pages/settings/PagePlaceholder";
+import BonusPage from "@/pages/settings/BonusPage";
+import FeedbackPage from "@/pages/settings/FeedbackPage";
+import BarbersPage from "@/pages/settings/BarbersPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -49,14 +52,17 @@ function AppRoutes() {
       <Route path="/calendar" component={Calendar} />
       <Route path="/clients" component={Clients} />
       <Route path="/client/:id" component={ClientDetail} />
-      
+
       <Route path="/settings" component={Settings} />
       <Route path="/settings/profile" component={ProfileSettings} />
       <Route path="/settings/page" component={PagePlaceholder} />
       <Route path="/settings/notifications" component={NotificationSettings} />
       <Route path="/settings/analytics" component={AnalyticsPage} />
       <Route path="/settings/security" component={SecuritySettings} />
-      
+      <Route path="/settings/bonus" component={BonusPage} />
+      <Route path="/settings/feedback" component={FeedbackPage} />
+      <Route path="/settings/barbers" component={BarbersPage} />
+
       <Route component={NotFound} />
     </Switch>
   );
