@@ -48,7 +48,7 @@ export default function Register() {
       onError: () => {
         toast({
           title: t("error"),
-          description: "Ro'yxatdan o'tishda xatolik yuz berdi.",
+          description: t("register.error.register_failed"),
           variant: "destructive",
         });
       },
@@ -146,9 +146,10 @@ export default function Register() {
                 />
                 <button
                   type="button"
+                  tabIndex={-1}
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors"
-                  tabIndex={-1}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -172,9 +173,10 @@ export default function Register() {
                 />
                 <button
                   type="button"
+                  tabIndex={-1}
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setShowConfirm((v) => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors"
-                  tabIndex={-1}
                 >
                   {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>

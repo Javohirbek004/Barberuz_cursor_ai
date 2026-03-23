@@ -26,6 +26,8 @@ export const translations = {
     'register.error.pwd_short': "Parol kamida 6 ta belgidan iborat bo'lishi kerak",
     'register.error.pwd_mismatch': "Parollar mos kelmayapti",
     'register.error.fill_required': "Majburiy maydonlarni to'ldiring",
+    'register.error.register_failed': "Ro'yxatdan o'tishda xatolik yuz berdi. Qayta urinib ko'ring.",
+    'login.error.invalid_credentials': "Ism yoki parol noto'g'ri. Qayta urinib ko'ring.",
     
     // Login
     'login.title': "Tizimga kirish",
@@ -136,6 +138,8 @@ export const translations = {
     'register.error.pwd_short': "Пароль должен содержать не менее 6 символов",
     'register.error.pwd_mismatch': "Пароли не совпадают",
     'register.error.fill_required': "Заполните обязательные поля",
+    'register.error.register_failed': "Ошибка регистрации. Попробуйте ещё раз.",
+    'login.error.invalid_credentials': "Неверное имя или пароль. Попробуйте ещё раз.",
 
     // Login
     'login.title': "Вход в систему",
