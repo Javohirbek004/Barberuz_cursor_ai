@@ -13,6 +13,7 @@ export const usersTable = pgTable("users", {
   telegramVerified: boolean("telegram_verified").notNull().default(false),
   telegramId: text("telegram_id"),
   telegramUsername: text("telegram_username"),
+  phone: text("phone"),
   workingHoursStart: text("working_hours_start"),
   workingHoursEnd: text("working_hours_end"),
   bio: text("bio"),

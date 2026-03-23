@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { hashPassword, generateToken, authenticate, getUser } from "../lib/auth";
+import { getTelegramLoginResult } from "../lib/telegram-bot";
 
 const router = Router();
 
@@ -128,6 +129,38 @@ router.get("/telegram-status/:userId", async (req, res) => {
     res.json({ verified: user.telegramVerified, telegramId: user.telegramId });
   } catch (err) {
     res.status(500).json({ error: "server_error" });
+  }
+});
+
+/**
+ * GET /api/auth/telegram-login-status/:code
+ * Frontend polls this every 2s after opening the Telegram bot login link.
+ * Returns { ready: true, token, user } when confirmed, or { ready: false }.
+ */
+router.get("/telegram-login-status/:code", async (req, res) => {
+  try {
+    const { code } = req.params;
+    if (!code || code.length < 8) {
+      res.status(400).json({ ready: false, error: "Invalid code" });
+      return;
+    }
+
+    const result = getTelegramLoginResult(code);
+    if (!result) {
+      res.json({ ready: false });
+      return;
+    }
+
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, result.userId)).limit(1);
+    if (!user) {
+      res.json({ ready: false });
+      return;
+    }
+
+    res.json({ ready: true, token: result.token, user: formatUser(user) });
+  } catch (err) {
+    console.error("Telegram login status error:", err);
+    res.status(500).json({ ready: false, error: "server_error" });
   }
 });
 

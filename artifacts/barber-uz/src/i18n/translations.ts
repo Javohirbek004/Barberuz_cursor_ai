@@ -34,6 +34,9 @@ export const translations = {
     'login.submit': "Kirish",
     'login.no_account': "Akkauntingiz yo'qmi?",
     'login.telegram': "Telegram orqali kirish",
+    'login.telegram.waiting.title': "Telegram kutilmoqda",
+    'login.telegram.waiting.desc': "Bot \'✅ Ha, kirish\' tugmasini bosing — sahifa avtomatik ochiladi.",
+    'login.telegram.cancel': "Bekor qilish",
     
     // Telegram Verify
     'verify.wait': "Barber.uz akkauntingiz deyarli tayyor! 🚀",
@@ -146,6 +149,9 @@ export const translations = {
     'login.submit': "Войти",
     'login.no_account': "Нет аккаунта?",
     'login.telegram': "Войти через Telegram",
+    'login.telegram.waiting.title': "Ожидание Telegram",
+    'login.telegram.waiting.desc': "Нажмите '✅ Да, войти' в боте — страница откроется автоматически.",
+    'login.telegram.cancel': "Отмена",
 
     // Telegram Verify
     'verify.wait': "Ваш аккаунт Barber.uz почти готов! 🚀",
