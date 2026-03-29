@@ -65,6 +65,18 @@ export default function Login() {
     loginMutation.mutate({ data: { username, password } });
   };
 
+  // ── Handle ?tg_code= from bot link (new browser context) ────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tgCode = params.get("tg_code");
+    if (tgCode && !getStoredCode()) {
+      localStorage.setItem("telegram_auth_code", tgCode);
+      setTgState("waiting");
+      // Clean up URL without triggering a reload
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   // ── Telegram login ──────────────────────────────────────────
   function startTelegramLogin() {
     const code = generateAuthCode();
