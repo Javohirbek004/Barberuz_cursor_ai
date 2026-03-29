@@ -30,8 +30,9 @@ function getToken(): string {
 }
 
 function getAppUrl(): string {
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  // In Replit dev, REPLIT_DEV_DOMAIN is always the live correct host — prefer it over APP_URL
   if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   return "https://barber.uz";
 }
 
