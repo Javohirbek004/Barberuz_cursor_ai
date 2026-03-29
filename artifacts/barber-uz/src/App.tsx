@@ -55,7 +55,7 @@ function AppRoutes() {
 
       <Route path="/settings" component={Settings} />
       <Route path="/settings/profile" component={ProfileSettings} />
-      <Route path="/settings/page" component={PagePlaceholder} />
+      <Route path="/settings/page" component={PersonalPage} />
       <Route path="/settings/notifications" component={NotificationSettings} />
       <Route path="/settings/analytics" component={AnalyticsPage} />
       <Route path="/settings/security" component={SecuritySettings} />
