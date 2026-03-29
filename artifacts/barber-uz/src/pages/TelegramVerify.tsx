@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "@/i18n/LanguageContext";
-import { useGetTelegramStatus, useGetCurrentUser } from "@workspace/api-client-react";
+import { useGetTelegramStatus } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
@@ -32,24 +32,16 @@ export default function TelegramVerify() {
   const [userId, setUserId] = useState<string>(getStoredUserId);
   const [userName, setUserName] = useState<string>(getStoredUserName);
 
-  // Fallback: if localStorage is empty (e.g. page refresh), fetch from API
-  const { data: currentUser } = useGetCurrentUser({
-    query: {
-      retry: false,
-      staleTime: 30_000,
-      enabled: !userId, // only fires if localStorage has no id
-    },
-  });
-
-  // Sync from API response into state + localStorage
+  // Fallback: if opened via bot link in a new browser, read ?uid= from URL
   useEffect(() => {
-    if (currentUser && !userId) {
-      setUserId(currentUser.id);
-      setUserName(currentUser.name);
-      // Keep localStorage in sync
-      localStorage.setItem("barber_user", JSON.stringify(currentUser));
+    if (!userId) {
+      const params = new URLSearchParams(window.location.search);
+      const uid = params.get("uid");
+      if (uid) {
+        setUserId(uid);
+      }
     }
-  }, [currentUser, userId]);
+  }, []);
 
   // Poll verification status every 3 s
   const { data: status } = useGetTelegramStatus(userId, {

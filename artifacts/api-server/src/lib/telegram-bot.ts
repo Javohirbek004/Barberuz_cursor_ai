@@ -114,7 +114,7 @@ async function sendContactRequest(chatId: number, userName: string) {
   });
 }
 
-async function sendVerificationSuccess(chatId: number) {
+async function sendVerificationSuccess(chatId: number, userId: string) {
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text: "Raqam tasdiqlandi! \u2705 Ro\u02BByxatdan o\u02BBtgan brauzer sahifangizga qayting \u2014 u avtomatik ochiladi.",
@@ -125,7 +125,7 @@ async function sendVerificationSuccess(chatId: number) {
     text: "Yoki quyidagi tugmani bosing:",
     reply_markup: {
       inline_keyboard: [
-        [{ text: "\uD83C\uDF10 Ilovaga kirish", url: `${getAppUrl()}/verify-telegram` }],
+        [{ text: "\uD83C\uDF10 Ilovaga kirish", url: `${getAppUrl()}/verify-telegram?uid=${userId}` }],
       ],
     },
   });
@@ -176,7 +176,7 @@ async function sendAuthPhoneRequest(chatId: number, lang: string) {
   });
 }
 
-async function sendLoginSuccess(chatId: number, lang: string) {
+async function sendLoginSuccess(chatId: number, lang: string, code: string) {
   const isUz = lang !== "ru";
   await callTelegram("sendMessage", {
     chat_id: chatId,
@@ -190,7 +190,7 @@ async function sendLoginSuccess(chatId: number, lang: string) {
     text: isUz ? "Yoki quyidagi tugmani bosing:" : "Или нажмите кнопку ниже:",
     reply_markup: {
       inline_keyboard: [
-        [{ text: isUz ? "\uD83C\uDF10 Ilovaga kirish" : "\uD83C\uDF10 Открыть приложение", url: `${getAppUrl()}/verify-telegram` }],
+        [{ text: isUz ? "\uD83C\uDF10 Ilovaga kirish" : "\uD83C\uDF10 Открыть приложение", url: `${getAppUrl()}/login?tg_code=${code}` }],
       ],
     },
   });
@@ -334,7 +334,7 @@ async function handleRegStart(chatId: number, userId: string, _lang: string) {
       chat_id: chatId,
       text: "Siz allaqachon tasdiqlangansiz! \u2705",
       reply_markup: {
-        inline_keyboard: [[{ text: "\uD83C\uDF10 Ilovaga kirish", url: `${getAppUrl()}/dashboard` }]],
+        inline_keyboard: [[{ text: "\uD83C\uDF10 Ilovaga kirish", url: `${getAppUrl()}/login` }]],
       },
     });
     return;
@@ -406,7 +406,7 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
     pendingAuthLogins.delete(chatId);
 
     console.log(`[TelegramBot] Auth confirmed: userId=${user.id} code=${code}`);
-    await sendLoginSuccess(chatId, pending.lang);
+    await sendLoginSuccess(chatId, pending.lang, code);
     return;
   }
 
@@ -473,7 +473,7 @@ async function handleAuthPhoneContact(
   pendingAuthLogins.delete(chatId);
 
   console.log(`[TelegramBot] Auth by phone: userId=${foundUser.id} code=${pending.code}`);
-  await sendLoginSuccess(chatId, pending.lang);
+  await sendLoginSuccess(chatId, pending.lang, pending.code);
 }
 
 async function handleRegContact(
@@ -504,7 +504,7 @@ async function handleRegContact(
 
     pendingVerifications.delete(chatId);
     console.log(`[TelegramBot] Reg verified: userId=${userId} ✅`);
-    await sendVerificationSuccess(chatId);
+    await sendVerificationSuccess(chatId, userId);
   } catch (err) {
     console.error("[TelegramBot] DB update failed:", err);
     await callTelegram("sendMessage", {
