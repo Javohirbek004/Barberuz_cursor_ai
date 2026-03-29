@@ -18,7 +18,7 @@ import ProfileSettings from "@/pages/settings/ProfileSettings";
 import NotificationSettings from "@/pages/settings/NotificationSettings";
 import AnalyticsPage from "@/pages/settings/Analytics";
 import SecuritySettings from "@/pages/settings/Security";
-import PagePlaceholder from "@/pages/settings/PagePlaceholder";
+import PersonalPage from "@/pages/settings/PersonalPage";
 import BonusPage from "@/pages/settings/BonusPage";
 import FeedbackPage from "@/pages/settings/FeedbackPage";
 import BarbersPage from "@/pages/settings/BarbersPage";

@@ -117,15 +117,15 @@ async function sendContactRequest(chatId: number, userName: string) {
 async function sendVerificationSuccess(chatId: number) {
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Raqam tasdiqlandi! \u2705 Endi siz ilovadan to\u02BBliq foydalanishingiz mumkin.",
+    text: "Raqam tasdiqlandi! \u2705 Ro\u02BByxatdan o\u02BBtgan brauzer sahifangizga qayting \u2014 u avtomatik ochiladi.",
     reply_markup: { remove_keyboard: true },
   });
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Ilovaga qaytish:",
+    text: "Yoki quyidagi tugmani bosing:",
     reply_markup: {
       inline_keyboard: [
-        [{ text: "\uD83C\uDF10 Ilovaga kirish", url: `${getAppUrl()}/dashboard` }],
+        [{ text: "\uD83C\uDF10 Ilovaga kirish", url: `${getAppUrl()}/verify-telegram` }],
       ],
     },
   });
@@ -181,16 +181,16 @@ async function sendLoginSuccess(chatId: number, lang: string) {
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text: isUz
-      ? "Muvaffaqiyatli! \u2705 Ilovaga qayting."
-      : "Успешно! \u2705 Вернитесь в приложение.",
+      ? "Muvaffaqiyatli! \u2705 Brauzeringizga qayting \u2014 sahifa avtomatik ochiladi."
+      : "Успешно! \u2705 Вернитесь в браузер \u2014 страница откроется автоматически.",
     reply_markup: { remove_keyboard: true },
   });
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: isUz ? "Dashboard:" : "Панель управления:",
+    text: isUz ? "Yoki quyidagi tugmani bosing:" : "Или нажмите кнопку ниже:",
     reply_markup: {
       inline_keyboard: [
-        [{ text: isUz ? "\uD83C\uDF10 Ilovaga kirish" : "\uD83C\uDF10 Открыть приложение", url: `${getAppUrl()}/dashboard` }],
+        [{ text: isUz ? "\uD83C\uDF10 Ilovaga kirish" : "\uD83C\uDF10 Открыть приложение", url: `${getAppUrl()}/verify-telegram` }],
       ],
     },
   });
