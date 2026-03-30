@@ -29,8 +29,16 @@ function getToken(): string {
   return process.env.TELEGRAM_BOT_TOKEN || "";
 }
 
+/**
+ * Returns the base URL for the frontend app.
+ * Priority: REPLIT_DEV_DOMAIN (always current in Replit dev)
+ *           → APP_URL (production override)
+ *           → barber.uz (hardcoded production fallback)
+ *
+ * IMPORTANT: APP_URL can become stale when the Replit workspace domain rotates.
+ * REPLIT_DEV_DOMAIN is injected fresh each run, so it always wins in dev.
+ */
 function getAppUrl(): string {
-  // In Replit dev, REPLIT_DEV_DOMAIN is always the live correct host — prefer it over APP_URL
   if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   return "https://barber.uz";

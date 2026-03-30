@@ -15,12 +15,13 @@ function getStoredUserId(): string {
   }
 }
 
-function getStoredUserName(): string {
+function isAlreadyVerified(): boolean {
   try {
+    const token = localStorage.getItem("barber_token");
     const u = JSON.parse(localStorage.getItem("barber_user") || "null");
-    return u?.name || "";
+    return !!(token && u?.telegramVerified === true);
   } catch {
-    return "";
+    return false;
   }
 }
 
@@ -28,9 +29,15 @@ export default function TelegramVerify() {
   const { t, lang } = useTranslation();
   const [, navigate] = useLocation();
 
-  // Initialise from localStorage — works even if the API hasn't responded yet
+  // If user already has a valid token + telegramVerified, skip this page
+  useEffect(() => {
+    if (isAlreadyVerified()) {
+      navigate("/dashboard");
+    }
+  }, [navigate]);
+
+  // Initialise from localStorage
   const [userId, setUserId] = useState<string>(getStoredUserId);
-  const [userName, setUserName] = useState<string>(getStoredUserName);
 
   // Fallback: if opened via bot link in a new browser, read ?uid= from URL
   useEffect(() => {
@@ -56,6 +63,16 @@ export default function TelegramVerify() {
   useEffect(() => {
     if (status?.verified && !redirected.current) {
       redirected.current = true;
+      // Persist verified flag so next visit skips this page
+      try {
+        const stored = JSON.parse(localStorage.getItem("barber_user") || "null");
+        if (stored) {
+          stored.telegramVerified = true;
+          localStorage.setItem("barber_user", JSON.stringify(stored));
+        }
+      } catch {
+        // ignore
+      }
       navigate("/dashboard");
     }
   }, [status, navigate]);
