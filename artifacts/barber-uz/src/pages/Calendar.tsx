@@ -1,102 +1,469 @@
-import { useState } from "react";
-import { useTranslation } from "@/i18n/LanguageContext";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
-import { PageHeader } from "@/components/PageHeader";
-import { useListBookings } from "@workspace/api-client-react";
-import { format, addDays, startOfWeek } from "date-fns";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { ChevronLeft, ChevronRight, X, Pencil, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
 
-export default function Calendar() {
-  const { t } = useTranslation();
-  useAuth();
-  
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const formattedDate = format(selectedDate, 'yyyy-MM-dd');
-  
-  const { data: bookingsData } = useListBookings({ date: formattedDate });
+// ── Uzbek date helpers ────────────────────────────────────────────────────────
+const UZ_MONTHS = [
+  "Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
+  "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr",
+];
+const UZ_DAY_NAMES = [
+  "Yakshanba", "Dushanba", "Seshanba", "Chorshanba",
+  "Payshanba", "Juma", "Shanba",
+];
+const UZ_DAY_SHORT = ["Ya", "Du", "Se", "Cho", "Pa", "Ju", "Sha"];
 
-  // Generate week days
-  const startDate = startOfWeek(new Date(), { weekStartsOn: 1 });
-  const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(startDate, i));
+function formatUzDate(date: Date): string {
+  const d = date.getDate();
+  const m = UZ_MONTHS[date.getMonth()];
+  const wd = UZ_DAY_NAMES[date.getDay()];
+  return `${d}-${m.toLowerCase()}, ${wd}`;
+}
 
-  // Time slots 09:00 to 20:00
-  const timeSlots = Array.from({ length: 12 }).map((_, i) => {
-    const hour = i + 9;
-    return `${hour.toString().padStart(2, '0')}:00`;
+/** Returns array of 7 dates starting from Monday of the given date's week */
+function getWeek(date: Date): Date[] {
+  const d = new Date(date);
+  const day = d.getDay(); // 0=Sun
+  const diff = day === 0 ? -6 : 1 - day; // shift to Monday
+  d.setDate(d.getDate() + diff);
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(d);
+    day.setDate(d.getDate() + i);
+    return day;
   });
+}
+
+function isSameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+type BookingStatus = "confirmed" | "pending" | "cancelled";
+
+interface MockBooking {
+  id: string;
+  time: string;
+  client: string;
+  phone: string;
+  service: string;
+  status: BookingStatus;
+  barber?: string;
+}
+
+// ── Status helpers ────────────────────────────────────────────────────────────
+const STATUS_LABEL: Record<BookingStatus, string> = {
+  confirmed: "Tasdiqlandi",
+  pending: "Kutilmoqda",
+  cancelled: "Bekor qilindi",
+};
+
+const STATUS_DOT: Record<BookingStatus, string> = {
+  confirmed: "bg-green-500",
+  pending: "bg-yellow-400",
+  cancelled: "bg-red-500",
+};
+
+const STATUS_CARD: Record<BookingStatus, string> = {
+  confirmed: "border-green-500/30 bg-green-500/5",
+  pending: "border-yellow-400/30 bg-yellow-400/5",
+  cancelled: "border-red-500/30 bg-red-500/10 opacity-70",
+};
+
+const STATUS_TEXT: Record<BookingStatus, string> = {
+  confirmed: "text-green-400",
+  pending: "text-yellow-400",
+  cancelled: "text-red-400",
+};
+
+// ── Mock data ─────────────────────────────────────────────────────────────────
+const SOLO_BOOKINGS: MockBooking[] = [
+  { id: "b1", time: "14:00", client: "Aziz", phone: "+998 90 123 45 67", service: "Fade + Soqol", status: "confirmed" },
+  { id: "b2", time: "15:00", client: "Jamshid", phone: "+998 91 234 56 78", service: "Soch olish", status: "pending" },
+  { id: "b3", time: "17:00", client: "Olim", phone: "+998 93 345 67 89", service: "Bolalar uchun", status: "cancelled" },
+];
+
+const TEAM_BARBERS = [
+  { id: "all", name: "Barchasi", count: null },
+  { id: "sardor", name: "Sardor", count: 5 },
+  { id: "jasur", name: "Jasur", count: 3 },
+  { id: "ali", name: "Ali", count: 0 },
+  { id: "kamol", name: "Kamol", count: 2 },
+];
+
+const TEAM_BOOKINGS: MockBooking[] = [
+  { id: "t1", time: "09:00", client: "Aziz", phone: "+998 90 111 22 33", service: "Fade + Soqol", status: "confirmed", barber: "Sardor" },
+  { id: "t2", time: "10:00", client: "Bobur", phone: "+998 91 222 33 44", service: "Soch olish", status: "pending", barber: "Sardor" },
+  { id: "t3", time: "11:00", client: "Dilshod", phone: "+998 93 333 44 55", service: "Soqol tekislash", status: "confirmed", barber: "Sardor" },
+  { id: "t4", time: "12:00", client: "Eldor", phone: "+998 94 444 55 66", service: "Bolalar uchun", status: "pending", barber: "Sardor" },
+  { id: "t5", time: "14:00", client: "Firdavs", phone: "+998 95 555 66 77", service: "Fade", status: "cancelled", barber: "Sardor" },
+  { id: "t6", time: "10:30", client: "Hamid", phone: "+998 90 666 77 88", service: "Soch olish", status: "confirmed", barber: "Jasur" },
+  { id: "t7", time: "13:00", client: "Ibrohim", phone: "+998 91 777 88 99", service: "Fade + Soqol", status: "pending", barber: "Jasur" },
+  { id: "t8", time: "16:00", client: "Jahongir", phone: "+998 93 888 99 00", service: "Bolalar uchun", status: "confirmed", barber: "Jasur" },
+  { id: "t9", time: "11:30", client: "Kamoljon", phone: "+998 94 999 00 11", service: "Soqol tekislash", status: "confirmed", barber: "Kamol" },
+  { id: "t10", time: "15:30", client: "Lochin", phone: "+998 95 000 11 22", service: "Soch olish", status: "pending", barber: "Kamol" },
+];
+
+// ── Booking Card ──────────────────────────────────────────────────────────────
+function BookingCard({ booking, onClick }: { booking: MockBooking; onClick: () => void }) {
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onClick}
+      className={`w-full text-left rounded-2xl border p-4 flex items-start gap-4 transition-all ${STATUS_CARD[booking.status]}`}
+    >
+      <div className="flex flex-col items-center min-w-[2.5rem]">
+        <span className="text-sm font-bold text-foreground">{booking.time}</span>
+        <div className={`mt-1.5 w-2.5 h-2.5 rounded-full ${STATUS_DOT[booking.status]}`} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="font-bold text-foreground truncate">
+            {booking.client}
+            {booking.barber && (
+              <span className="text-muted-foreground font-normal text-xs ml-1.5">
+                ({booking.barber} barber)
+              </span>
+            )}
+          </span>
+          <span className={`text-xs font-semibold shrink-0 ${STATUS_TEXT[booking.status]}`}>
+            {STATUS_LABEL[booking.status]}
+          </span>
+        </div>
+        <span className="text-sm text-muted-foreground mt-0.5 block">{booking.service}</span>
+      </div>
+    </motion.button>
+  );
+}
+
+// ── Detail Modal ──────────────────────────────────────────────────────────────
+function DetailModal({
+  booking,
+  onClose,
+}: {
+  booking: MockBooking;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   return (
-    <Layout>
-      <PageHeader 
-        title={t('cal.title')} 
-        action={
-          <Button size="sm" className="rounded-full bg-primary/20 text-primary hover:bg-primary/30 border-0">
-            <Plus className="w-4 h-4 mr-1" /> {t('cal.add')}
-          </Button>
-        }
-      />
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-50 flex items-end justify-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      >
+        {/* Backdrop */}
+        <motion.div
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          onClick={onClose}
+        />
 
-      {/* Day Selector */}
-      <div className="flex gap-2 overflow-x-auto pb-4 mb-6 scrollbar-none snap-x">
-        {weekDays.map((day, i) => {
-          const isSelected = format(day, 'yyyy-MM-dd') === formattedDate;
-          const isToday = format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
-          
+        {/* Sheet */}
+        <motion.div
+          initial={{ y: "100%" }}
+          animate={{ y: 0 }}
+          exit={{ y: "100%" }}
+          transition={{ type: "spring", damping: 28, stiffness: 280 }}
+          className="relative w-full max-w-md bg-card rounded-t-3xl p-6 pb-10 space-y-5 z-10"
+        >
+          {/* Handle */}
+          <div className="w-10 h-1 bg-white/20 rounded-full mx-auto -mt-1 mb-2" />
+
+          {/* Title row */}
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-display font-bold text-foreground">Bron tafsilotlari</h2>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Fields */}
+          <div className="space-y-3">
+            <InfoRow label="Mijoz ismi" value={booking.client} />
+            <InfoRow label="Telefon" value={booking.phone} />
+            <InfoRow label="Xizmat turi" value={booking.service} />
+            <InfoRow label="Vaqt" value={booking.time} />
+            {booking.barber && <InfoRow label="Barber" value={booking.barber} />}
+            <div className="flex items-center justify-between py-3 border-b border-white/5">
+              <span className="text-sm text-muted-foreground">Status</span>
+              <span className={`flex items-center gap-2 text-sm font-semibold ${STATUS_TEXT[booking.status]}`}>
+                <span className={`w-2.5 h-2.5 rounded-full inline-block ${STATUS_DOT[booking.status]}`} />
+                {STATUS_LABEL[booking.status]}
+              </span>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-1">
+            <Button
+              variant="outline"
+              className="flex-1 h-12 rounded-2xl border-white/10 gap-2 text-foreground"
+            >
+              <Pencil className="w-4 h-4" />
+              Tahrirlash
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1 h-12 rounded-2xl border-red-500/30 text-red-400 hover:bg-red-500/10 gap-2"
+              disabled={booking.status === "cancelled"}
+            >
+              <Ban className="w-4 h-4" />
+              Bekor qilish
+            </Button>
+            <Button
+              onClick={onClose}
+              className="flex-1 h-12 rounded-2xl bg-primary/20 text-primary hover:bg-primary/30 border-0"
+            >
+              Yopish
+            </Button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between py-3 border-b border-white/5">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium text-foreground">{value}</span>
+    </div>
+  );
+}
+
+// ── Week Nav ──────────────────────────────────────────────────────────────────
+function WeekNav({
+  selected,
+  onSelect,
+}: {
+  selected: Date;
+  onSelect: (d: Date) => void;
+}) {
+  const [weekOffset, setWeekOffset] = useState(0);
+  const today = new Date();
+  const anchor = new Date(today);
+  anchor.setDate(today.getDate() + weekOffset * 7);
+  const days = getWeek(anchor);
+
+  return (
+    <div className="space-y-2 mb-5">
+      {/* Prev / Next week arrows */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => setWeekOffset((w) => w - 1)}
+          className="p-2 rounded-xl hover:bg-white/5 text-muted-foreground transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <span className="text-xs text-muted-foreground font-medium">
+          {UZ_MONTHS[days[0].getMonth()]} {days[0].getFullYear()}
+        </span>
+        <button
+          onClick={() => setWeekOffset((w) => w + 1)}
+          className="p-2 rounded-xl hover:bg-white/5 text-muted-foreground transition-colors"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Day pills */}
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+        {days.map((day) => {
+          const isSelected = isSameDay(day, selected);
+          const isToday = isSameDay(day, today);
+          const dowIdx = day.getDay(); // 0=Sun
+
           return (
             <button
-              key={i}
-              onClick={() => setSelectedDate(day)}
-              className={`snap-center flex flex-col items-center min-w-[3.5rem] py-3 rounded-2xl transition-all ${
-                isSelected 
-                  ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' 
-                  : 'bg-card border border-white/5 text-muted-foreground hover:bg-white/5'
+              key={day.toISOString()}
+              onClick={() => onSelect(day)}
+              className={`flex flex-col items-center min-w-[3rem] py-2.5 px-1 rounded-2xl transition-all ${
+                isSelected
+                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                  : "bg-card border border-white/5 text-muted-foreground hover:bg-white/5"
               }`}
             >
               <span className="text-[10px] font-bold uppercase tracking-wider mb-1">
-                {format(day, 'EEE')}
+                {UZ_DAY_SHORT[dowIdx]}
               </span>
-              <span className={`text-xl font-display font-bold ${isSelected ? 'text-primary-foreground' : (isToday ? 'text-primary' : 'text-foreground')}`}>
-                {format(day, 'dd')}
+              <span
+                className={`text-lg font-display font-bold ${
+                  isSelected
+                    ? "text-primary-foreground"
+                    : isToday
+                    ? "text-primary"
+                    : "text-foreground"
+                }`}
+              >
+                {day.getDate()}
               </span>
             </button>
           );
         })}
       </div>
+    </div>
+  );
+}
 
-      {/* Timeline Grid */}
-      <div className="relative border-t border-l border-white/5 rounded-tl-xl overflow-hidden bg-card/30">
-        {timeSlots.map((time, i) => {
-          // Find booking for this slot (simplified for display)
-          const booking = bookingsData?.bookings.find(b => b.startTime.startsWith(time.split(':')[0]));
-          
-          return (
-            <div key={time} className="flex border-b border-white/5 min-h-[5rem]">
-              <div className="w-16 border-r border-white/5 p-2 flex flex-col items-end shrink-0">
-                <span className="text-xs font-medium text-muted-foreground">{time}</span>
-              </div>
-              <div className="flex-1 p-2 relative group">
-                {booking ? (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="absolute inset-2 bg-primary/20 border border-primary/30 rounded-xl p-3 flex flex-col justify-center"
-                  >
-                    <div className="font-bold text-primary text-sm line-clamp-1">{booking.clientName}</div>
-                    <div className="text-xs text-primary/70">{booking.serviceName}</div>
-                  </motion.div>
-                ) : (
-                  <div className="w-full h-full opacity-0 group-hover:opacity-100 bg-white/5 rounded-xl border border-dashed border-white/10 flex items-center justify-center cursor-pointer transition-all">
-                    <Plus className="w-5 h-5 text-muted-foreground" />
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
+// ── Individual Calendar ───────────────────────────────────────────────────────
+function IndividualCalendar() {
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [activeBooking, setActiveBooking] = useState<MockBooking | null>(null);
+  const today = new Date();
+
+  const bookings = SOLO_BOOKINGS;
+
+  return (
+    <>
+      {/* Header */}
+      <div className="flex items-start justify-between mb-5">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-foreground">Kalendar</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{formatUzDate(selectedDate)}</p>
+        </div>
+        <Button
+          onClick={() => setSelectedDate(today)}
+          size="sm"
+          className="rounded-full bg-primary/20 text-primary hover:bg-primary/30 border-0 text-xs h-8"
+        >
+          Bugun
+        </Button>
       </div>
+
+      {/* Week nav */}
+      <WeekNav selected={selectedDate} onSelect={setSelectedDate} />
+
+      {/* Booking list */}
+      <div className="space-y-3">
+        {bookings.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground text-sm">
+            Bu kun uchun bronlar yo'q
+          </div>
+        ) : (
+          bookings.map((b) => (
+            <BookingCard key={b.id} booking={b} onClick={() => setActiveBooking(b)} />
+          ))
+        )}
+      </div>
+
+      {/* Detail modal */}
+      {activeBooking && (
+        <DetailModal booking={activeBooking} onClose={() => setActiveBooking(null)} />
+      )}
+    </>
+  );
+}
+
+// ── Team Calendar ─────────────────────────────────────────────────────────────
+function TeamCalendar() {
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [activeBarber, setActiveBarber] = useState("all");
+  const [activeBooking, setActiveBooking] = useState<MockBooking | null>(null);
+  const today = new Date();
+
+  const filteredBookings =
+    activeBarber === "all"
+      ? TEAM_BOOKINGS
+      : TEAM_BOOKINGS.filter((b) => b.barber?.toLowerCase() === activeBarber);
+
+  const activeCount = TEAM_BARBERS.filter((b) => b.id !== "all").length;
+
+  return (
+    <>
+      {/* Header */}
+      <div className="flex items-start justify-between mb-5">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-foreground">Jamoa Kalendar</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {formatUzDate(selectedDate)} • {activeCount} usta
+          </p>
+        </div>
+        <Button
+          onClick={() => setSelectedDate(today)}
+          size="sm"
+          className="rounded-full bg-primary/20 text-primary hover:bg-primary/30 border-0 text-xs h-8"
+        >
+          Bugun
+        </Button>
+      </div>
+
+      {/* Week nav */}
+      <WeekNav selected={selectedDate} onSelect={setSelectedDate} />
+
+      {/* Barber filter tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-none">
+        {TEAM_BARBERS.map((barber) => (
+          <button
+            key={barber.id}
+            onClick={() => setActiveBarber(barber.id)}
+            className={`flex items-center gap-1.5 shrink-0 px-3.5 py-2 rounded-2xl text-sm font-medium transition-all ${
+              activeBarber === barber.id
+                ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
+                : "bg-card border border-white/5 text-muted-foreground hover:bg-white/5"
+            }`}
+          >
+            {barber.name}
+            {barber.count !== null && (
+              <span
+                className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
+                  activeBarber === barber.id
+                    ? "bg-white/20 text-primary-foreground"
+                    : barber.count === 0
+                    ? "bg-white/5 text-muted-foreground"
+                    : "bg-primary/20 text-primary"
+                }`}
+              >
+                {barber.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Booking list */}
+      <div className="space-y-3">
+        {filteredBookings.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground text-sm">
+            Bu kun uchun bronlar yo'q
+          </div>
+        ) : (
+          filteredBookings.map((b) => (
+            <BookingCard key={b.id} booking={b} onClick={() => setActiveBooking(b)} />
+          ))
+        )}
+      </div>
+
+      {/* Detail modal */}
+      {activeBooking && (
+        <DetailModal booking={activeBooking} onClose={() => setActiveBooking(null)} />
+      )}
+    </>
+  );
+}
+
+// ── Root export ───────────────────────────────────────────────────────────────
+export default function Calendar() {
+  const { user } = useAuth();
+  const isTeam = user?.mode === "team";
+
+  return (
+    <Layout>
+      {isTeam ? <TeamCalendar /> : <IndividualCalendar />}
     </Layout>
   );
 }
