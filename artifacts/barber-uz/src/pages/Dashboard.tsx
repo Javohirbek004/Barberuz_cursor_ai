@@ -325,7 +325,7 @@ function TeamDashboard() {
                     }`}
                   >
                     {!barber.active
-                      ? "Offline"
+                      ? "Dam olishda"
                       : barber.bookings > 0
                       ? lang === "uz" ? "Band" : "Занят"
                       : lang === "uz" ? "Bo'sh" : "Свободен"}
