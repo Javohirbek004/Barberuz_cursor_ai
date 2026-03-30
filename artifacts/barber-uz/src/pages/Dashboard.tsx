@@ -40,9 +40,22 @@ function formatDateLocale(lang: string): string {
 // ── Static barbers for team view (until real barbers API exists) ──────────────
 const TEAM_BARBERS = [
   { id: "1", name: "Ali Karimov",    bookings: 4, active: true  },
-  { id: "2", name: "Sardor Yusupov", bookings: 2, active: true  },
+  { id: "2", name: "Sardor Yusupov", bookings: 5, active: true  },
   { id: "3", name: "Jasur Toshev",   bookings: 0, active: true  },
   { id: "4", name: "Bobur Mirzayev", bookings: 0, active: false },
+];
+
+// ── Mock bookings shown when API returns empty ────────────────────────────────
+const MOCK_INDIVIDUAL_BOOKINGS = [
+  { id: "m1", time: "14:00", client: "Aziz",    service: "Haircut"       },
+  { id: "m2", time: "15:00", client: "Jamshid", service: "Fade"          },
+  { id: "m3", time: "16:30", client: "Olim",    service: "Soqol"         },
+];
+
+const MOCK_TEAM_BOOKINGS = [
+  { id: "t1", time: "14:30", client: "Aziz",    service: "Soch oldirish", barber: "Sardor barber" },
+  { id: "t2", time: "15:30", client: "Jamshid", service: "Fade",          barber: "Jasur barber"  },
+  { id: "t3", time: "17:00", client: "Olim",    service: "Soqol",         barber: "Kamol barber"  },
 ];
 
 // ── Stat card component ───────────────────────────────────────────────────────
@@ -196,11 +209,24 @@ function IndividualDashboard() {
             ))}
           </div>
         ) : (
-          <div className="text-center py-14 bg-white/[0.03] border border-white/5 rounded-2xl border-dashed">
-            <CalendarDays className="w-12 h-12 text-muted-foreground/20 mx-auto mb-3" />
-            <p className="text-muted-foreground text-sm">
-              {lang === "uz" ? "Bugun uchun bronlar yo'q" : "На сегодня броней нет"}
-            </p>
+          <div className="space-y-2">
+            {MOCK_INDIVIDUAL_BOOKINGS.map((b) => (
+              <motion.div
+                key={b.id}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+              >
+                <Card className="px-4 py-3 bg-card border-white/5 flex items-center gap-4 hover:border-white/10 transition-colors">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
+                    {b.time}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-foreground truncate">{b.client}</div>
+                    <div className="text-xs text-muted-foreground truncate">{b.service}</div>
+                  </div>
+                </Card>
+              </motion.div>
+            ))}
           </div>
         )}
       </motion.div>
@@ -212,13 +238,6 @@ function IndividualDashboard() {
 function TeamDashboard() {
   const { lang } = useTranslation();
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
-  const today = new Date().toISOString().split("T")[0];
-  const { data: bookingsData, isLoading: bookingsLoading } = useListBookings({ date: today });
-
-  const bookings = bookingsData?.bookings ?? [];
-  const upcomingBookings = bookings
-    .filter((b) => b.status !== "cancelled")
-    .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   const activeBarbers = TEAM_BARBERS.filter((b) => b.active);
   const busyBarbers  = activeBarbers.filter((b) => b.bookings > 0).length;
@@ -280,27 +299,33 @@ function TeamDashboard() {
           {TEAM_BARBERS.map((barber) => (
             <Link key={barber.id} href={`/calendar?barber=${barber.id}`}>
               <Card className="px-4 py-3 bg-card border-white/5 flex items-center gap-3 hover:border-primary/30 hover:bg-primary/5 transition-all cursor-pointer">
-                <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${barber.active ? "bg-emerald-400" : "bg-white/20"}`} />
+                <div
+                  className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                    !barber.active
+                      ? "bg-white/20"
+                      : barber.bookings > 0
+                      ? "bg-red-500"
+                      : "bg-green-500"
+                  }`}
+                />
                 <div className="flex-1 min-w-0">
                   <span className="font-medium text-foreground text-sm">{barber.name}</span>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span className="text-xs text-muted-foreground">
-                    {barber.bookings > 0
-                      ? `${barber.bookings} ta bron`
-                      : lang === "uz" ? "Bo'sh" : "Свободен"}
+                    {barber.bookings > 0 ? `${barber.bookings} ta bron` : ""}
                   </span>
                   <span
                     className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                       !barber.active
                         ? "bg-white/10 text-white/40"
                         : barber.bookings > 0
-                        ? "bg-amber-500/10 text-amber-400"
-                        : "bg-emerald-500/10 text-emerald-400"
+                        ? "bg-red-500/10 text-red-500"
+                        : "bg-green-500/10 text-green-500"
                     }`}
                   >
                     {!barber.active
-                      ? lang === "uz" ? "Offline" : "Offline"
+                      ? "Offline"
                       : barber.bookings > 0
                       ? lang === "uz" ? "Band" : "Занят"
                       : lang === "uz" ? "Bo'sh" : "Свободен"}
@@ -323,44 +348,26 @@ function TeamDashboard() {
           {lang === "uz" ? "Yaqin bronlar" : "Ближайшие брони"}
         </h2>
 
-        {bookingsLoading ? (
-          <p className="text-muted-foreground text-center py-8 text-sm">
-            {lang === "uz" ? "Yuklanmoqda..." : "Загрузка..."}
-          </p>
-        ) : upcomingBookings.length > 0 ? (
-          <div className="space-y-2">
-            {upcomingBookings.map((b) => (
-              <Card
-                key={b.id}
-                className="px-4 py-3 bg-card border-white/5 flex items-center gap-3 hover:border-white/10 transition-colors"
-              >
-                <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
-                  {b.startTime.slice(0, 5)}
+        <div className="space-y-2">
+          {MOCK_TEAM_BOOKINGS.map((b) => (
+            <Card
+              key={b.id}
+              className="px-4 py-3 bg-card border-white/5 flex items-center gap-3 hover:border-white/10 transition-colors"
+            >
+              <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
+                {b.time}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-foreground text-sm truncate">{b.client}</div>
+                <div className="text-xs text-muted-foreground truncate">
+                  {b.service}
+                  {" · "}
+                  <span className="text-primary/70">{b.barber}</span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-foreground text-sm truncate">{b.clientName}</div>
-                  <div className="text-xs text-muted-foreground truncate">
-                    {b.serviceName || (lang === "uz" ? "Xizmat" : "Услуга")}
-                    {" · "}
-                    <span className="text-primary/70">
-                      {lang === "uz" ? "Sardor barber" : "Сардор мастер"}
-                    </span>
-                  </div>
-                </div>
-                <div className="text-sm font-semibold text-primary flex-shrink-0">
-                  {b.price.toLocaleString()} UZS
-                </div>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-14 bg-white/[0.03] border border-white/5 rounded-2xl border-dashed">
-            <CalendarDays className="w-12 h-12 text-muted-foreground/20 mx-auto mb-3" />
-            <p className="text-muted-foreground text-sm">
-              {lang === "uz" ? "Bugun uchun bronlar yo'q" : "На сегодня броней нет"}
-            </p>
-          </div>
-        )}
+              </div>
+            </Card>
+          ))}
+        </div>
       </motion.div>
     </>
   );
