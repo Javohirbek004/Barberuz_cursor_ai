@@ -4,7 +4,7 @@ import { useTranslation } from "@/i18n/LanguageContext";
 import { useGetTelegramStatus } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 
 function getStoredUserId(): string {
   try {
@@ -15,9 +15,17 @@ function getStoredUserId(): string {
   }
 }
 
+function getStoredToken(): string | null {
+  try {
+    return localStorage.getItem("barber_token");
+  } catch {
+    return null;
+  }
+}
+
 function isAlreadyVerified(): boolean {
   try {
-    const token = localStorage.getItem("barber_token");
+    const token = getStoredToken();
     const u = JSON.parse(localStorage.getItem("barber_user") || "null");
     return !!(token && u?.telegramVerified === true);
   } catch {
@@ -36,8 +44,10 @@ export default function TelegramVerify() {
     }
   }, [navigate]);
 
-  // Initialise from localStorage
+  // Initialise userId from localStorage
   const [userId, setUserId] = useState<string>(getStoredUserId);
+  // Track whether verification just completed and no token is present in this tab
+  const [showReturnToTab, setShowReturnToTab] = useState(false);
 
   // Fallback: if opened via bot link in a new browser, read ?uid= from URL
   useEffect(() => {
@@ -58,12 +68,13 @@ export default function TelegramVerify() {
     },
   });
 
-  // Auto-redirect as soon as DB says verified
+  // Redirect or show "return to original tab" when verification succeeds
   const redirected = useRef(false);
   useEffect(() => {
     if (status?.verified && !redirected.current) {
       redirected.current = true;
-      // Persist verified flag so next visit skips this page
+
+      // Persist verified flag in localStorage
       try {
         const stored = JSON.parse(localStorage.getItem("barber_user") || "null");
         if (stored) {
@@ -73,12 +84,53 @@ export default function TelegramVerify() {
       } catch {
         // ignore
       }
-      navigate("/dashboard");
+
+      // If this tab has a token, go to dashboard directly.
+      // If no token (opened in new browser/device via bot link),
+      // tell the user to return to the original tab instead of bouncing.
+      if (getStoredToken()) {
+        navigate("/dashboard");
+      } else {
+        setShowReturnToTab(true);
+      }
     }
   }, [status, navigate]);
 
   const botLink = `https://t.me/Barberuz_yordamchi_bot?start=reg_${userId}_${lang}`;
 
+  // ── "Return to original tab" screen ───────────────────────────────────────
+  if (showReturnToTab) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full max-w-md text-center space-y-6"
+        >
+          <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto bg-green-500/10 border border-green-500/20">
+            <CheckCircle2 className="w-12 h-12 text-green-500" />
+          </div>
+          <div className="space-y-3">
+            <h1 className="text-2xl font-display font-bold text-foreground">
+              {lang === "uz" ? "Tasdiqlandi!" : "Подтверждено!"}
+            </h1>
+            <p className="text-muted-foreground text-base px-4 leading-relaxed">
+              {lang === "uz"
+                ? "Ro'yxatdan o'tish yakunlandi. Ilgari ochgan brauzer tabiga qayting — u avtomatik ochiladi."
+                : "Регистрация завершена. Вернитесь во вкладку браузера, которую открыли ранее — она откроется автоматически."}
+            </p>
+          </div>
+          <div className="glass-panel rounded-2xl p-4 text-sm text-muted-foreground">
+            {lang === "uz"
+              ? "Bu tab yopishingiz mumkin."
+              : "Эту вкладку можно закрыть."}
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // ── Waiting screen ─────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-background">
       <motion.div
