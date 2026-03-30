@@ -1,28 +1,238 @@
-import { useTranslation } from "@/i18n/LanguageContext";
+import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
-import { PageHeader } from "@/components/PageHeader";
 import { useParams, Link } from "wouter";
 import { useGetClient } from "@workspace/api-client-react";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, Phone, Send, Calendar } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { format } from "date-fns";
+import {
+  ChevronLeft,
+  Phone,
+  Pencil,
+  Check,
+  X,
+  CalendarDays,
+  Scissors,
+} from "lucide-react";
+import { motion } from "framer-motion";
+import { MOCK_CLIENTS, SEGMENT_META, type MockClient } from "@/data/mockClients";
 
-export default function ClientDetail() {
-  const { t } = useTranslation();
-  useAuth();
-  const { id } = useParams<{ id: string }>();
-  
-  const { data: client, isLoading } = useGetClient(id || "", {
-    query: { enabled: !!id }
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function isMockId(id: string) {
+  return id.startsWith("mock-");
+}
+
+function getMockClient(id: string): MockClient | undefined {
+  return MOCK_CLIENTS.find((c) => c.id === id);
+}
+
+// ── Editable notes ────────────────────────────────────────────────────────────
+function NotesField({
+  initial,
+}: {
+  initial: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(initial);
+  const [saved, setSaved] = useState(initial);
+
+  function save() {
+    setSaved(value);
+    setEditing(false);
+  }
+
+  function cancel() {
+    setValue(saved);
+    setEditing(false);
+  }
+
+  return (
+    <div className="bg-card border border-white/8 rounded-2xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-muted-foreground">📝 Eslatma</h3>
+        {!editing ? (
+          <button
+            onClick={() => setEditing(true)}
+            className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Tahrirlash
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={save}
+              className="flex items-center gap-1 text-xs text-green-400 hover:text-green-300 transition-colors font-semibold"
+            >
+              <Check className="w-3.5 h-3.5" />
+              Saqlash
+            </button>
+            <button
+              onClick={cancel}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Bekor
+            </button>
+          </div>
+        )}
+      </div>
+
+      {editing ? (
+        <textarea
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Eslatma yozing..."
+          rows={3}
+          className="w-full px-3 py-2.5 rounded-xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/40 text-sm resize-none transition-all"
+        />
+      ) : (
+        <p className="text-sm text-foreground/80 leading-relaxed min-h-[2.5rem]">
+          {saved || (
+            <span className="text-muted-foreground/50 italic">Eslatma yo'q</span>
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Booking history list ──────────────────────────────────────────────────────
+function BookingHistory({
+  history,
+}: {
+  history: { date: string; service: string; price: string }[];
+}) {
+  if (history.length === 0) return null;
+
+  return (
+    <div className="bg-card border border-white/8 rounded-2xl p-4">
+      <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+        <CalendarDays className="w-4 h-4" />
+        Bronlar tarixi
+      </h3>
+      <div className="space-y-2">
+        {history.map((h, i) => (
+          <div
+            key={i}
+            className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Scissors className="w-3.5 h-3.5 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">{h.service}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{h.date}</p>
+              </div>
+            </div>
+            <span className="text-sm font-semibold text-primary">{h.price} so'm</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Mock client detail page ───────────────────────────────────────────────────
+function MockClientDetail({ client }: { client: MockClient }) {
+  const { user } = useAuth(false);
+  const isTeam = user?.mode === "team";
+  const seg = SEGMENT_META[client.segment];
+
+  return (
+    <Layout>
+      {/* Back nav */}
+      <div className="flex items-center gap-3 mb-6">
+        <Link href="/clients">
+          <button className="w-10 h-10 rounded-2xl bg-card border border-white/8 flex items-center justify-center hover:bg-white/5 transition-colors">
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+        </Link>
+        <h1 className="text-lg font-display font-bold text-foreground">Mijoz profili</h1>
+      </div>
+
+      {/* Avatar + name */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col items-center text-center mb-6"
+      >
+        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border-2 border-primary/30 font-display font-bold text-primary text-4xl uppercase shadow-xl shadow-primary/10 mb-4">
+          {client.name.charAt(0)}
+        </div>
+        <h2 className="text-2xl font-display font-bold text-foreground">{client.name}</h2>
+
+        {/* Segment badge */}
+        <span className={`mt-2 inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full border ${seg.bg} ${seg.color}`}>
+          {seg.emoji} {seg.label}
+        </span>
+
+        {/* Barber (team mode only) */}
+        {isTeam && (
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {client.barber} barber
+          </p>
+        )}
+      </motion.div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <StatBox label="Tashriflar" value={`${client.visitCount} marta`} />
+        <StatBox label="So'nggi tashrif" value={client.lastVisit} />
+        <StatBox label="Holat" value={seg.label} />
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-3 mb-5">
+        <a
+          href={`tel:${client.phone.replace(/\s/g, "")}`}
+          className="flex-1 flex items-center justify-center gap-2 h-12 rounded-2xl bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 transition-all font-semibold text-sm"
+        >
+          <Phone className="w-4 h-4" />
+          📞 Qo'ng'iroq
+        </a>
+        <button className="flex-1 flex items-center justify-center gap-2 h-12 rounded-2xl bg-card border border-white/8 text-foreground hover:bg-white/5 transition-all font-semibold text-sm">
+          <Pencil className="w-4 h-4 text-primary" />
+          ✏️ Tahrirlash
+        </button>
+      </div>
+
+      {/* Phone info row */}
+      <div className="bg-card border border-white/8 rounded-2xl p-4 mb-4 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+          <Phone className="w-4 h-4 text-primary" />
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Telefon raqam</p>
+          <p className="text-sm font-semibold text-foreground">{client.phone}</p>
+        </div>
+      </div>
+
+      {/* Notes */}
+      <div className="mb-4">
+        <NotesField initial={client.notes} />
+      </div>
+
+      {/* Booking history */}
+      <BookingHistory history={client.bookingHistory} />
+    </Layout>
+  );
+}
+
+// ── API client detail page ────────────────────────────────────────────────────
+function ApiClientDetail({ id }: { id: string }) {
+  const { user } = useAuth(false);
+  const isTeam = user?.mode === "team";
+
+  const { data: client, isLoading } = useGetClient(id, {
+    query: { enabled: !!id },
   });
 
   if (isLoading) {
     return (
       <Layout>
-        <div className="flex justify-center items-center py-20 text-muted-foreground">
-          {t('loading')}
+        <div className="flex justify-center items-center py-20 text-muted-foreground text-sm">
+          Yuklanmoqda...
         </div>
       </Layout>
     );
@@ -31,75 +241,121 @@ export default function ClientDetail() {
   if (!client) {
     return (
       <Layout>
-        <div className="text-center py-20 text-destructive">{t('error')}</div>
+        <div className="text-center py-20">
+          <p className="text-muted-foreground text-sm">Mijoz topilmadi</p>
+          <Link href="/clients">
+            <button className="mt-4 px-4 py-2 rounded-xl bg-primary/20 text-primary text-sm">
+              Orqaga
+            </button>
+          </Link>
+        </div>
       </Layout>
     );
   }
 
+  const seg = SEGMENT_META[(client.status as "regular" | "new" | "lost") ?? "new"];
+
   return (
     <Layout>
-      <div className="mb-6 flex items-center gap-4">
+      {/* Back */}
+      <div className="flex items-center gap-3 mb-6">
         <Link href="/clients">
-          <Button variant="ghost" size="icon" className="rounded-full bg-card hover:bg-white/10">
+          <button className="w-10 h-10 rounded-2xl bg-card border border-white/8 flex items-center justify-center hover:bg-white/5 transition-colors">
             <ChevronLeft className="w-5 h-5" />
-          </Button>
+          </button>
         </Link>
-        <h1 className="text-xl font-bold font-display">Mijoz profili</h1>
+        <h1 className="text-lg font-display font-bold text-foreground">Mijoz profili</h1>
       </div>
 
-      <div className="flex flex-col items-center text-center mb-8">
+      {/* Avatar */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col items-center text-center mb-6"
+      >
         <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border-2 border-primary/30 font-display font-bold text-primary text-4xl uppercase shadow-xl shadow-primary/10 mb-4">
           {client.name.charAt(0)}
         </div>
-        <h2 className="text-3xl font-display font-bold text-foreground">{client.name}</h2>
-        <div className="inline-flex mt-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {t(`clients.filter.${client.status}` as any)}
+        <h2 className="text-2xl font-display font-bold text-foreground">{client.name}</h2>
+        {seg && (
+          <span className={`mt-2 inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full border ${seg.bg} ${seg.color}`}>
+            {seg.emoji} {seg.label}
+          </span>
+        )}
+      </motion.div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <StatBox label="Tashriflar" value={`${client.visitCount} marta`} />
+        <StatBox label="Xarajat" value={`${client.totalSpent?.toLocaleString() ?? 0} so'm`} />
+      </div>
+
+      {/* Buttons */}
+      {client.phone && (
+        <div className="flex gap-3 mb-5">
+          <a
+            href={`tel:${client.phone.replace(/\s/g, "")}`}
+            className="flex-1 flex items-center justify-center gap-2 h-12 rounded-2xl bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 transition-all font-semibold text-sm"
+          >
+            <Phone className="w-4 h-4" />
+            📞 Qo'ng'iroq
+          </a>
+          <button className="flex-1 flex items-center justify-center gap-2 h-12 rounded-2xl bg-card border border-white/8 text-foreground hover:bg-white/5 transition-all font-semibold text-sm">
+            <Pencil className="w-4 h-4 text-primary" />
+            ✏️ Tahrirlash
+          </button>
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-2 gap-4 mb-8">
-        <Button className="h-12 bg-white/5 hover:bg-white/10 text-foreground border-white/10" variant="outline">
-          <Phone className="w-4 h-4 mr-2 text-primary" /> {client.phone || "Qo'shish"}
-        </Button>
-        <Button className="h-12 bg-[#2AABEE]/10 hover:bg-[#2AABEE]/20 text-[#2AABEE] border-[#2AABEE]/20" variant="outline">
-          <Send className="w-4 h-4 mr-2" /> Telegram
-        </Button>
-      </div>
-
-      <div className="space-y-4">
-        <Card className="p-5 bg-card/50 border-white/5">
-          <h3 className="text-sm font-medium text-muted-foreground mb-4">Statistika</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <div className="text-2xl font-display font-bold text-foreground">{client.visitCount}</div>
-              <div className="text-xs text-muted-foreground mt-1">Tashriflar soni</div>
-            </div>
-            <div>
-              <div className="text-2xl font-display font-bold text-primary">{client.totalSpent.toLocaleString()}</div>
-              <div className="text-xs text-muted-foreground mt-1">Umumiy xarajat (UZS)</div>
-            </div>
+      {/* Phone row */}
+      {client.phone && (
+        <div className="bg-card border border-white/8 rounded-2xl p-4 mb-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <Phone className="w-4 h-4 text-primary" />
           </div>
-        </Card>
+          <div>
+            <p className="text-xs text-muted-foreground">Telefon raqam</p>
+            <p className="text-sm font-semibold text-foreground">{client.phone}</p>
+          </div>
+        </div>
+      )}
 
-        {client.notes && (
-          <Card className="p-5 bg-card/50 border-white/5">
-            <h3 className="text-sm font-medium text-muted-foreground mb-2">Izohlar</h3>
-            <p className="text-sm text-foreground/80 leading-relaxed">{client.notes}</p>
-          </Card>
-        )}
-
-        {client.lastVisit && (
-          <Card className="p-5 bg-card/50 border-white/5 flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">So'nggi tashrif</h3>
-              <p className="text-base font-medium text-foreground">{format(new Date(client.lastVisit), 'dd MMM, yyyy')}</p>
-            </div>
-            <div className="p-3 rounded-full bg-white/5">
-              <Calendar className="w-5 h-5 text-muted-foreground" />
-            </div>
-          </Card>
-        )}
+      {/* Notes */}
+      <div className="mb-4">
+        <NotesField initial={client.notes ?? ""} />
       </div>
     </Layout>
   );
+}
+
+// ── Shared stat box ───────────────────────────────────────────────────────────
+function StatBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-card border border-white/8 rounded-2xl p-4 text-center">
+      <p className="text-base font-display font-bold text-foreground">{value}</p>
+      <p className="text-xs text-muted-foreground mt-1">{label}</p>
+    </div>
+  );
+}
+
+// ── Root ──────────────────────────────────────────────────────────────────────
+export default function ClientDetail() {
+  useAuth();
+  const { id } = useParams<{ id: string }>();
+
+  if (!id) return null;
+
+  if (isMockId(id)) {
+    const mock = getMockClient(id);
+    if (!mock) {
+      return (
+        <Layout>
+          <div className="text-center py-20 text-muted-foreground text-sm">Topilmadi</div>
+        </Layout>
+      );
+    }
+    return <MockClientDetail client={mock} />;
+  }
+
+  return <ApiClientDetail id={id} />;
 }
