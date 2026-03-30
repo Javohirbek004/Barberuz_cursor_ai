@@ -1,7 +1,5 @@
 import { Router } from "express";
-import { authenticate } from "../lib/auth";
-import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { authenticate, getUser } from "../lib/auth";
 
 const router = Router();
 
@@ -18,17 +16,11 @@ function uzDateTime(): string {
 
 // POST /api/feedback
 router.post("/", authenticate, async (req, res) => {
-  const userId = (req as any).userId as string;
+  const user = getUser(req);
   const { text, category } = req.body as { text?: string; category?: string };
 
   if (!text || !text.trim()) {
     res.status(400).json({ error: "bad_request", message: "text is required" });
-    return;
-  }
-
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) {
-    res.status(401).json({ error: "unauthorized" });
     return;
   }
 
