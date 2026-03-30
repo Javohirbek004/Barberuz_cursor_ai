@@ -3,8 +3,33 @@ import { Request, Response, NextFunction } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
+/**
+ * Hash a password with HMAC-SHA256 using the PASSWORD_SALT env var.
+ *
+ * IMPORTANT: parentheses around (process.env.PASSWORD_SALT || "barber_salt_2024")
+ * are required — without them, JS evaluates:
+ *   (password + process.env.PASSWORD_SALT) || "barber_salt_2024"
+ * which gives "passwordundefined" instead of the intended salted string.
+ */
 export function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password + process.env.PASSWORD_SALT || "barber_salt_2024").digest("hex");
+  const salt = process.env.PASSWORD_SALT || "barber_salt_2024";
+  return crypto
+    .createHash("sha256")
+    .update(password + salt)
+    .digest("hex");
+}
+
+/**
+ * Legacy hash produced by the bugged formula (no salt, appended "undefined").
+ * Used only in the login backward-compat check for users registered before the fix.
+ * Returns null if PASSWORD_SALT is set (legacy hashes never existed in that case).
+ */
+export function legacyHash(password: string): string | null {
+  if (process.env.PASSWORD_SALT) return null; // salt was always set → no legacy hashes
+  return crypto
+    .createHash("sha256")
+    .update(password + "undefined")
+    .digest("hex");
 }
 
 export function generateToken(userId: string): string {
