@@ -4,6 +4,14 @@ import { Layout } from "@/components/Layout";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, X, Pencil, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { bookingStore, AddedBooking } from "@/stores/bookingStore";
+
+/** Subscribe to bookingStore and re-render when a booking is added */
+function useAddedBookings(): AddedBooking[] {
+  const [list, setList] = useState<AddedBooking[]>(() => bookingStore.getAll());
+  useEffect(() => bookingStore.subscribe(() => setList(bookingStore.getAll())), []);
+  return list;
+}
 
 // ── Uzbek date helpers ────────────────────────────────────────────────────────
 const UZ_MONTHS = [
@@ -325,8 +333,15 @@ function IndividualCalendar() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [activeBooking, setActiveBooking] = useState<MockBooking | null>(null);
   const today = new Date();
+  const added = useAddedBookings();
 
-  const bookings = SOLO_BOOKINGS;
+  const addedSolo: MockBooking[] = added
+    .filter((b) => !b.barber)
+    .map((b) => ({ id: b.id, time: b.time, client: b.client, phone: b.phone, service: b.service, status: b.status }));
+
+  const bookings = [...SOLO_BOOKINGS, ...addedSolo].sort((a, b) =>
+    a.time.localeCompare(b.time)
+  );
 
   return (
     <>
@@ -375,11 +390,18 @@ function TeamCalendar() {
   const [activeBarber, setActiveBarber] = useState("all");
   const [activeBooking, setActiveBooking] = useState<MockBooking | null>(null);
   const today = new Date();
+  const added = useAddedBookings();
+
+  const addedTeam: MockBooking[] = added
+    .filter((b) => !!b.barber)
+    .map((b) => ({ id: b.id, time: b.time, client: b.client, phone: b.phone, service: b.service, status: b.status, barber: b.barber }));
+
+  const allTeam = [...TEAM_BOOKINGS, ...addedTeam].sort((a, b) => a.time.localeCompare(b.time));
 
   const filteredBookings =
     activeBarber === "all"
-      ? TEAM_BOOKINGS
-      : TEAM_BOOKINGS.filter((b) => b.barber?.toLowerCase() === activeBarber);
+      ? allTeam
+      : allTeam.filter((b) => b.barber?.toLowerCase() === activeBarber);
 
   const activeCount = TEAM_BARBERS.filter((b) => b.id !== "all").length;
 

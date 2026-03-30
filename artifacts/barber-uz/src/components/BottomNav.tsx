@@ -2,7 +2,8 @@ import { Link, useLocation } from "wouter";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { Home, Calendar, Users, Settings, Plus } from "lucide-react";
 import { useState } from "react";
-import { QuickAddClientDialog } from "./QuickAddClientDialog";
+import { BookingFlowDialog } from "./BookingFlowDialog";
+import { bookingStore } from "@/stores/bookingStore";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -82,7 +83,12 @@ export function BottomNav() {
         </div>
       </div>
 
-      <QuickAddClientDialog open={isAddOpen} onOpenChange={setIsAddOpen} />
+      <BookingFlowDialog
+        open={isAddOpen}
+        onOpenChange={setIsAddOpen}
+        isTeam={isTeam}
+        onBookingAdded={(b) => bookingStore.add(b)}
+      />
     </>
   );
 }
