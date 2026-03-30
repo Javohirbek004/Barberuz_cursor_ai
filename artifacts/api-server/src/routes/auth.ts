@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { hashPassword, generateToken, authenticate, getUser } from "../lib/auth";
+import { hashPassword, legacyHash, generateToken, authenticate, getUser } from "../lib/auth";
 import { getTelegramLoginResult } from "../lib/telegram-bot";
 
 const router = Router();
@@ -92,11 +92,20 @@ router.post("/login", async (req, res) => {
       res.status(401).json({ error: "unauthorized", message: "Invalid credentials" });
       return;
     }
-    const hash = hashPassword(password);
-    if (hash !== user.passwordHash) {
+    const newHash = hashPassword(password);
+    const oldHash = legacyHash(password); // null when PASSWORD_SALT env is set
+
+    const passwordOk = newHash === user.passwordHash || (oldHash !== null && oldHash === user.passwordHash);
+    if (!passwordOk) {
       res.status(401).json({ error: "unauthorized", message: "Invalid credentials" });
       return;
     }
+
+    // Silently upgrade legacy hash to the corrected formula
+    if (oldHash !== null && oldHash === user.passwordHash) {
+      await db.update(usersTable).set({ passwordHash: newHash }).where(eq(usersTable.id, user.id));
+    }
+
     const token = generateToken(user.id);
     res.json({
       user: formatUser(user),
