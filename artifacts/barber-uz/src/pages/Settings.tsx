@@ -145,10 +145,52 @@ function TeamSettings({ brandName, userName }: { brandName: string; userName: st
   );
 }
 
+// ── Barber member view (invite orqali qo'shilgan usta) ───────────────────────
+function BarberMemberSettings({ userName }: { userName: string }) {
+  const items: MenuItem[] = [
+    { href: "/settings/profile",   emoji: "👤", label: "Mening profilim",      sub: "Shaxsiy ma'lumotlar" },
+    { href: "/settings/analytics", emoji: "📊", label: "Tahlil va statistika", sub: "Daromad va bronlar" },
+    { href: "/settings/general",   emoji: "⚙️", label: "Umumiy sozlamalar",    sub: "Bildirishnomalar, xavfsizlik, til" },
+    { onClick: bonusAlert,         emoji: "💰", label: "Bonus dasturi",         sub: "Tez kunda qo'shiladi 🔒" },
+    { href: "/settings/feedback",  emoji: "💬", label: "Fikr va takliflar",     sub: "Bizga xabar yuboring" },
+  ];
+
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-gradient-to-br from-primary/15 via-primary/8 to-transparent border border-primary/15 rounded-2xl p-5 mb-6 flex items-center gap-4"
+      >
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/30 to-primary/10 border border-primary/25 flex items-center justify-center font-display font-bold text-primary text-2xl uppercase shadow-lg shadow-primary/10 shrink-0">
+          {userName.charAt(0)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-display font-bold text-foreground text-xl leading-tight truncate">
+            {userName}
+          </p>
+          <p className="text-sm text-muted-foreground mt-0.5">Usta</p>
+          <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/10 border border-green-500/20">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-xs font-semibold text-green-400">Aktiv</span>
+          </div>
+        </div>
+      </motion.div>
+
+      <div className="space-y-2">
+        {items.map((item, i) => (
+          <MenuRow key={item.label} item={item} index={i} />
+        ))}
+      </div>
+    </>
+  );
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function Settings() {
   const { user } = useAuth();
   const isTeam = user?.mode === "team";
+  const isMember = user?.mode === "barber_member";
   const userName = user?.name || user?.username || "Barber";
   const brandName = user?.brandName || "";
 
@@ -160,7 +202,9 @@ export default function Settings() {
 
       {isTeam
         ? <TeamSettings brandName={brandName} userName={userName} />
-        : <IndividualSettings userName={userName} />
+        : isMember
+          ? <BarberMemberSettings userName={userName} />
+          : <IndividualSettings userName={userName} />
       }
     </Layout>
   );
