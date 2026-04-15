@@ -52,7 +52,7 @@ function TelegramOnboardingModal({
 
 function getDashboardUrl() {
   const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-  return window.location.origin + base + "/dashboard";
+  return base + "/dashboard";
 }
 
 export default function BarberSetup() {
