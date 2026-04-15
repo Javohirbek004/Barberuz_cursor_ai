@@ -111,7 +111,7 @@ export default function Register() {
           <div className="glass-panel p-6 sm:p-8 rounded-3xl space-y-5">
             {/* Name */}
             <div className="space-y-2">
-              <Label className="text-white/80">{t("register.name")} *</Label>
+              <Label className="text-white/80">Ism kiriting (majburiy)</Label>
               <Input
                 value={formData.name}
                 onChange={(e) => update("name", e.target.value)}
@@ -141,7 +141,7 @@ export default function Register() {
                   value={formData.password}
                   onChange={(e) => update("password", e.target.value)}
                   onBlur={() => touch("password")}
-                  placeholder="••••••••"
+                  placeholder="••••••"
                   className="bg-black/20 border-white/10 focus-visible:ring-primary h-12 rounded-xl pr-12"
                 />
                 <button
@@ -162,7 +162,7 @@ export default function Register() {
 
             {/* Confirm password */}
             <div className="space-y-2">
-              <Label className="text-white/80">{t("register.confirm_password")} *</Label>
+              <Label className="text-white/80">Parolni qayta kiriting</Label>
               <div className="relative">
                 <Input
                   type={showConfirm ? "text" : "password"}
