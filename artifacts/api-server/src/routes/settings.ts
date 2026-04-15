@@ -13,12 +13,18 @@ function formatProfile(user: typeof usersTable.$inferSelect) {
     brandName: user.brandName,
     mode: user.mode,
     lang: user.lang,
+    phone: user.phone,
     workingHoursStart: user.workingHoursStart,
     workingHoursEnd: user.workingHoursEnd,
     telegramVerified: user.telegramVerified,
     telegramUsername: user.telegramUsername,
     bio: user.bio,
     avatarUrl: user.avatarUrl,
+    specializations: user.specializations,
+    scheduleJson: user.scheduleJson,
+    lunchBreakEnabled: user.lunchBreakEnabled,
+    lunchBreakStart: user.lunchBreakStart,
+    lunchBreakEnd: user.lunchBreakEnd,
   };
 }
 
@@ -30,16 +36,28 @@ router.get("/profile", authenticate, async (req, res) => {
 router.put("/profile", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
-    const { name, brandName, mode, lang, workingHoursStart, workingHoursEnd, bio } = req.body;
+    const {
+      name, brandName, mode, lang, phone,
+      workingHoursStart, workingHoursEnd, bio, avatarUrl,
+      specializations, scheduleJson,
+      lunchBreakEnabled, lunchBreakStart, lunchBreakEnd,
+    } = req.body;
     const [updated] = await db.update(usersTable)
       .set({
         ...(name !== undefined && { name }),
         ...(brandName !== undefined && { brandName }),
         ...(mode !== undefined && { mode }),
         ...(lang !== undefined && { lang }),
+        ...(phone !== undefined && { phone }),
         ...(workingHoursStart !== undefined && { workingHoursStart }),
         ...(workingHoursEnd !== undefined && { workingHoursEnd }),
         ...(bio !== undefined && { bio }),
+        ...(avatarUrl !== undefined && { avatarUrl }),
+        ...(specializations !== undefined && { specializations }),
+        ...(scheduleJson !== undefined && { scheduleJson }),
+        ...(lunchBreakEnabled !== undefined && { lunchBreakEnabled }),
+        ...(lunchBreakStart !== undefined && { lunchBreakStart }),
+        ...(lunchBreakEnd !== undefined && { lunchBreakEnd }),
         updatedAt: new Date(),
       })
       .where(eq(usersTable.id, user.id))
