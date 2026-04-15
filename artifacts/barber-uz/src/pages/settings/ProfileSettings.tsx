@@ -594,8 +594,8 @@ function ScheduleForm({
               className={`relative w-11 h-6 rounded-full transition-all shrink-0 ${sched[day].enabled ? "bg-primary" : "bg-white/10"}`}
             >
               <span
-                className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
-                  sched[day].enabled ? "left-5.5" : "left-0.5"
+                className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                  sched[day].enabled ? "translate-x-5" : "translate-x-0"
                 }`}
               />
             </button>
@@ -639,7 +639,7 @@ function ScheduleForm({
             onClick={() => { setLunchOn(!lunchOn); setDirty(true); }}
             className={`relative w-11 h-6 rounded-full transition-all ${lunchOn ? "bg-primary" : "bg-white/10"}`}
           >
-            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${lunchOn ? "left-5.5" : "left-0.5"}`} />
+            <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${lunchOn ? "translate-x-5" : "translate-x-0"}`} />
           </button>
         </div>
 
