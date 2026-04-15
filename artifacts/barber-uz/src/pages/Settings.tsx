@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -54,8 +54,40 @@ function bonusAlert() {
   alert("Tez kunda qo'shiladi 🔒");
 }
 
+// ── Telegram ulanmagan banner ─────────────────────────────────────────────────
+function TelegramBanner() {
+  const [, navigate] = useLocation();
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mb-4 flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#2AABEE]/10 border border-[#2AABEE]/25"
+    >
+      <div className="w-9 h-9 rounded-xl bg-[#2AABEE]/15 flex items-center justify-center shrink-0">
+        <svg viewBox="0 0 24 24" className="w-5 h-5 fill-[#2AABEE]">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.21-1.12-.33-1.08-.7.02-.19.27-.39.75-.59 2.95-1.28 4.91-2.13 5.89-2.52 2.8-1.13 3.38-1.33 3.76-1.33.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .24z" />
+        </svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-bold text-[#2AABEE] leading-tight">
+          ⚠️ Telegram ulanmagan
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Xabarlarni olish uchun ulang
+        </p>
+      </div>
+      <button
+        onClick={() => navigate("/verify-telegram")}
+        className="shrink-0 h-8 px-3 rounded-xl bg-[#2AABEE] text-white text-xs font-bold hover:bg-[#229ED9] transition-all"
+      >
+        Ulanish
+      </button>
+    </motion.div>
+  );
+}
+
 // ── Individual view ───────────────────────────────────────────────────────────
-function IndividualSettings({ userName }: { userName: string }) {
+function IndividualSettings({ userName, telegramVerified }: { userName: string; telegramVerified: boolean }) {
   const items: MenuItem[] = [
     { href: "/settings/profile",   emoji: "👤", label: "Mening profilim",      sub: "Shaxsiy ma'lumotlar" },
     { href: "/settings/page",      emoji: "🌐", label: "Mening sahifam",       sub: "Mijozlar ko'radigan sahifa" },
@@ -87,6 +119,8 @@ function IndividualSettings({ userName }: { userName: string }) {
           </div>
         </div>
       </motion.div>
+
+      {!telegramVerified && <TelegramBanner />}
 
       <div className="space-y-2">
         {items.map((item, i) => (
@@ -146,7 +180,7 @@ function TeamSettings({ brandName, userName }: { brandName: string; userName: st
 }
 
 // ── Barber member view (invite orqali qo'shilgan usta) ───────────────────────
-function BarberMemberSettings({ userName }: { userName: string }) {
+function BarberMemberSettings({ userName, telegramVerified }: { userName: string; telegramVerified: boolean }) {
   const items: MenuItem[] = [
     { href: "/settings/profile",   emoji: "👤", label: "Mening profilim",      sub: "Shaxsiy ma'lumotlar" },
     { href: "/settings/analytics", emoji: "📊", label: "Tahlil va statistika", sub: "Daromad va bronlar" },
@@ -177,6 +211,8 @@ function BarberMemberSettings({ userName }: { userName: string }) {
         </div>
       </motion.div>
 
+      {!telegramVerified && <TelegramBanner />}
+
       <div className="space-y-2">
         {items.map((item, i) => (
           <MenuRow key={item.label} item={item} index={i} />
@@ -193,6 +229,7 @@ export default function Settings() {
   const isMember = (user?.mode as string) === "barber_member";
   const userName = user?.name || user?.username || "Barber";
   const brandName = user?.brandName || "";
+  const telegramVerified = user?.telegramVerified === true;
 
   return (
     <Layout>
@@ -203,8 +240,8 @@ export default function Settings() {
       {isTeam
         ? <TeamSettings brandName={brandName} userName={userName} />
         : isMember
-          ? <BarberMemberSettings userName={userName} />
-          : <IndividualSettings userName={userName} />
+          ? <BarberMemberSettings userName={userName} telegramVerified={telegramVerified} />
+          : <IndividualSettings userName={userName} telegramVerified={telegramVerified} />
       }
     </Layout>
   );

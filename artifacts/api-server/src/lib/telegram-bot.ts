@@ -409,7 +409,12 @@ async function handleRegStart(chatId: number, userId: string, _lang: string) {
 }
 
 async function handleBarberStart(chatId: number, userId: string) {
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  let user: typeof usersTable.$inferSelect | undefined;
+  try {
+    [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  } catch {
+    console.warn(`[TelegramBot] Barber: DB lookup failed (non-UUID token?) userId=${userId}, sending fallback`);
+  }
   if (!user) {
     console.warn(`[TelegramBot] Barber: user not found userId=${userId}, sending fallback onboarding`);
     pendingBarberVerifications.set(chatId, userId);
