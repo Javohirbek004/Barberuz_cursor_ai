@@ -73,15 +73,17 @@ function generateToken(name: string): string {
 function InviteLinkDialog({
   name,
   token,
+  shopName,
   onClose,
 }: {
   name: string;
   token: string;
+  shopName: string;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const base = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, "");
-  const link = `${base}/barber-setup/${token}`;
+  const link = `${base}/barber-setup/${token}?n=${encodeURIComponent(name)}&s=${encodeURIComponent(shopName)}`;
 
   function handleCopy() {
     navigator.clipboard.writeText(link).then(() => {
@@ -144,8 +146,9 @@ function InviteLinkDialog({
 
 export default function BarbersPage() {
   const { t } = useTranslation();
-  useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
+  const shopName = user?.brandName || "Barbershop";
 
   const [barbers, setBarbers] = useState<Barber[]>(INITIAL_BARBERS);
   const [showDialog, setShowDialog] = useState(false);
@@ -362,6 +365,7 @@ export default function BarbersPage() {
         <InviteLinkDialog
           name={inviteData.name}
           token={inviteData.token}
+          shopName={shopName}
           onClose={() => setInviteData(null)}
         />
       )}

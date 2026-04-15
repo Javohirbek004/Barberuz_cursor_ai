@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation, useParams } from "wouter";
+import { useParams } from "wouter";
 import { Eye, EyeOff, Scissors } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -50,9 +50,17 @@ function TelegramOnboardingModal({
   );
 }
 
+function getDashboardUrl() {
+  const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+  return window.location.origin + base + "/dashboard";
+}
+
 export default function BarberSetup() {
   const params = useParams<{ token: string }>();
-  const [, navigate] = useLocation();
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const barberName = decodeURIComponent(searchParams.get("n") || "").trim() || "Barber";
+  const barberShop = decodeURIComponent(searchParams.get("s") || "").trim() || "Barbershop";
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -82,7 +90,8 @@ export default function BarberSetup() {
       localStorage.setItem("barber_token", `barber_token_${params.token}`);
       localStorage.setItem("barber_user", JSON.stringify({
         id: params.token,
-        name: "Barber",
+        name: barberName,
+        shopName: barberShop,
         mode: "barber_member",
         telegramVerified: false,
       }));
@@ -95,12 +104,12 @@ export default function BarberSetup() {
     const userId = params.token || "unknown";
     const botLink = `https://t.me/Barberuz_yordamchi_bot?start=barber_${userId}`;
     window.open(botLink, "_blank");
-    navigate("/dashboard");
+    window.location.href = getDashboardUrl();
   }
 
   function handleSkipTelegram() {
     setShowOnboarding(false);
-    navigate("/dashboard");
+    window.location.href = getDashboardUrl();
   }
 
   return (

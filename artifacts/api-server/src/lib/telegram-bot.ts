@@ -417,8 +417,10 @@ async function handleBarberStart(chatId: number, userId: string) {
   }
   if (!user) {
     console.warn(`[TelegramBot] Barber: user not found userId=${userId}, sending fallback onboarding`);
+    const nameSlug = userId.split("_")[0] || "barber";
+    const fallbackName = nameSlug.charAt(0).toUpperCase() + nameSlug.slice(1);
     pendingBarberVerifications.set(chatId, userId);
-    await sendBarberMemberContactRequest(chatId, "Barber", "Barbershop");
+    await sendBarberMemberContactRequest(chatId, fallbackName, "Barbershop");
     return;
   }
 
@@ -464,17 +466,13 @@ async function handleBarberContact(
       phone: phone || undefined,
       updatedAt: new Date(),
     }).where(eq(usersTable.id, userId));
-
-    pendingBarberVerifications.delete(chatId);
     console.log(`[TelegramBot] Barber invite verified: userId=${userId} ✅`);
-    await sendBarberMemberSuccess(chatId, userId);
   } catch (err) {
-    console.error("[TelegramBot] Barber DB update failed:", err);
-    await callTelegram("sendMessage", {
-      chat_id: chatId,
-      text: "Xatolik yuz berdi. Iltimos, qayta harakat qiling.",
-    });
+    console.warn(`[TelegramBot] Barber DB update skipped (non-UUID userId): userId=${userId}`, (err as Error).message);
   }
+
+  pendingBarberVerifications.delete(chatId);
+  await sendBarberMemberSuccess(chatId, userId);
 }
 
 async function handleAuthStart(chatId: number, code: string, lang: string) {
