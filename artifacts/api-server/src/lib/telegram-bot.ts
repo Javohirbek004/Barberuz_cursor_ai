@@ -297,7 +297,7 @@ function parseAuthPayload(payload: string): { code: string; lang: string } | nul
 }
 
 function parseBarberPayload(payload: string): { userId: string } | null {
-  const match = payload.match(/^barber_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+  const match = payload.match(/^barber_([a-z0-9_-]+)$/i);
   if (!match) return null;
   return { userId: match[1]!.toLowerCase() };
 }
@@ -411,8 +411,9 @@ async function handleRegStart(chatId: number, userId: string, _lang: string) {
 async function handleBarberStart(chatId: number, userId: string) {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
-    console.warn(`[TelegramBot] Barber: user not found userId=${userId}`);
-    await sendGenericWelcome(chatId);
+    console.warn(`[TelegramBot] Barber: user not found userId=${userId}, sending fallback onboarding`);
+    pendingBarberVerifications.set(chatId, userId);
+    await sendBarberMemberContactRequest(chatId, "Barber", "Barbershop");
     return;
   }
 
