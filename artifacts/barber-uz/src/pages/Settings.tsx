@@ -190,7 +190,7 @@ function BarberMemberSettings({ userName }: { userName: string }) {
 export default function Settings() {
   const { user } = useAuth();
   const isTeam = user?.mode === "team";
-  const isMember = user?.mode === "barber_member";
+  const isMember = (user?.mode as string) === "barber_member";
   const userName = user?.name || user?.username || "Barber";
   const brandName = user?.brandName || "";
 
