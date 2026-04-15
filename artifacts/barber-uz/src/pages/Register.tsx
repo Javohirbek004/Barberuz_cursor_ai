@@ -111,7 +111,7 @@ export default function Register() {
           <div className="glass-panel p-6 sm:p-8 rounded-3xl space-y-5">
             {/* Name */}
             <div className="space-y-2">
-              <Label className="text-white/80">Ism kiriting (majburiy)</Label>
+              <Label className="text-white/80">Ism (majburiy)</Label>
               <Input
                 value={formData.name}
                 onChange={(e) => update("name", e.target.value)}
@@ -169,7 +169,7 @@ export default function Register() {
                   value={formData.confirmPassword}
                   onChange={(e) => update("confirmPassword", e.target.value)}
                   onBlur={() => touch("confirmPassword")}
-                  placeholder="••••••••"
+                  placeholder="••••••"
                   className="bg-black/20 border-white/10 focus-visible:ring-primary h-12 rounded-xl pr-12"
                 />
                 <button
