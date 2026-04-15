@@ -126,7 +126,7 @@ export default function BarberSetup() {
         <div className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-semibold text-white/80 block">
-              Yangi parol yarating
+              Parol yarating
             </label>
             <div className="relative">
               <input
