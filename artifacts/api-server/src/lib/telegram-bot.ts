@@ -52,7 +52,7 @@ function getAppUrl(): string {
 const pendingVerifications = new Map<number, string>();
 
 /** Barber member invite: chatId → userId (waiting for contact share) */
-const pendingBarberVerifications = new Map<number, string>();
+const pendingBarberVerifications = new Map<number, { userId: string; name: string; shopName: string }>();
 
 /** Login step 1: chatId → { code, lang, step } */
 type AuthStep = "confirm" | "phone";
@@ -260,7 +260,8 @@ async function sendBarberMemberContactRequest(
   });
 }
 
-async function sendBarberMemberSuccess(chatId: number, _userId: string) {
+async function sendBarberMemberSuccess(chatId: number, userId: string, name: string, shopName: string) {
+  const autoLoginUrl = `${getAppUrl()}/barber-uz/barber-setup/${userId}?auto=1&n=${encodeURIComponent(name)}&s=${encodeURIComponent(shopName)}`;
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text: "✅ Muvaffaqiyatli ulandingiz!\n\nEndi barcha bronlar sizga shu yerga keladi 🔔",
@@ -271,7 +272,7 @@ async function sendBarberMemberSuccess(chatId: number, _userId: string) {
     text: "👇",
     reply_markup: {
       inline_keyboard: [
-        [{ text: "Ilovaga qaytish", web_app: { url: `${getAppUrl()}/barber-uz/dashboard` } }],
+        [{ text: "Ilovaga qaytish", url: autoLoginUrl }],
       ],
     },
   });
@@ -419,7 +420,7 @@ async function handleBarberStart(chatId: number, userId: string) {
     console.warn(`[TelegramBot] Barber: user not found userId=${userId}, sending fallback onboarding`);
     const nameSlug = userId.split("_")[0] || "barber";
     const fallbackName = nameSlug.charAt(0).toUpperCase() + nameSlug.slice(1);
-    pendingBarberVerifications.set(chatId, userId);
+    pendingBarberVerifications.set(chatId, { userId, name: fallbackName, shopName: "Barbershop" });
     await sendBarberMemberContactRequest(chatId, fallbackName, "Barbershop");
     return;
   }
@@ -429,14 +430,14 @@ async function handleBarberStart(chatId: number, userId: string) {
       chat_id: chatId,
       text: "✅ Siz allaqachon ulanganmiz!\n\nEndi barcha bronlar sizga shu yerga keladi 🔔",
       reply_markup: {
-        inline_keyboard: [[{ text: "Ilovaga qaytish", url: `${getAppUrl()}/dashboard` }]],
+        inline_keyboard: [[{ text: "Ilovaga qaytish", url: `${getAppUrl()}/barber-uz/dashboard` }]],
       },
     });
     return;
   }
 
   const shopName = user.brandName || "Barbershop";
-  pendingBarberVerifications.set(chatId, userId);
+  pendingBarberVerifications.set(chatId, { userId, name: user.name, shopName });
   console.log(`[TelegramBot] Barber invite: pending chatId=${chatId} → userId=${userId}`);
   await sendBarberMemberContactRequest(chatId, user.name, shopName);
 }
@@ -447,8 +448,8 @@ async function handleBarberContact(
   tgUserId: string,
   tgUsername: string | null,
 ) {
-  const userId = pendingBarberVerifications.get(chatId);
-  if (!userId) {
+  const pending = pendingBarberVerifications.get(chatId);
+  if (!pending) {
     await callTelegram("sendMessage", {
       chat_id: chatId,
       text: "Tasdiqlash sessiyasi topilmadi. Iltimos, ilovadan qayta harakat qiling.",
@@ -456,6 +457,7 @@ async function handleBarberContact(
     return;
   }
 
+  const { userId, name, shopName } = pending;
   console.log(`[TelegramBot] Barber contact: chatId=${chatId} userId=${userId} phone=${phone}`);
 
   try {
@@ -472,7 +474,7 @@ async function handleBarberContact(
   }
 
   pendingBarberVerifications.delete(chatId);
-  await sendBarberMemberSuccess(chatId, userId);
+  await sendBarberMemberSuccess(chatId, userId, name, shopName);
 }
 
 async function handleAuthStart(chatId: number, code: string, lang: string) {

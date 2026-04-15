@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { Eye, EyeOff, Scissors } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -58,6 +58,20 @@ export default function BarberSetup() {
   const searchParams = new URLSearchParams(window.location.search);
   const barberName = (searchParams.get("n") || "").trim() || "Barber";
   const barberShop = (searchParams.get("s") || "").trim() || "Barbershop";
+  const autoLogin = searchParams.get("auto") === "1";
+
+  useEffect(() => {
+    if (!autoLogin || !params.token) return;
+    localStorage.setItem("barber_token", `barber_token_${params.token}`);
+    localStorage.setItem("barber_user", JSON.stringify({
+      id: params.token,
+      name: barberName,
+      shopName: barberShop,
+      mode: "barber_member",
+      telegramVerified: true,
+    }));
+    navigate("/dashboard");
+  }, []);
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -108,6 +122,8 @@ export default function BarberSetup() {
     setShowOnboarding(false);
     navigate("/dashboard");
   }
+
+  if (autoLogin) return null;
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4 py-8">
