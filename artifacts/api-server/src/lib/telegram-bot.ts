@@ -264,6 +264,11 @@ async function sendBarberMemberSuccess(chatId: number, _userId: string) {
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text: "✅ Muvaffaqiyatli ulandingiz!\n\nEndi barcha bronlar sizga shu yerga keladi 🔔",
+    reply_markup: { remove_keyboard: true },
+  });
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: "👇",
     reply_markup: {
       inline_keyboard: [
         [{ text: "Ilovaga qaytish", url: `${getAppUrl()}/dashboard` }],
