@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useGetProfile } from "@workspace/api-client-react";
 import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -687,6 +687,50 @@ function ScheduleForm({
   );
 }
 
+function isTelegramConnected(): boolean {
+  try {
+    const u = JSON.parse(localStorage.getItem("barber_user") || "null");
+    return u?.telegramVerified === true;
+  } catch {
+    return false;
+  }
+}
+
+function TelegramBanner() {
+  const [, navigate] = useLocation();
+  const [dismissed, setDismissed] = useState(false);
+
+  if (isTelegramConnected() || dismissed) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mb-5 flex items-center gap-3 bg-[#2AABEE]/10 border border-[#2AABEE]/20 rounded-2xl px-4 py-3"
+    >
+      <span className="text-lg shrink-0">⚠️</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-foreground">Telegram ulanmagan</p>
+        <p className="text-xs text-muted-foreground">Xabarlarni olish uchun ulang</p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          onClick={() => navigate("/verify-telegram")}
+          className="h-8 px-3 rounded-xl bg-[#2AABEE] text-white text-xs font-bold hover:bg-[#229ED9] transition-colors"
+        >
+          Ulanish
+        </button>
+        <button
+          onClick={() => setDismissed(true)}
+          className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+        >
+          ×
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function ProfileSettings() {
   const { user, logout } = useAuth();
   const isTeam = user?.mode === "team";
@@ -825,6 +869,8 @@ export default function ProfileSettings() {
         </Link>
         <h1 className="text-xl font-display font-bold text-foreground">{pageTitle}</h1>
       </div>
+
+      <TelegramBanner />
 
       <div className="space-y-2.5">
         {sections.map((s, i) => (

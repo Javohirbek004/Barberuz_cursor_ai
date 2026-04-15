@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronLeft, Plus, X, Scissors, Clock, Phone, Star, MoreVertical, UserCheck, UserX } from "lucide-react";
+import { ChevronLeft, Plus, X, Scissors, Clock, Phone, Star, MoreVertical, UserCheck, UserX, Copy, Check, Link2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Dialog,
@@ -33,6 +33,8 @@ interface Barber {
   active: boolean;
   rating: number;
   totalBookings: number;
+  inviteToken?: string;
+  joined?: boolean;
 }
 
 const INITIAL_BARBERS: Barber[] = [
@@ -46,6 +48,7 @@ const INITIAL_BARBERS: Barber[] = [
     active: true,
     rating: 4.9,
     totalBookings: 128,
+    joined: true,
   },
   {
     id: "2",
@@ -57,8 +60,87 @@ const INITIAL_BARBERS: Barber[] = [
     active: true,
     rating: 4.7,
     totalBookings: 94,
+    joined: true,
   },
 ];
+
+function generateToken(name: string): string {
+  const random = Math.random().toString(36).slice(2, 10);
+  const slug = name.toLowerCase().replace(/\s+/g, "").slice(0, 6);
+  return `${slug}_${random}`;
+}
+
+function InviteLinkDialog({
+  name,
+  token,
+  onClose,
+}: {
+  name: string;
+  token: string;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const base = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, "");
+  const link = `${base}/barber-setup/${token}`;
+
+  function handleCopy() {
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, y: 40 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative w-full max-w-sm bg-card border border-white/10 rounded-3xl p-6 shadow-2xl"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-display font-bold text-lg text-foreground">Taklif linki tayyor!</h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="mb-4">
+          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-2xl font-display font-bold text-primary mb-3">
+            {name.charAt(0).toUpperCase()}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            <span className="text-foreground font-semibold">{name}</span> uchun maxsus link yaratildi.
+            Ushbu linkni Telegram yoki WhatsApp orqali yuboring:
+          </p>
+        </div>
+
+        <div className="bg-background/60 border border-white/8 rounded-2xl p-3 mb-4">
+          <p className="text-xs text-muted-foreground font-mono break-all leading-relaxed">{link}</p>
+        </div>
+
+        <button
+          onClick={handleCopy}
+          className={`w-full h-12 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+            copied
+              ? "bg-green-500/20 text-green-400 border border-green-500/30"
+              : "bg-primary text-primary-foreground hover:bg-primary/90"
+          }`}
+        >
+          {copied ? (
+            <><Check className="w-4 h-4" /> Nusxalandi!</>
+          ) : (
+            <><Copy className="w-4 h-4" /> Linkni nusxalash</>
+          )}
+        </button>
+
+        <p className="text-xs text-muted-foreground/50 text-center mt-3">
+          Usta shu linkni bosib o'z parolini yaratadi
+        </p>
+      </motion.div>
+    </div>
+  );
+}
 
 export default function BarbersPage() {
   const { t } = useTranslation();
@@ -67,48 +149,50 @@ export default function BarbersPage() {
 
   const [barbers, setBarbers] = useState<Barber[]>(INITIAL_BARBERS);
   const [showDialog, setShowDialog] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    phone: "",
-    speciality: "",
-    workStart: "09:00",
-    workEnd: "18:00",
-  });
+  const [newName, setNewName] = useState("");
+  const [inviteData, setInviteData] = useState<{ name: string; token: string } | null>(null);
 
   const handleAdd = () => {
-    if (!form.name.trim()) {
+    if (!newName.trim()) {
       toast({ title: t("barbers.name_required"), variant: "destructive" });
       return;
     }
+    const token = generateToken(newName.trim());
     const newBarber: Barber = {
       id: Date.now().toString(),
-      name: form.name,
-      phone: form.phone,
-      speciality: form.speciality || t("barbers.default_speciality"),
-      workStart: form.workStart,
-      workEnd: form.workEnd,
+      name: newName.trim(),
+      phone: "",
+      speciality: t("barbers.default_speciality"),
+      workStart: "09:00",
+      workEnd: "18:00",
       active: true,
       rating: 0,
       totalBookings: 0,
+      inviteToken: token,
+      joined: false,
     };
-    setBarbers((prev) => [...prev, newBarber]);
-    setForm({ name: "", phone: "", speciality: "", workStart: "09:00", workEnd: "18:00" });
+    setBarbers(prev => [...prev, newBarber]);
+    setNewName("");
     setShowDialog(false);
-    toast({ title: t("barbers.added") });
+    setInviteData({ name: newBarber.name, token });
   };
 
   const toggleActive = (id: string) => {
-    setBarbers((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, active: !b.active } : b))
-    );
+    setBarbers(prev => prev.map(b => b.id === id ? { ...b, active: !b.active } : b));
   };
 
   const handleDelete = (id: string) => {
-    setBarbers((prev) => prev.filter((b) => b.id !== id));
+    setBarbers(prev => prev.filter(b => b.id !== id));
     toast({ title: t("barbers.deleted") });
   };
 
-  const activeCount = barbers.filter((b) => b.active).length;
+  const showInviteLink = (barber: Barber) => {
+    if (barber.inviteToken) {
+      setInviteData({ name: barber.name, token: barber.inviteToken });
+    }
+  };
+
+  const activeCount = barbers.filter(b => b.active).length;
 
   return (
     <Layout>
@@ -161,7 +245,14 @@ export default function BarbersPage() {
                       {barber.name.charAt(0)}
                     </div>
                     <div>
-                      <p className="font-bold text-foreground">{barber.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-foreground">{barber.name}</p>
+                        {barber.joined === false && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-yellow-400/10 text-yellow-400 border border-yellow-400/20">
+                            Kutilmoqda
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <Scissors className="w-3 h-3" />
                         {barber.speciality}
@@ -175,7 +266,12 @@ export default function BarbersPage() {
                         <MoreVertical className="w-4 h-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuContent align="end" className="w-48">
+                      {barber.inviteToken && !barber.joined && (
+                        <DropdownMenuItem onClick={() => showInviteLink(barber)} className="gap-2">
+                          <Link2 className="w-4 h-4" /> Linkni ko'rish
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem onClick={() => toggleActive(barber.id)} className="gap-2">
                         {barber.active ? (
                           <><UserX className="w-4 h-4" /> {t("barbers.deactivate")}</>
@@ -236,60 +332,39 @@ export default function BarbersPage() {
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="bg-background border-white/10 rounded-3xl mx-4">
           <DialogHeader>
-            <DialogTitle>{t("barbers.add_title")}</DialogTitle>
+            <DialogTitle>Usta qo'shish</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 mt-2">
+          <div className="space-y-5 mt-2">
+            <p className="text-sm text-muted-foreground">
+              Usta ismini kiriting — tizim avtomatik taklif linki yaratadi.
+              Shu linkni ustaga yuboring.
+            </p>
             <div className="space-y-2">
-              <Label>{t("register.name")} *</Label>
+              <Label>Ism *</Label>
               <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder={t("barbers.name_placeholder")}
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleAdd()}
+                placeholder="Sardor"
                 className="bg-background/50 h-12"
+                autoFocus
               />
             </div>
-            <div className="space-y-2">
-              <Label>{t("barbers.phone_label")}</Label>
-              <Input
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                placeholder="+998 90 000 00 00"
-                className="bg-background/50 h-12"
-                type="tel"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("barbers.speciality_label")}</Label>
-              <Input
-                value={form.speciality}
-                onChange={(e) => setForm({ ...form, speciality: e.target.value })}
-                placeholder={t("barbers.speciality_placeholder")}
-                className="bg-background/50 h-12"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("profile.hours")}</Label>
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  type="time"
-                  value={form.workStart}
-                  onChange={(e) => setForm({ ...form, workStart: e.target.value })}
-                  className="bg-background/50 h-12"
-                />
-                <Input
-                  type="time"
-                  value={form.workEnd}
-                  onChange={(e) => setForm({ ...form, workEnd: e.target.value })}
-                  className="bg-background/50 h-12"
-                />
-              </div>
-            </div>
-            <Button onClick={handleAdd} className="w-full h-12 font-bold rounded-xl">
-              {t("barbers.confirm_add")}
+            <Button onClick={handleAdd} className="w-full h-12 font-bold rounded-xl gap-2">
+              <Link2 className="w-4 h-4" />
+              Link yaratish
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {inviteData && (
+        <InviteLinkDialog
+          name={inviteData.name}
+          token={inviteData.token}
+          onClose={() => setInviteData(null)}
+        />
+      )}
     </Layout>
   );
 }

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, X, Pencil, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { bookingStore, AddedBooking } from "@/stores/bookingStore";
+import { useLocation } from "wouter";
 
 /** Subscribe to bookingStore and re-render when a booking is added */
 function useAddedBookings(): AddedBooking[] {
@@ -478,6 +479,51 @@ function TeamCalendar() {
   );
 }
 
+// ── Telegram banner ───────────────────────────────────────────────────────────
+function isTelegramConnected(): boolean {
+  try {
+    const u = JSON.parse(localStorage.getItem("barber_user") || "null");
+    return u?.telegramVerified === true;
+  } catch {
+    return false;
+  }
+}
+
+function CalendarTelegramBanner() {
+  const [, navigate] = useLocation();
+  const [dismissed, setDismissed] = useState(false);
+
+  if (isTelegramConnected() || dismissed) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mb-4 flex items-center gap-3 bg-[#2AABEE]/10 border border-[#2AABEE]/20 rounded-2xl px-4 py-3"
+    >
+      <span className="text-base shrink-0">⚠️</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-foreground leading-tight">Siz bildirishnomalarni olmayapsiz</p>
+        <p className="text-xs text-muted-foreground">Telegramni ulang va bronlarni o'tkazib yubormang</p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          onClick={() => navigate("/verify-telegram")}
+          className="h-8 px-3 rounded-xl bg-[#2AABEE] text-white text-xs font-bold hover:bg-[#229ED9] transition-colors"
+        >
+          Ulanish
+        </button>
+        <button
+          onClick={() => setDismissed(true)}
+          className="text-muted-foreground/50 hover:text-muted-foreground text-lg leading-none transition-colors"
+        >
+          ×
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
 // ── Root export ───────────────────────────────────────────────────────────────
 export default function Calendar() {
   const { user } = useAuth();
@@ -485,6 +531,7 @@ export default function Calendar() {
 
   return (
     <Layout>
+      <CalendarTelegramBanner />
       {isTeam ? <TeamCalendar /> : <IndividualCalendar />}
     </Layout>
   );
