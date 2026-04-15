@@ -54,36 +54,15 @@ function bonusAlert() {
   alert("Tez kunda qo'shiladi 🔒");
 }
 
-function comingSoon() {
-  alert("Tez kunda qo'shiladi 🔒");
-}
-
-function SectionLabel({ label }: { label: string }) {
-  return (
-    <div className="pt-4 pb-1 px-1">
-      <p className="text-xs font-semibold text-muted-foreground/60 uppercase tracking-wider">{label}</p>
-    </div>
-  );
-}
-
 // ── Individual view ───────────────────────────────────────────────────────────
 function IndividualSettings({ userName }: { userName: string }) {
-  const mainItems: MenuItem[] = [
-    { href: "/settings/profile",   emoji: "👤", label: "Mening profilim",     sub: "Shaxsiy ma'lumotlar" },
-    { href: "/settings/page",      emoji: "🌐", label: "Mening sahifam",      sub: "Mijozlar ko'radigan sahifa" },
+  const items: MenuItem[] = [
+    { href: "/settings/profile",   emoji: "👤", label: "Mening profilim",      sub: "Shaxsiy ma'lumotlar" },
+    { href: "/settings/page",      emoji: "🌐", label: "Mening sahifam",       sub: "Mijozlar ko'radigan sahifa" },
     { href: "/settings/analytics", emoji: "📊", label: "Tahlil va statistika", sub: "Daromad va bronlar" },
-  ];
-
-  const generalItems: MenuItem[] = [
-    { href: "/settings/notifications", emoji: "🔔", label: "Bildirishnomalar", sub: "Xabarnoma sozlamalari" },
-    { href: "/settings/security",      emoji: "🔐", label: "Xavfsizlik",       sub: "Parol va himoya" },
-    { onClick: comingSoon,             emoji: "🌐", label: "Til",              sub: "O'zbek / Русский" },
-    { onClick: comingSoon,             emoji: "🎨", label: "Ko'rinish",        sub: "Mavzu va rang" },
-  ];
-
-  const bottomItems: MenuItem[] = [
-    { onClick: bonusAlert,        emoji: "💰", label: "Bonus dasturi",     sub: "Tez kunda qo'shiladi 🔒" },
-    { href: "/settings/feedback", emoji: "💬", label: "Fikr va takliflar", sub: "Bizga xabar yuboring" },
+    { href: "/settings/general",   emoji: "⚙️", label: "Umumiy sozlamalar",    sub: "Bildirishnomalar, xavfsizlik, til" },
+    { onClick: bonusAlert,         emoji: "💰", label: "Bonus dasturi",         sub: "Tez kunda qo'shiladi 🔒" },
+    { href: "/settings/feedback",  emoji: "💬", label: "Fikr va takliflar",     sub: "Bizga xabar yuboring" },
   ];
 
   return (
@@ -110,22 +89,8 @@ function IndividualSettings({ userName }: { userName: string }) {
       </motion.div>
 
       <div className="space-y-2">
-        {mainItems.map((item, i) => (
+        {items.map((item, i) => (
           <MenuRow key={item.label} item={item} index={i} />
-        ))}
-      </div>
-
-      <SectionLabel label="⚙️ Umumiy sozlamalar" />
-
-      <div className="space-y-2">
-        {generalItems.map((item, i) => (
-          <MenuRow key={item.label} item={item} index={mainItems.length + i} />
-        ))}
-      </div>
-
-      <div className="space-y-2 mt-2">
-        {bottomItems.map((item, i) => (
-          <MenuRow key={item.label} item={item} index={mainItems.length + generalItems.length + i} />
         ))}
       </div>
     </>
@@ -136,23 +101,14 @@ function IndividualSettings({ userName }: { userName: string }) {
 function TeamSettings({ brandName, userName }: { brandName: string; userName: string }) {
   const displayBrand = brandName || userName || "Barbershop";
 
-  const mainItems: MenuItem[] = [
+  const items: MenuItem[] = [
     { href: "/settings/profile",   emoji: "🏢",  label: "Barbershop profili",   sub: "Salon ma'lumotlari" },
     { href: "/settings/page",      emoji: "🌐",  label: "Barbershop sahifasi",  sub: "Mijozlar uchun sahifa 🔥" },
     { href: "/settings/analytics", emoji: "📊",  label: "Tahlil va statistika", sub: "Daromad va bronlar" },
     { href: "/settings/barbers",   emoji: "👷‍♂️", label: "Ustalar boshqaruvi",  sub: "Ustalarni qo'shish, tahrirlash" },
-  ];
-
-  const generalItems: MenuItem[] = [
-    { href: "/settings/notifications", emoji: "🔔", label: "Bildirishnomalar", sub: "Xabarnoma sozlamalari" },
-    { href: "/settings/security",      emoji: "🔐", label: "Xavfsizlik",       sub: "Parol va himoya" },
-    { onClick: comingSoon,             emoji: "🌐", label: "Til",              sub: "O'zbek / Русский" },
-    { onClick: comingSoon,             emoji: "🎨", label: "Ko'rinish",        sub: "Mavzu va rang" },
-  ];
-
-  const bottomItems: MenuItem[] = [
-    { onClick: bonusAlert,        emoji: "💰", label: "Bonus dasturi",     sub: "Tez kunda qo'shiladi 🔒" },
-    { href: "/settings/feedback", emoji: "💬", label: "Fikr va takliflar", sub: "Bizga xabar yuboring" },
+    { href: "/settings/general",   emoji: "⚙️",  label: "Umumiy sozlamalar",    sub: "Bildirishnomalar, xavfsizlik, til" },
+    { onClick: bonusAlert,         emoji: "💰",  label: "Bonus dasturi",         sub: "Tez kunda qo'shiladi 🔒" },
+    { href: "/settings/feedback",  emoji: "💬",  label: "Fikr va takliflar",     sub: "Bizga xabar yuboring" },
   ];
 
   return (
@@ -181,22 +137,8 @@ function TeamSettings({ brandName, userName }: { brandName: string; userName: st
       </motion.div>
 
       <div className="space-y-2">
-        {mainItems.map((item, i) => (
+        {items.map((item, i) => (
           <MenuRow key={item.label} item={item} index={i} />
-        ))}
-      </div>
-
-      <SectionLabel label="⚙️ Umumiy sozlamalar" />
-
-      <div className="space-y-2">
-        {generalItems.map((item, i) => (
-          <MenuRow key={item.label} item={item} index={mainItems.length + i} />
-        ))}
-      </div>
-
-      <div className="space-y-2 mt-2">
-        {bottomItems.map((item, i) => (
-          <MenuRow key={item.label} item={item} index={mainItems.length + generalItems.length + i} />
         ))}
       </div>
     </>

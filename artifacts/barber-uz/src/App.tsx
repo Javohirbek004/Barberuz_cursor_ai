@@ -22,6 +22,7 @@ import PersonalPage from "@/pages/settings/PersonalPage";
 import BonusPage from "@/pages/settings/BonusPage";
 import FeedbackPage from "@/pages/settings/FeedbackPage";
 import BarbersPage from "@/pages/settings/BarbersPage";
+import GeneralSettings from "@/pages/settings/GeneralSettings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -62,6 +63,7 @@ function AppRoutes() {
       <Route path="/settings/bonus" component={BonusPage} />
       <Route path="/settings/feedback" component={FeedbackPage} />
       <Route path="/settings/barbers" component={BarbersPage} />
+      <Route path="/settings/general" component={GeneralSettings} />
 
       <Route component={NotFound} />
     </Switch>
