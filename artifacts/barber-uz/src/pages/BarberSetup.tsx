@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { Eye, EyeOff, Scissors } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -50,13 +50,10 @@ function TelegramOnboardingModal({
   );
 }
 
-function getDashboardUrl() {
-  const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-  return base + "/dashboard";
-}
 
 export default function BarberSetup() {
   const params = useParams<{ token: string }>();
+  const [, navigate] = useLocation();
 
   const searchParams = new URLSearchParams(window.location.search);
   const barberName = (searchParams.get("n") || "").trim() || "Barber";
@@ -104,12 +101,12 @@ export default function BarberSetup() {
     const userId = params.token || "unknown";
     const botLink = `https://t.me/Barberuz_yordamchi_bot?start=barber_${userId}`;
     window.open(botLink, "_blank");
-    window.location.href = getDashboardUrl();
+    navigate("/dashboard");
   }
 
   function handleSkipTelegram() {
     setShowOnboarding(false);
-    window.location.href = getDashboardUrl();
+    navigate("/dashboard");
   }
 
   return (

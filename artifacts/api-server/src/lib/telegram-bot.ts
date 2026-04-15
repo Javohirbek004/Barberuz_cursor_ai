@@ -271,7 +271,7 @@ async function sendBarberMemberSuccess(chatId: number, _userId: string) {
     text: "👇",
     reply_markup: {
       inline_keyboard: [
-        [{ text: "Ilovaga qaytish", web_app: { url: `${getAppUrl()}/dashboard` } }],
+        [{ text: "Ilovaga qaytish", web_app: { url: `${getAppUrl()}/barber-uz/dashboard` } }],
       ],
     },
   });
