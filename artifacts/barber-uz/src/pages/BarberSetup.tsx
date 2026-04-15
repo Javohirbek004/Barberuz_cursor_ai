@@ -59,8 +59,8 @@ export default function BarberSetup() {
   const params = useParams<{ token: string }>();
 
   const searchParams = new URLSearchParams(window.location.search);
-  const barberName = decodeURIComponent(searchParams.get("n") || "").trim() || "Barber";
-  const barberShop = decodeURIComponent(searchParams.get("s") || "").trim() || "Barbershop";
+  const barberName = (searchParams.get("n") || "").trim() || "Barber";
+  const barberShop = (searchParams.get("s") || "").trim() || "Barbershop";
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
