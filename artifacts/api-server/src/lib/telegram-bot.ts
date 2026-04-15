@@ -123,18 +123,18 @@ async function sendContactRequest(chatId: number, userName: string) {
   });
 }
 
-async function sendVerificationSuccess(chatId: number, userId: string) {
+async function sendVerificationSuccess(chatId: number, userId: string, token: string) {
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Raqam tasdiqlandi! \u2705 Ro\u02BByxatdan o\u02BBtgan brauzer sahifangizga qayting \u2014 u avtomatik ochiladi.",
+    text: "Raqam tasdiqlandi! \u2705 Quyidagi tugmani bosib ilovaga kiring:",
     reply_markup: { remove_keyboard: true },
   });
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Yoki quyidagi tugmani bosing:",
+    text: "Profilingizga o\u02BBtish uchun tugmani bosing:",
     reply_markup: {
       inline_keyboard: [
-        [{ text: "\uD83C\uDF10 Ilovaga kirish", url: `${getAppUrl()}/verify-telegram?uid=${userId}` }],
+        [{ text: "\uD83C\uDF10 Ilovaga kirish", url: `${getAppUrl()}/verify-telegram?uid=${userId}&token=${token}` }],
       ],
     },
   });
@@ -513,7 +513,8 @@ async function handleRegContact(
 
     pendingVerifications.delete(chatId);
     console.log(`[TelegramBot] Reg verified: userId=${userId} ✅`);
-    await sendVerificationSuccess(chatId, userId);
+    const loginToken = generateToken(userId);
+    await sendVerificationSuccess(chatId, userId, loginToken);
   } catch (err) {
     console.error("[TelegramBot] DB update failed:", err);
     await callTelegram("sendMessage", {

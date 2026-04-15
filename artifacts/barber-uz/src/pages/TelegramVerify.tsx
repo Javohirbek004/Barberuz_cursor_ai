@@ -49,14 +49,21 @@ export default function TelegramVerify() {
   // Track whether verification just completed and no token is present in this tab
   const [showReturnToTab, setShowReturnToTab] = useState(false);
 
-  // Fallback: if opened via bot link in a new browser, read ?uid= from URL
+  // If opened via bot link: read ?uid= and ?token= from URL.
+  // When a token is present, auto-login the user and go to dashboard.
   useEffect(() => {
-    if (!userId) {
-      const params = new URLSearchParams(window.location.search);
-      const uid = params.get("uid");
-      if (uid) {
-        setUserId(uid);
-      }
+    const params = new URLSearchParams(window.location.search);
+    const uid = params.get("uid");
+    const token = params.get("token");
+
+    if (token) {
+      localStorage.setItem("barber_token", token);
+      navigate("/dashboard");
+      return;
+    }
+
+    if (!userId && uid) {
+      setUserId(uid);
     }
   }, []);
 
