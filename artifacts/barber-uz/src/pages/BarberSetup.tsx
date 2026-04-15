@@ -26,7 +26,7 @@ function TelegramOnboardingModal({
 
         <div className="mb-1 text-2xl font-display font-bold text-foreground">🚀 Akkaunt tayyor!</div>
         <p className="text-sm text-muted-foreground mt-2 mb-6 leading-relaxed">
-          Telegram orqali yangi bronlar, bekor qilishlar va eslatmalarni bevosita Telegramga olishingiz mumkin.
+          Telegram orqali xabar olishni yoqing
         </p>
 
         <button

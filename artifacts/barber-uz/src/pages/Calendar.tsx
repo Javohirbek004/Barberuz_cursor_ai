@@ -504,7 +504,6 @@ function CalendarTelegramBanner() {
       <span className="text-base shrink-0">⚠️</span>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-foreground leading-tight">Siz bildirishnomalarni olmayapsiz</p>
-        <p className="text-xs text-muted-foreground">Telegramni ulang va bronlarni o'tkazib yubormang</p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <button

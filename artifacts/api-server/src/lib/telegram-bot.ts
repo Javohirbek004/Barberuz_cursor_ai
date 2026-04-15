@@ -51,6 +51,9 @@ function getAppUrl(): string {
 /** Registration: chatId → userId (waiting for contact share) */
 const pendingVerifications = new Map<number, string>();
 
+/** Barber member invite: chatId → userId (waiting for contact share) */
+const pendingBarberVerifications = new Map<number, string>();
+
 /** Login step 1: chatId → { code, lang, step } */
 type AuthStep = "confirm" | "phone";
 const pendingAuthLogins = new Map<number, { code: string; lang: string; step: AuthStep }>();
@@ -233,10 +236,42 @@ async function sendNotRegistered(chatId: number, lang: string) {
 async function sendGenericWelcome(chatId: number) {
   return callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Assalomu alaykum! Barber.uz botiga xush kelibsiz. \uD83E\uDE92\n\nRo\u02BByxatdan o\u02BBtish uchun ilovani oching:",
+    text: "👋 Salom!\n\nIltimos, barber_uz ilovasidan berilgan maxsus link orqali kiring",
+    reply_markup: { remove_keyboard: true },
+  });
+}
+
+async function sendBarberMemberContactRequest(
+  chatId: number,
+  barberName: string,
+  shopName: string,
+) {
+  return callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: `👋 Salom, <b>${barberName}</b>!\n\nSiz <b>${shopName}</b> jamoasiga qo'shilyapsiz ✂️\n\n📲 Xabarlarni shu yerda olasiz:\n• Yangi bronlar\n• Bekor qilishlar\n• Eslatmalar\n\nXabarlarni olish uchun telefon raqamingizni tasdiqlang👇`,
+    parse_mode: "HTML",
+    reply_markup: {
+      keyboard: [
+        [{ text: "📱 Telefon raqamni yuborish", request_contact: true }],
+      ],
+      resize_keyboard: true,
+      one_time_keyboard: true,
+    },
+  });
+}
+
+async function sendBarberMemberSuccess(chatId: number, _userId: string) {
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: "✅ Muvaffaqiyatli ulandingiz!\n\nEndi barcha bronlar sizga shu yerga keladi 🔔",
+    reply_markup: { remove_keyboard: true },
+  });
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: "Ilovaga qaytish uchun tugmani bosing:",
     reply_markup: {
       inline_keyboard: [
-        [{ text: "\uD83C\uDF10 Barber.uz", url: getAppUrl() }],
+        [{ text: "Ilovaga qaytish", url: `${getAppUrl()}/dashboard` }],
       ],
     },
   });
@@ -259,6 +294,12 @@ function parseAuthPayload(payload: string): { code: string; lang: string } | nul
   const match = payload.match(/^auth_([a-f0-9]{12,32})_(uz|ru)$/i);
   if (!match) return null;
   return { code: match[1]!, lang: match[2]! };
+}
+
+function parseBarberPayload(payload: string): { userId: string } | null {
+  const match = payload.match(/^barber_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+  if (!match) return null;
+  return { userId: match[1]!.toLowerCase() };
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -302,6 +343,13 @@ export async function handleTelegramUpdate(update: unknown) {
       return;
     }
 
+    // Barber member invite deep-link
+    const barberParsed = parseBarberPayload(payload);
+    if (barberParsed) {
+      await handleBarberStart(chatId, barberParsed.userId);
+      return;
+    }
+
     // Generic welcome
     await sendGenericWelcome(chatId);
     return;
@@ -318,6 +366,12 @@ export async function handleTelegramUpdate(update: unknown) {
     const authPending = pendingAuthLogins.get(chatId);
     if (authPending && authPending.step === "phone") {
       await handleAuthPhoneContact(chatId, authPending, phone, tgUserId, tgUsername);
+      return;
+    }
+
+    // Check if this is a barber member invite flow
+    if (pendingBarberVerifications.has(chatId)) {
+      await handleBarberContact(chatId, phone, tgUserId, tgUsername);
       return;
     }
 
@@ -352,6 +406,69 @@ async function handleRegStart(chatId: number, userId: string, _lang: string) {
   pendingVerifications.set(chatId, userId);
   console.log(`[TelegramBot] Reg: pending chatId=${chatId} → userId=${userId}`);
   await sendContactRequest(chatId, user.name);
+}
+
+async function handleBarberStart(chatId: number, userId: string) {
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) {
+    console.warn(`[TelegramBot] Barber: user not found userId=${userId}`);
+    await sendGenericWelcome(chatId);
+    return;
+  }
+
+  if (user.telegramVerified) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "✅ Siz allaqachon ulanganmiz!\n\nEndi barcha bronlar sizga shu yerga keladi 🔔",
+      reply_markup: {
+        inline_keyboard: [[{ text: "Ilovaga qaytish", url: `${getAppUrl()}/dashboard` }]],
+      },
+    });
+    return;
+  }
+
+  const shopName = user.brandName || "Barbershop";
+  pendingBarberVerifications.set(chatId, userId);
+  console.log(`[TelegramBot] Barber invite: pending chatId=${chatId} → userId=${userId}`);
+  await sendBarberMemberContactRequest(chatId, user.name, shopName);
+}
+
+async function handleBarberContact(
+  chatId: number,
+  phone: string | null,
+  tgUserId: string,
+  tgUsername: string | null,
+) {
+  const userId = pendingBarberVerifications.get(chatId);
+  if (!userId) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Tasdiqlash sessiyasi topilmadi. Iltimos, ilovadan qayta harakat qiling.",
+    });
+    return;
+  }
+
+  console.log(`[TelegramBot] Barber contact: chatId=${chatId} userId=${userId} phone=${phone}`);
+
+  try {
+    await db.update(usersTable).set({
+      telegramVerified: true,
+      telegramId: tgUserId,
+      telegramUsername: tgUsername,
+      phone: phone || undefined,
+      updatedAt: new Date(),
+    }).where(eq(usersTable.id, userId));
+
+    pendingBarberVerifications.delete(chatId);
+    console.log(`[TelegramBot] Barber invite verified: userId=${userId} ✅`);
+    await sendBarberMemberSuccess(chatId, userId);
+  } catch (err) {
+    console.error("[TelegramBot] Barber DB update failed:", err);
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Xatolik yuz berdi. Iltimos, qayta harakat qiling.",
+    });
+  }
 }
 
 async function handleAuthStart(chatId: number, code: string, lang: string) {

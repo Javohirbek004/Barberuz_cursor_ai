@@ -90,14 +90,11 @@ function TelegramSoftPopup({
           </div>
           <div>
             <p className="font-bold text-foreground text-sm">🔔 Bronlarni o'tkazib yubormaslik uchun</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {day === 2 ? "Eslatma: 2-kun" : "Eslatma: 5-kun"}
-            </p>
           </div>
         </div>
 
         <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
-          Telegramni ulasangiz, yangi bronlar va bekor qilishlar haqida darhol xabar olasiz. Bitta bosish kifoya!
+          Telegramni ulang
         </p>
 
         <div className="flex flex-col gap-2">
