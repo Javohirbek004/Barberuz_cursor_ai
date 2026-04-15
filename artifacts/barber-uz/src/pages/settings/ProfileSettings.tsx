@@ -170,7 +170,7 @@ function SaveBtn({ loading, onClick }: { loading: boolean; onClick: () => void }
     <button
       onClick={onClick}
       disabled={loading}
-      className="w-full h-13 rounded-2xl bg-primary text-primary-foreground font-bold text-base flex items-center justify-center gap-2 hover:bg-primary/90 disabled:opacity-60 transition-all mt-4"
+      className="w-full h-12 rounded-2xl bg-primary text-primary-foreground font-bold text-base flex items-center justify-center gap-2 hover:bg-primary/90 disabled:opacity-60 transition-all mt-4"
     >
       {loading ? (
         <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
