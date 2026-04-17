@@ -256,7 +256,9 @@ function ApiClientDetail({ id }: { id: string }) {
     );
   }
 
-  const seg = SEGMENT_META[(client.status as "regular" | "new" | "lost") ?? "new"];
+  const apiSegment = (["regular", "new", "lost"].includes(client.status ?? "") ? client.status : "new") as "regular" | "new" | "lost";
+  const seg = SEGMENT_META[apiSegment];
+  const segLabel = t(`segment.${apiSegment}` as `segment.regular` | `segment.new` | `segment.lost`);
 
   return (
     <Layout>
@@ -282,7 +284,7 @@ function ApiClientDetail({ id }: { id: string }) {
         <h2 className="text-2xl font-display font-bold text-foreground">{client.name}</h2>
         {seg && (
           <span className={`mt-2 inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full border ${seg.bg} ${seg.color}`}>
-            {seg.emoji} {seg.label}
+            {seg.emoji} {segLabel}
           </span>
         )}
       </motion.div>
