@@ -157,7 +157,7 @@ export default function GeneralSettings() {
         <OptionRow emoji="🇷🇺" label="Русский"   selected={lang === "ru"} onClick={() => { setLang("ru"); setSheet(null); }} />
       </BottomSheet>
 
-      <BottomSheet open={sheet === "theme"} onClose={() => setSheet(null)} title="🎨 Ilova ko'rinishi">
+      <BottomSheet open={sheet === "theme"} onClose={() => setSheet(null)} title="🎨 Ilova dizayni">
         <OptionRow emoji="📱" label="Tizim bo'yicha" selected={theme === "system"} onClick={() => { changeTheme("system"); setSheet(null); }} />
         <OptionRow emoji="☀️" label="Yorqin rejim"   selected={theme === "light"}  onClick={() => { changeTheme("light");  setSheet(null); }} />
         <OptionRow emoji="🌙" label="Qorong'u rejim" selected={theme === "dark"}   onClick={() => { changeTheme("dark");   setSheet(null); }} />
