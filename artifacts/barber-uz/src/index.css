@@ -80,6 +80,42 @@
   --chart-5: 42 90% 70%;
 }
 
+html.light {
+  --background: 0 0% 97%;
+  --foreground: 240 10% 10%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 10%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 10%;
+
+  --primary: 42 87% 45%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 240 5% 92%;
+  --secondary-foreground: 240 10% 10%;
+
+  --muted: 240 5% 92%;
+  --muted-foreground: 240 5% 45%;
+
+  --accent: 42 87% 45%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+
+  --border: 240 5% 84%;
+  --input: 240 5% 84%;
+  --ring: 42 87% 45%;
+
+  --chart-1: 42 87% 45%;
+  --chart-2: 240 5% 55%;
+  --chart-3: 42 60% 35%;
+  --chart-4: 240 5% 35%;
+  --chart-5: 42 90% 60%;
+}
+
 @layer base {
   * {
     @apply border-border;

@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
 import { ChevronLeft, Check } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "@/i18n/LanguageContext";
 import type { Language } from "@/i18n/translations";
 
@@ -14,6 +15,13 @@ const LANGS: { code: Language; emoji: string; label: string }[] = [
 export default function LanguageSettings() {
   useAuth();
   const { lang, setLang } = useTranslation();
+  const [saved, setSaved] = useState(false);
+
+  const handleSelect = (code: Language) => {
+    setLang(code);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1800);
+  };
 
   return (
     <Layout>
@@ -24,6 +32,19 @@ export default function LanguageSettings() {
           </button>
         </Link>
         <h1 className="text-xl font-display font-bold text-foreground">🌐 Til</h1>
+
+        <AnimatePresence>
+          {saved && (
+            <motion.span
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.85 }}
+              className="ml-auto text-xs font-semibold text-primary flex items-center gap-1"
+            >
+              <Check className="w-3.5 h-3.5" /> Saqlandi
+            </motion.span>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="space-y-2">
@@ -33,7 +54,7 @@ export default function LanguageSettings() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 + i * 0.04 }}
-            onClick={() => setLang(code)}
+            onClick={() => handleSelect(code)}
             className="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl border transition-all"
             style={{
               background: lang === code ? "hsl(var(--primary) / 0.08)" : "hsl(var(--card))",
