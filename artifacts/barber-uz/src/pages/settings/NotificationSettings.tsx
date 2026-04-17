@@ -54,26 +54,24 @@ export default function NotificationSettings() {
             <ChevronLeft className="w-5 h-5" />
           </Button>
         </Link>
-        <h1 className="text-xl font-bold font-display">Bildirishnomalar</h1>
+        <h1 className="text-xl font-bold font-display">{t("notif.title")}</h1>
       </div>
 
       <div className="space-y-6">
         <section>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 px-1 mb-3">
-            🔔 Mijoz bronlari
+            {t("notif.section.bookings")}
           </p>
           <div className="space-y-2">
             <SwitchRow
-              icon="🔔"
-              title="Yangi bron"
-              desc="Mijoz yangi yozilganda xabar keladi"
+              title={t("notif.new_booking")}
+              desc={t("notif.new_booking_desc")}
               checked={formData.newBooking}
               onChange={v => handleChange("newBooking", v)}
             />
             <SwitchRow
-              icon="🔔"
-              title="Bekor qilish"
-              desc="Mijoz bronni bekor qilsa"
+              title={t("notif.cancellation")}
+              desc={t("notif.cancellation_desc")}
               checked={formData.cancellation}
               onChange={v => handleChange("cancellation", v)}
             />
@@ -82,13 +80,12 @@ export default function NotificationSettings() {
 
         <section>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 px-1 mb-3">
-            ⏰ Eslatmalar
+            {t("notif.section.reminders")}
           </p>
           <div className="space-y-2">
             <SwitchRow
-              icon="⏰"
-              title="Mijozga eslatma"
-              desc="Bron vaqtidan oldin eslatma"
+              title={t("notif.reminder")}
+              desc={t("notif.reminder_desc")}
               checked={formData.reminders}
               onChange={v => handleChange("reminders", v)}
             />
@@ -100,13 +97,11 @@ export default function NotificationSettings() {
 }
 
 function SwitchRow({
-  icon,
   title,
   desc,
   checked,
   onChange,
 }: {
-  icon: string;
   title: string;
   desc: string;
   checked: boolean;
@@ -115,7 +110,6 @@ function SwitchRow({
   return (
     <div className="bg-card/50 px-4 py-4 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
       <div className="flex items-start gap-3 flex-1 min-w-0">
-        <span className="text-lg leading-none mt-0.5 shrink-0">{icon}</span>
         <div className="min-w-0">
           <p className="font-semibold text-sm text-foreground leading-tight">{title}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>

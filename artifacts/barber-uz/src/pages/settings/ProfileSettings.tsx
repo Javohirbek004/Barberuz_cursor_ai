@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/i18n/LanguageContext";
 import { Layout } from "@/components/Layout";
 import { Link, useLocation } from "wouter";
 import { useGetProfile } from "@workspace/api-client-react";
@@ -34,14 +35,14 @@ interface ProfileData {
   lunchBreakEnd?: string | null;
 }
 
-const DAY_LABELS: Record<DayKey, string> = {
-  monday:    "Dushanba",
-  tuesday:   "Seshanba",
-  wednesday: "Chorshanba",
-  thursday:  "Payshanba",
-  friday:    "Juma",
-  saturday:  "Shanba",
-  sunday:    "Yakshanba",
+const DAY_KEY_TO_T: Record<DayKey, string> = {
+  monday:    "day.monday",
+  tuesday:   "day.tuesday",
+  wednesday: "day.wednesday",
+  thursday:  "day.thursday",
+  friday:    "day.friday",
+  saturday:  "day.saturday",
+  sunday:    "day.sunday",
 };
 
 const DAY_KEYS: DayKey[] = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"];
@@ -86,17 +87,18 @@ function parseSpecializations(raw: string | null | undefined): string[] {
   }
 }
 
-function schedulePreview(sched: WeekSchedule): string {
+function schedulePreview(sched: WeekSchedule, t: (k: string) => string): string {
   const on = DAY_KEYS.filter(d => sched[d].enabled);
-  if (on.length === 0) return "Yopiq";
-  const first = DAY_LABELS[on[0]].slice(0, 2);
-  const last  = DAY_LABELS[on[on.length - 1]].slice(0, 2);
+  if (on.length === 0) return t("profile.schedule.closed");
+  const first = t(DAY_KEY_TO_T[on[0]]).slice(0, 2);
+  const last  = t(DAY_KEY_TO_T[on[on.length - 1]]).slice(0, 2);
   const start = sched[on[0]].start;
   const end   = sched[on[on.length - 1]].end;
   return `${first}–${last} ${start}–${end}`;
 }
 
 function UnsavedDialog({ onLeave, onSave }: { onLeave: () => void; onSave: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onLeave} />
@@ -105,22 +107,20 @@ function UnsavedDialog({ onLeave, onSave }: { onLeave: () => void; onSave: () =>
         animate={{ opacity: 1, y: 0 }}
         className="relative w-full max-w-sm bg-card border border-white/10 rounded-3xl p-6 shadow-2xl"
       >
-        <h3 className="font-display font-bold text-lg text-foreground mb-2">Saqlanmagan o'zgarishlar</h3>
-        <p className="text-sm text-muted-foreground mb-5">
-          O'zgartirishlar saqlanmagan. Chiqib ketasizmi?
-        </p>
+        <h3 className="font-display font-bold text-lg text-foreground mb-2">{t("profile.unsaved.title")}</h3>
+        <p className="text-sm text-muted-foreground mb-5">{t("profile.unsaved.desc")}</p>
         <div className="flex gap-3">
           <button
             onClick={onLeave}
             className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-semibold text-foreground hover:bg-white/10 transition-all"
           >
-            Chiqish
+            {t("profile.unsaved.leave")}
           </button>
           <button
             onClick={onSave}
             className="flex-1 h-11 rounded-2xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 transition-all"
           >
-            Saqlash
+            {t("profile.unsaved.save")}
           </button>
         </div>
       </motion.div>
@@ -165,7 +165,7 @@ function SectionHeader({ title, onBack }: { title: string; onBack: () => void })
   );
 }
 
-function SaveBtn({ loading, onClick }: { loading: boolean; onClick: () => void }) {
+function SaveBtn({ loading, onClick, label }: { loading: boolean; onClick: () => void; label: string }) {
   return (
     <button
       onClick={onClick}
@@ -175,7 +175,7 @@ function SaveBtn({ loading, onClick }: { loading: boolean; onClick: () => void }
       {loading ? (
         <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
       ) : (
-        <><Check className="w-5 h-5" /> Saqlash</>
+        <><Check className="w-5 h-5" /> {label}</>
       )}
     </button>
   );
@@ -245,6 +245,7 @@ function InfoForm({
   onBack: () => void;
   onSaved: (patch: Partial<ProfileData>) => void;
 }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState({
     name:      profile.name      ?? "",
     brandName: profile.brandName ?? "",
@@ -278,9 +279,9 @@ function InfoForm({
     if (ok) {
       setDirty(false);
       onSaved(form);
-      show("Saqlandi ✓");
+      show(t("profile.saved"));
     } else {
-      show("Xatolik yuz berdi", false);
+      show(t("profile.error"), false);
     }
     return ok;
   }
@@ -289,7 +290,7 @@ function InfoForm({
 
   return (
     <>
-      <SectionHeader title={isTeam ? "🏪 Asosiy ma'lumotlar" : "👤 Asosiy ma'lumotlar"} onBack={handleBack} />
+      <SectionHeader title={`${isTeam ? "🏪" : "👤"} ${t("profile.section.info")}`} onBack={handleBack} />
 
       <div className="flex flex-col items-center mb-6">
         {form.avatarUrl ? (
@@ -305,7 +306,7 @@ function InfoForm({
           </div>
         )}
         <label className="mt-2 text-xs text-primary cursor-pointer">
-          {isTeam ? "Logo URL" : "Rasm URL"}
+          {isTeam ? t("profile.info.avatar_label.team") : t("profile.info.avatar_label.solo")}
         </label>
         <input
           value={form.avatarUrl}
@@ -316,15 +317,15 @@ function InfoForm({
       </div>
 
       <div className="space-y-4">
-        <Field label="Ism" value={form.name} onChange={v => update("name", v)} placeholder="Javohirbek" />
+        <Field label={t("profile.info.name")} value={form.name} onChange={v => update("name", v)} placeholder="Javohirbek" />
         <Field
-          label={isTeam ? "Barbershop nomi" : "Barbershop nomi (ixtiyoriy)"}
+          label={isTeam ? t("profile.info.brand") : t("profile.info.brand_optional")}
           value={form.brandName}
           onChange={v => update("brandName", v)}
           placeholder={isTeam ? "Black Star Barbershop" : "JB Barber"}
         />
         <Field
-          label="Telefon"
+          label={t("profile.info.phone")}
           value={form.phone}
           onChange={v => update("phone", v)}
           placeholder="+998 90 123 45 67"
@@ -334,11 +335,11 @@ function InfoForm({
 
       {isTeam && (
         <p className="mt-3 text-xs text-muted-foreground/60 px-1">
-          ❗ Bu ma'lumotlar sahifaga ham ta'sir qiladi
+          {t("profile.info.team_note")}
         </p>
       )}
 
-      <SaveBtn loading={saving} onClick={handleSave} />
+      <SaveBtn loading={saving} onClick={handleSave} label={t("profile.save")} />
       <InlineToast msg={msg} />
       {showDialog && (
         <UnsavedDialog
@@ -363,6 +364,7 @@ function SpecializationsForm({
   onBack: () => void;
   onSaved: (patch: Partial<ProfileData>) => void;
 }) {
+  const { t } = useTranslation();
   const [selected, setSelected] = useState<string[]>(() => parseSpecializations(profile.specializations));
   const [dirty, setDirty] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
@@ -387,19 +389,17 @@ function SpecializationsForm({
     if (ok) {
       setDirty(false);
       onSaved({ specializations: serialized });
-      show("Saqlandi ✓");
+      show(t("profile.saved"));
     } else {
-      show("Xatolik yuz berdi", false);
+      show(t("profile.error"), false);
     }
     return ok;
   }
 
   return (
     <>
-      <SectionHeader title="✂️ Mutaxassislik" onBack={handleBack} />
-      <p className="text-sm text-muted-foreground mb-4">
-        Qaysi xizmatlar bo'yicha mutaxassisligingizni tanlang:
-      </p>
+      <SectionHeader title={`✂️ ${t("profile.section.spec")}`} onBack={handleBack} />
+      <p className="text-sm text-muted-foreground mb-4">{t("profile.spec.select")}</p>
 
       <div className="flex flex-wrap gap-2">
         {SPECIALIZATION_OPTIONS.map(item => {
@@ -420,8 +420,8 @@ function SpecializationsForm({
         })}
       </div>
 
-      <p className="mt-3 text-xs text-muted-foreground/60 px-1">❗ Sahifada ham ko'rinadi</p>
-      <SaveBtn loading={saving} onClick={handleSave} />
+      <p className="mt-3 text-xs text-muted-foreground/60 px-1">{t("profile.spec.visible")}</p>
+      <SaveBtn loading={saving} onClick={handleSave} label={t("profile.save")} />
       <InlineToast msg={msg} />
       {showDialog && (
         <UnsavedDialog
@@ -448,6 +448,7 @@ function BioForm({
   onBack: () => void;
   onSaved: (patch: Partial<ProfileData>) => void;
 }) {
+  const { t } = useTranslation();
   const [bio, setBio] = useState(profile.bio ?? "");
   const [dirty, setDirty] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
@@ -466,23 +467,23 @@ function BioForm({
     if (ok) {
       setDirty(false);
       onSaved({ bio });
-      show("Saqlandi ✓");
+      show(t("profile.saved"));
     } else {
-      show("Xatolik yuz berdi", false);
+      show(t("profile.error"), false);
     }
     return ok;
   }
 
   return (
     <>
-      <SectionHeader title={isTeam ? "📝 Qisqa tavsif" : "📝 Qisqa bio"} onBack={handleBack} />
-      <p className="text-sm text-muted-foreground mb-4">1–2 qator qisqa ma'lumot yozing:</p>
+      <SectionHeader title={`📝 ${isTeam ? t("profile.section.bio.team") : t("profile.section.bio.solo")}`} onBack={handleBack} />
+      <p className="text-sm text-muted-foreground mb-4">{t("profile.bio.hint")}</p>
 
       <div className="relative">
         <textarea
           value={bio}
           onChange={e => { setBio(e.target.value); setDirty(true); }}
-          placeholder="10 yillik tajriba, yuqori sifat kafolati..."
+          placeholder={t("profile.bio.placeholder")}
           maxLength={200}
           rows={4}
           className="w-full px-4 py-3.5 rounded-2xl bg-card border border-white/8 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/40 text-sm resize-none transition-all"
@@ -492,8 +493,8 @@ function BioForm({
         </span>
       </div>
 
-      <p className="mt-2 text-xs text-muted-foreground/60 px-1">❗ Bu qisqa versiya — sahifada ham chiqadi</p>
-      <SaveBtn loading={saving} onClick={handleSave} />
+      <p className="mt-2 text-xs text-muted-foreground/60 px-1">{t("profile.bio.visible")}</p>
+      <SaveBtn loading={saving} onClick={handleSave} label={t("profile.save")} />
       <InlineToast msg={msg} />
       {showDialog && (
         <UnsavedDialog
@@ -518,6 +519,7 @@ function ScheduleForm({
   onBack: () => void;
   onSaved: (patch: Partial<ProfileData>) => void;
 }) {
+  const { t } = useTranslation();
   const [sched, setSched] = useState<WeekSchedule>(() => parseSchedule(profile.scheduleJson));
   const [lunchOn, setLunchOn] = useState(profile.lunchBreakEnabled ?? false);
   const [lunchStart, setLunchStart] = useState(profile.lunchBreakStart ?? "12:00");
@@ -539,17 +541,17 @@ function ScheduleForm({
     for (const day of DAY_KEYS) {
       if (!sched[day].enabled) continue;
       if (sched[day].start >= sched[day].end) {
-        errs.push(`${DAY_LABELS[day]}: boshlanish vaqti tugash vaqtidan oldin bo'lishi kerak`);
+        errs.push(`${t(DAY_KEY_TO_T[day])}: ${t("profile.schedule.title").toLowerCase()} — boshlanish vaqti tugash vaqtidan oldin bo'lishi kerak`);
       }
       if (lunchOn) {
         if (lunchStart < sched[day].start || lunchEnd > sched[day].end) {
-          errs.push(`${DAY_LABELS[day]}: tushlik ish vaqtidan (${sched[day].start}–${sched[day].end}) tashqarida`);
+          errs.push(`${t(DAY_KEY_TO_T[day])}: ${t("profile.schedule.lunch").replace("🍽 ", "")} (${sched[day].start}–${sched[day].end})`);
         }
       }
     }
 
     if (lunchOn && lunchStart >= lunchEnd) {
-      errs.push("Tushlik: boshlanish vaqti tugash vaqtidan oldin bo'lishi kerak");
+      errs.push(`${t("profile.schedule.lunch").replace("🍽 ", "")}: boshlanish vaqti tugash vaqtidan oldin bo'lishi kerak`);
     }
 
     setErrors(errs);
@@ -575,16 +577,16 @@ function ScheduleForm({
     if (ok) {
       setDirty(false);
       onSaved(patch);
-      show("Saqlandi ✓");
+      show(t("profile.saved"));
     } else {
-      show("Xatolik yuz berdi", false);
+      show(t("profile.error"), false);
     }
     return ok;
   }
 
   return (
     <>
-      <SectionHeader title="🕒 Ish vaqti" onBack={handleBack} />
+      <SectionHeader title={`🕒 ${t("profile.section.schedule")}`} onBack={handleBack} />
 
       <div className="space-y-2 mb-5">
         {DAY_KEYS.map(day => (
@@ -601,7 +603,7 @@ function ScheduleForm({
             </button>
 
             <span className={`text-sm font-medium w-24 shrink-0 ${sched[day].enabled ? "text-foreground" : "text-muted-foreground/50"}`}>
-              {DAY_LABELS[day]}
+              {t(DAY_KEY_TO_T[day])}
             </span>
 
             {sched[day].enabled ? (
@@ -621,7 +623,7 @@ function ScheduleForm({
                 />
               </div>
             ) : (
-              <span className="text-xs text-muted-foreground/40 font-medium">YOPIQ</span>
+              <span className="text-xs text-muted-foreground/40 font-medium">{t("profile.schedule.closed")}</span>
             )}
           </div>
         ))}
@@ -632,8 +634,8 @@ function ScheduleForm({
       <div className="bg-card border border-white/6 rounded-2xl p-4">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <p className="font-semibold text-sm text-foreground">🍽 Tushlik vaqti</p>
-            <p className="text-xs text-muted-foreground/60 mt-0.5">Ixtiyoriy</p>
+            <p className="font-semibold text-sm text-foreground">{t("profile.schedule.lunch")}</p>
+            <p className="text-xs text-muted-foreground/60 mt-0.5">{t("profile.schedule.lunch_optional")}</p>
           </div>
           <button
             onClick={() => { setLunchOn(!lunchOn); setDirty(true); }}
@@ -670,8 +672,8 @@ function ScheduleForm({
         </div>
       )}
 
-      <p className="mt-3 text-xs text-muted-foreground/60 px-1">❗ Kalendar va sahifaga ta'sir qiladi</p>
-      <SaveBtn loading={saving} onClick={handleSave} />
+      <p className="mt-3 text-xs text-muted-foreground/60 px-1">{t("profile.schedule.note")}</p>
+      <SaveBtn loading={saving} onClick={handleSave} label={t("profile.save")} />
       <InlineToast msg={msg} />
       {showDialog && (
         <UnsavedDialog
@@ -697,6 +699,7 @@ function isTelegramConnected(): boolean {
 }
 
 function TelegramBanner() {
+  const { t } = useTranslation();
   const [, navigate] = useLocation();
   const [dismissed, setDismissed] = useState(false);
 
@@ -710,15 +713,15 @@ function TelegramBanner() {
     >
       <span className="text-lg shrink-0">⚠️</span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-foreground">Telegram ulanmagan</p>
-        <p className="text-xs text-muted-foreground">Xabarlarni olish uchun ulang</p>
+        <p className="text-sm font-semibold text-foreground">{t("profile.telegram.not_connected")}</p>
+        <p className="text-xs text-muted-foreground">{t("profile.telegram.connect_msg")}</p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <button
           onClick={() => navigate("/verify-telegram")}
           className="h-8 px-3 rounded-xl bg-[#2AABEE] text-white text-xs font-bold hover:bg-[#229ED9] transition-colors"
         >
-          Ulanish
+          {t("profile.telegram.connect_btn")}
         </button>
         <button
           onClick={() => setDismissed(true)}
@@ -733,8 +736,8 @@ function TelegramBanner() {
 
 export default function ProfileSettings() {
   const { user, logout } = useAuth();
+  const { t } = useTranslation();
   const isTeam = user?.mode === "team";
-  const pageTitle = isTeam ? "Barbershop profili" : "Mening profilim";
 
   const { data: profileRaw, isLoading } = useGetProfile();
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -751,7 +754,7 @@ export default function ProfileSettings() {
   if (isLoading || !profile) {
     return (
       <Layout>
-        <div className="py-20 text-center text-muted-foreground text-sm">Yuklanmoqda...</div>
+        <div className="py-20 text-center text-muted-foreground text-sm">{t("loading")}</div>
       </Layout>
     );
   }
@@ -813,26 +816,26 @@ export default function ProfileSettings() {
     {
       key: "info",
       emoji: "👤",
-      title: "Asosiy ma'lumotlar",
-      preview: [profile.name, profile.phone].filter(Boolean).join(" · ") || "To'ldiring",
+      title: t("profile.section.info"),
+      preview: [profile.name, profile.phone].filter(Boolean).join(" · ") || "—",
     },
     {
       key: "specializations",
       emoji: "✂️",
-      title: "Mutaxassislik",
-      preview: specs.length > 0 ? specs.join(", ") : "Tanlanmagan",
+      title: t("profile.section.spec"),
+      preview: specs.length > 0 ? specs.join(", ") : "—",
     },
     {
       key: "bio",
       emoji: "📝",
-      title: "Qisqa bio",
-      preview: profile.bio ? profile.bio.slice(0, 50) + (profile.bio.length > 50 ? "…" : "") : "Yozilmagan",
+      title: t("profile.section.bio.solo"),
+      preview: profile.bio ? profile.bio.slice(0, 50) + (profile.bio.length > 50 ? "…" : "") : "—",
     },
     {
       key: "schedule",
       emoji: "🕒",
-      title: "Ish vaqti",
-      preview: schedulePreview(sched),
+      title: t("profile.section.schedule"),
+      preview: schedulePreview(sched, t),
     },
   ];
 
@@ -840,24 +843,25 @@ export default function ProfileSettings() {
     {
       key: "info",
       emoji: "🏪",
-      title: "Asosiy ma'lumotlar",
-      preview: [profile.brandName || profile.name, profile.phone].filter(Boolean).join(" · ") || "To'ldiring",
+      title: t("profile.section.info"),
+      preview: [profile.brandName || profile.name, profile.phone].filter(Boolean).join(" · ") || "—",
     },
     {
       key: "bio",
       emoji: "📝",
-      title: "Qisqa tavsif",
-      preview: profile.bio ? profile.bio.slice(0, 50) + (profile.bio.length > 50 ? "…" : "") : "Yozilmagan",
+      title: t("profile.section.bio.team"),
+      preview: profile.bio ? profile.bio.slice(0, 50) + (profile.bio.length > 50 ? "…" : "") : "—",
     },
     {
       key: "schedule",
       emoji: "🕒",
-      title: "Ish vaqti",
-      preview: schedulePreview(sched),
+      title: t("profile.section.schedule"),
+      preview: schedulePreview(sched, t),
     },
   ];
 
   const sections = isTeam ? teamSections : soloSections;
+  const pageTitle = isTeam ? t("settings.profile.team") : t("settings.profile.solo");
 
   return (
     <Layout>
@@ -890,7 +894,7 @@ export default function ProfileSettings() {
           onClick={logout}
           className="w-full p-4 rounded-2xl bg-destructive/10 text-destructive font-bold text-base flex items-center justify-center gap-2 hover:bg-destructive/20 transition-all border border-destructive/20"
         >
-          🚪 Hisobdan chiqish
+          🚪 {t("settings.logout")}
         </button>
       </div>
     </Layout>

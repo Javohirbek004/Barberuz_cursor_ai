@@ -47,9 +47,9 @@ const TEAM_BARBERS = [
 
 // ── Mock bookings shown when API returns empty ────────────────────────────────
 const MOCK_INDIVIDUAL_BOOKINGS = [
-  { id: "m1", time: "14:00", client: "Aziz",    service: "Haircut"       },
-  { id: "m2", time: "15:00", client: "Jamshid", service: "Fade"          },
-  { id: "m3", time: "16:30", client: "Olim",    service: "Soqol"         },
+  { id: "m1", time: "14:00", client: "Aziz",    service: "Haircut" },
+  { id: "m2", time: "15:00", client: "Jamshid", service: "Fade"    },
+  { id: "m3", time: "16:30", client: "Olim",    service: "Soqol"   },
 ];
 
 const MOCK_TEAM_BOOKINGS = [
@@ -92,7 +92,7 @@ function StatCard({ label, value, icon: Icon, iconColor, loading, delay = 0 }: S
 
 // ── Individual Barber Dashboard ───────────────────────────────────────────────
 function IndividualDashboard() {
-  const { lang } = useTranslation();
+  const { t } = useTranslation();
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
   const today = new Date().toISOString().split("T")[0];
   const { data: bookingsData, isLoading: bookingsLoading } = useListBookings({ date: today });
@@ -102,14 +102,13 @@ function IndividualDashboard() {
     .filter((b) => b.status !== "cancelled")
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-  // Calculate free slots: assume 9:00–18:00, 30-min slots = 18 total
   const totalSlots = 18;
   const busySlots = (stats?.todayBookings ?? 0);
   const freeSlots = Math.max(0, totalSlots - busySlots);
 
   const statCards: StatCardProps[] = [
     {
-      label: lang === "uz" ? "Bugungi bronlar" : "Брони сегодня",
+      label: t("dash.today_bookings"),
       value: stats?.todayBookings ?? 0,
       icon: CalendarDays,
       iconColor: "text-amber-400",
@@ -117,7 +116,7 @@ function IndividualDashboard() {
       delay: 0,
     },
     {
-      label: lang === "uz" ? "Bugungi daromad" : "Доход сегодня",
+      label: t("dash.today_revenue"),
       value: `${(stats?.todayRevenue ?? 0).toLocaleString()} UZS`,
       icon: Wallet,
       iconColor: "text-emerald-400",
@@ -125,7 +124,7 @@ function IndividualDashboard() {
       delay: 0.05,
     },
     {
-      label: lang === "uz" ? "Bo'sh vaqtlar" : "Свободное время",
+      label: t("dash.free_slots"),
       value: `${freeSlots} ta`,
       icon: Timer,
       iconColor: "text-blue-400",
@@ -133,7 +132,7 @@ function IndividualDashboard() {
       delay: 0.1,
     },
     {
-      label: lang === "uz" ? "Kirishlar" : "Визиты клиентов",
+      label: t("dash.visits"),
       value: stats?.totalClients ?? 0,
       icon: Smartphone,
       iconColor: "text-violet-400",
@@ -141,6 +140,12 @@ function IndividualDashboard() {
       delay: 0.15,
     },
   ];
+
+  const statusLabel = (status: string) => {
+    if (status === "confirmed") return t("status.confirmed");
+    if (status === "pending") return t("status.pending");
+    return t("status.completed");
+  };
 
   return (
     <>
@@ -158,12 +163,12 @@ function IndividualDashboard() {
         transition={{ delay: 0.2 }}
       >
         <h2 className="text-lg font-bold text-foreground mb-4">
-          {lang === "uz" ? "Yaqin bronlar" : "Ближайшие брони"}
+          {t("dash.recent_bookings")}
         </h2>
 
         {bookingsLoading ? (
           <p className="text-muted-foreground text-center py-8 text-sm">
-            {lang === "uz" ? "Yuklanmoqda..." : "Загрузка..."}
+            {t("loading")}
           </p>
         ) : upcomingBookings.length > 0 ? (
           <div className="space-y-2">
@@ -181,7 +186,7 @@ function IndividualDashboard() {
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-foreground truncate">{b.clientName}</div>
                     <div className="text-xs text-muted-foreground truncate">
-                      {b.serviceName || (lang === "uz" ? "Xizmat" : "Услуга")}
+                      {b.serviceName || t("dash.service_fallback")}
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -197,11 +202,7 @@ function IndividualDashboard() {
                           : "bg-white/10 text-white/60"
                         }`}
                     >
-                      {b.status === "confirmed"
-                        ? lang === "uz" ? "Tasdiqlangan" : "Подтверждён"
-                        : b.status === "pending"
-                        ? lang === "uz" ? "Kutilmoqda" : "Ожидает"
-                        : lang === "uz" ? "Yakunlangan" : "Завершён"}
+                      {statusLabel(b.status)}
                     </span>
                   </div>
                 </Card>
@@ -236,7 +237,7 @@ function IndividualDashboard() {
 
 // ── Team / Salon Dashboard ────────────────────────────────────────────────────
 function TeamDashboard() {
-  const { lang } = useTranslation();
+  const { t } = useTranslation();
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
 
   const activeBarbers = TEAM_BARBERS.filter((b) => b.active);
@@ -245,7 +246,7 @@ function TeamDashboard() {
 
   const statCards: StatCardProps[] = [
     {
-      label: lang === "uz" ? "Umumiy bronlar" : "Всего броней",
+      label: t("dash.team_bookings"),
       value: stats?.todayBookings ?? 0,
       icon: CalendarDays,
       iconColor: "text-amber-400",
@@ -253,7 +254,7 @@ function TeamDashboard() {
       delay: 0,
     },
     {
-      label: lang === "uz" ? "Umumiy daromad" : "Общий доход",
+      label: t("dash.team_revenue"),
       value: `${(stats?.todayRevenue ?? 0).toLocaleString()} UZS`,
       icon: Wallet,
       iconColor: "text-emerald-400",
@@ -261,14 +262,14 @@ function TeamDashboard() {
       delay: 0.05,
     },
     {
-      label: lang === "uz" ? "Band ustalar" : "Занятые мастера",
+      label: t("dash.busy_slots"),
       value: busyBarbers,
       icon: HardHat,
       iconColor: "text-orange-400",
       delay: 0.1,
     },
     {
-      label: lang === "uz" ? "Bo'sh ustalar" : "Свободные мастера",
+      label: t("dash.active_barbers"),
       value: freeBarbers,
       icon: Armchair,
       iconColor: "text-blue-400",
@@ -293,7 +294,7 @@ function TeamDashboard() {
         className="mb-8"
       >
         <h2 className="text-lg font-bold text-foreground mb-4">
-          {lang === "uz" ? "Ustalar holati" : "Статус мастеров"}
+          {t("dash.barber_status")}
         </h2>
         <div className="space-y-2">
           {TEAM_BARBERS.map((barber) => (
@@ -313,7 +314,7 @@ function TeamDashboard() {
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span className="text-xs text-muted-foreground">
-                    {barber.bookings > 0 ? `${barber.bookings} ta bron` : ""}
+                    {barber.bookings > 0 ? `${barber.bookings} ${t("dash.bookings_unit")}` : ""}
                   </span>
                   <span
                     className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
@@ -325,10 +326,10 @@ function TeamDashboard() {
                     }`}
                   >
                     {!barber.active
-                      ? "Dam olishda"
+                      ? t("dash.day_off")
                       : barber.bookings > 0
-                      ? lang === "uz" ? "Band" : "Занят"
-                      : lang === "uz" ? "Bo'sh" : "Свободен"}
+                      ? t("dash.busy")
+                      : t("dash.free")}
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40" />
                 </div>
@@ -345,7 +346,7 @@ function TeamDashboard() {
         transition={{ delay: 0.3 }}
       >
         <h2 className="text-lg font-bold text-foreground mb-4">
-          {lang === "uz" ? "Yaqin bronlar" : "Ближайшие брони"}
+          {t("dash.recent_bookings")}
         </h2>
 
         <div className="space-y-2">
@@ -375,7 +376,7 @@ function TeamDashboard() {
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const { lang } = useTranslation();
+  const { t, lang } = useTranslation();
   const [, navigate] = useLocation();
   const { user, isLoading } = useAuth();
 
@@ -389,6 +390,7 @@ export default function Dashboard() {
 
   const isTeam = user.mode === "team";
   const dateStr = formatDateLocale(lang);
+  const activeCount = TEAM_BARBERS.filter((b) => b.active).length;
 
   return (
     <Layout>
@@ -399,14 +401,12 @@ export default function Dashboard() {
         className="mb-6"
       >
         <h1 className="text-2xl font-display font-bold text-foreground">
-          {isTeam ? (lang === "uz" ? "Jamoa" : "Команда") : (lang === "uz" ? "Asosiy" : "Главная")}
+          {isTeam ? t("nav.calendar.team") : t("nav.dashboard")}
         </h1>
         <p className="text-muted-foreground text-sm mt-0.5">{dateStr}</p>
         {isTeam && (
           <p className="text-xs text-emerald-400 mt-1 font-medium">
-            {lang === "uz"
-              ? `Bugun: ${TEAM_BARBERS.filter((b) => b.active).length} usta ishlamoqda`
-              : `Сегодня: ${TEAM_BARBERS.filter((b) => b.active).length} мастеров работает`}
+            {dateStr.split(",")[0]}: {activeCount} {t("dash.masters_working")}
           </p>
         )}
       </motion.div>

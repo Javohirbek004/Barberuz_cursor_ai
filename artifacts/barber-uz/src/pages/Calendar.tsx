@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/i18n/LanguageContext";
 import { Layout } from "@/components/Layout";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, X, Pencil, Ban } from "lucide-react";
@@ -14,21 +15,33 @@ function useAddedBookings(): AddedBooking[] {
   return list;
 }
 
-// ── Uzbek date helpers ────────────────────────────────────────────────────────
+// ── Date helpers ──────────────────────────────────────────────────────────────
 const UZ_MONTHS = [
   "Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
   "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr",
 ];
+const RU_MONTHS = [
+  "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+  "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+];
+
 const UZ_DAY_NAMES = [
   "Yakshanba", "Dushanba", "Seshanba", "Chorshanba",
   "Payshanba", "Juma", "Shanba",
 ];
-const UZ_DAY_SHORT = ["Ya", "Du", "Se", "Cho", "Pa", "Ju", "Sha"];
+const RU_DAY_NAMES = [
+  "Воскресенье", "Понедельник", "Вторник", "Среда",
+  "Четверг", "Пятница", "Суббота",
+];
 
-function formatUzDate(date: Date): string {
+const UZ_DAY_SHORT = ["Ya", "Du", "Se", "Cho", "Pa", "Ju", "Sha"];
+const RU_DAY_SHORT = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+
+function formatDate(date: Date, lang: string): string {
   const d = date.getDate();
-  const m = UZ_MONTHS[date.getMonth()];
-  const wd = UZ_DAY_NAMES[date.getDay()];
+  const m = lang === "ru" ? RU_MONTHS[date.getMonth()] : UZ_MONTHS[date.getMonth()];
+  const wd = lang === "ru" ? RU_DAY_NAMES[date.getDay()] : UZ_DAY_NAMES[date.getDay()];
+  if (lang === "ru") return `${d} ${m.toLowerCase()}, ${wd}`;
   return `${d}-${m.toLowerCase()}, ${wd}`;
 }
 
@@ -67,12 +80,6 @@ interface MockBooking {
 }
 
 // ── Status helpers ────────────────────────────────────────────────────────────
-const STATUS_LABEL: Record<BookingStatus, string> = {
-  confirmed: "Tasdiqlandi",
-  pending: "Kutilmoqda",
-  cancelled: "Bekor qilindi",
-};
-
 const STATUS_DOT: Record<BookingStatus, string> = {
   confirmed: "bg-green-500",
   pending: "bg-yellow-400",
@@ -120,7 +127,7 @@ const TEAM_BOOKINGS: MockBooking[] = [
 ];
 
 // ── Booking Card ──────────────────────────────────────────────────────────────
-function BookingCard({ booking, onClick }: { booking: MockBooking; onClick: () => void }) {
+function BookingCard({ booking, statusLabel, onClick }: { booking: MockBooking; statusLabel: string; onClick: () => void }) {
   return (
     <motion.button
       initial={{ opacity: 0, y: 8 }}
@@ -139,12 +146,12 @@ function BookingCard({ booking, onClick }: { booking: MockBooking; onClick: () =
             {booking.client}
             {booking.barber && (
               <span className="text-muted-foreground font-normal text-xs ml-1.5">
-                ({booking.barber} barber)
+                ({booking.barber})
               </span>
             )}
           </span>
           <span className={`text-xs font-semibold shrink-0 ${STATUS_TEXT[booking.status]}`}>
-            {STATUS_LABEL[booking.status]}
+            {statusLabel}
           </span>
         </div>
         <span className="text-sm text-muted-foreground mt-0.5 block">{booking.service}</span>
@@ -161,6 +168,14 @@ function DetailModal({
   booking: MockBooking;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
+
+  const statusLabelMap: Record<BookingStatus, string> = {
+    confirmed: t("cal.status.confirmed"),
+    pending: t("cal.status.pending"),
+    cancelled: t("cal.status.cancelled"),
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
@@ -194,7 +209,7 @@ function DetailModal({
 
           {/* Title row */}
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-display font-bold text-foreground">Bron tafsilotlari</h2>
+            <h2 className="text-xl font-display font-bold text-foreground">{t("cal.booking_detail")}</h2>
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
               <X className="w-5 h-5" />
             </button>
@@ -202,16 +217,16 @@ function DetailModal({
 
           {/* Fields */}
           <div className="space-y-3">
-            <InfoRow label="Mijoz ismi" value={booking.client} />
-            <InfoRow label="Telefon" value={booking.phone} />
-            <InfoRow label="Xizmat turi" value={booking.service} />
-            <InfoRow label="Vaqt" value={booking.time} />
+            <InfoRow label={t("cal.client")} value={booking.client} />
+            <InfoRow label={t("cal.phone")} value={booking.phone} />
+            <InfoRow label={t("cal.service")} value={booking.service} />
+            <InfoRow label={t("cal.time")} value={booking.time} />
             {booking.barber && <InfoRow label="Barber" value={booking.barber} />}
             <div className="flex items-center justify-between py-3 border-b border-white/5">
-              <span className="text-sm text-muted-foreground">Status</span>
+              <span className="text-sm text-muted-foreground">{t("cal.status")}</span>
               <span className={`flex items-center gap-2 text-sm font-semibold ${STATUS_TEXT[booking.status]}`}>
                 <span className={`w-2.5 h-2.5 rounded-full inline-block ${STATUS_DOT[booking.status]}`} />
-                {STATUS_LABEL[booking.status]}
+                {statusLabelMap[booking.status]}
               </span>
             </div>
           </div>
@@ -223,7 +238,7 @@ function DetailModal({
               className="flex-1 h-12 rounded-2xl border-white/10 gap-2 text-foreground"
             >
               <Pencil className="w-4 h-4" />
-              Tahrirlash
+              {t("cal.edit")}
             </Button>
             <Button
               variant="outline"
@@ -231,13 +246,13 @@ function DetailModal({
               disabled={booking.status === "cancelled"}
             >
               <Ban className="w-4 h-4" />
-              Bekor qilish
+              {t("cal.cancel_booking")}
             </Button>
             <Button
               onClick={onClose}
               className="flex-1 h-12 rounded-2xl bg-primary/20 text-primary hover:bg-primary/30 border-0"
             >
-              Yopish
+              {t("cal.close")}
             </Button>
           </div>
         </motion.div>
@@ -259,15 +274,20 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function WeekNav({
   selected,
   onSelect,
+  lang,
 }: {
   selected: Date;
   onSelect: (d: Date) => void;
+  lang: string;
 }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const today = new Date();
   const anchor = new Date(today);
   anchor.setDate(today.getDate() + weekOffset * 7);
   const days = getWeek(anchor);
+
+  const MONTHS = lang === "ru" ? RU_MONTHS : UZ_MONTHS;
+  const DAY_SHORT = lang === "ru" ? RU_DAY_SHORT : UZ_DAY_SHORT;
 
   return (
     <div className="space-y-2 mb-5">
@@ -280,7 +300,7 @@ function WeekNav({
           <ChevronLeft className="w-5 h-5" />
         </button>
         <span className="text-xs text-muted-foreground font-medium">
-          {UZ_MONTHS[days[0].getMonth()]} {days[0].getFullYear()}
+          {MONTHS[days[0].getMonth()]} {days[0].getFullYear()}
         </span>
         <button
           onClick={() => setWeekOffset((w) => w + 1)}
@@ -308,7 +328,7 @@ function WeekNav({
               }`}
             >
               <span className="text-[10px] font-bold uppercase tracking-wider mb-1">
-                {UZ_DAY_SHORT[dowIdx]}
+                {DAY_SHORT[dowIdx]}
               </span>
               <span
                 className={`text-lg font-display font-bold ${
@@ -331,10 +351,17 @@ function WeekNav({
 
 // ── Individual Calendar ───────────────────────────────────────────────────────
 function IndividualCalendar() {
+  const { t, lang } = useTranslation();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [activeBooking, setActiveBooking] = useState<MockBooking | null>(null);
   const today = new Date();
   const added = useAddedBookings();
+
+  const statusLabelMap: Record<BookingStatus, string> = {
+    confirmed: t("cal.status.confirmed"),
+    pending: t("cal.status.pending"),
+    cancelled: t("cal.status.cancelled"),
+  };
 
   const addedSolo: MockBooking[] = added
     .filter((b) => !b.barber)
@@ -349,30 +376,35 @@ function IndividualCalendar() {
       {/* Header */}
       <div className="flex items-start justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-display font-bold text-foreground">Kalendar</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{formatUzDate(selectedDate)}</p>
+          <h1 className="text-2xl font-display font-bold text-foreground">{t("cal.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{formatDate(selectedDate, lang)}</p>
         </div>
         <Button
           onClick={() => setSelectedDate(today)}
           size="sm"
           className="rounded-full bg-primary/20 text-primary hover:bg-primary/30 border-0 text-xs h-8"
         >
-          Bugun
+          {t("cal.today")}
         </Button>
       </div>
 
       {/* Week nav */}
-      <WeekNav selected={selectedDate} onSelect={setSelectedDate} />
+      <WeekNav selected={selectedDate} onSelect={setSelectedDate} lang={lang} />
 
       {/* Booking list */}
       <div className="space-y-3">
         {bookings.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground text-sm">
-            Bu kun uchun bronlar yo'q
+            {t("cal.empty")}
           </div>
         ) : (
           bookings.map((b) => (
-            <BookingCard key={b.id} booking={b} onClick={() => setActiveBooking(b)} />
+            <BookingCard
+              key={b.id}
+              booking={b}
+              statusLabel={statusLabelMap[b.status]}
+              onClick={() => setActiveBooking(b)}
+            />
           ))
         )}
       </div>
@@ -387,11 +419,18 @@ function IndividualCalendar() {
 
 // ── Team Calendar ─────────────────────────────────────────────────────────────
 function TeamCalendar() {
+  const { t, lang } = useTranslation();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [activeBarber, setActiveBarber] = useState("all");
   const [activeBooking, setActiveBooking] = useState<MockBooking | null>(null);
   const today = new Date();
   const added = useAddedBookings();
+
+  const statusLabelMap: Record<BookingStatus, string> = {
+    confirmed: t("cal.status.confirmed"),
+    pending: t("cal.status.pending"),
+    cancelled: t("cal.status.cancelled"),
+  };
 
   const addedTeam: MockBooking[] = added
     .filter((b) => !!b.barber)
@@ -411,9 +450,9 @@ function TeamCalendar() {
       {/* Header */}
       <div className="flex items-start justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-display font-bold text-foreground">Jamoa Kalendar</h1>
+          <h1 className="text-2xl font-display font-bold text-foreground">{t("cal.team_title")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {formatUzDate(selectedDate)} • {activeCount} usta
+            {formatDate(selectedDate, lang)} • {activeCount} {t("cal.master_count")}
           </p>
         </div>
         <Button
@@ -421,12 +460,12 @@ function TeamCalendar() {
           size="sm"
           className="rounded-full bg-primary/20 text-primary hover:bg-primary/30 border-0 text-xs h-8"
         >
-          Bugun
+          {t("cal.today")}
         </Button>
       </div>
 
       {/* Week nav */}
-      <WeekNav selected={selectedDate} onSelect={setSelectedDate} />
+      <WeekNav selected={selectedDate} onSelect={setSelectedDate} lang={lang} />
 
       {/* Barber filter tabs */}
       <div className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-none">
@@ -462,11 +501,16 @@ function TeamCalendar() {
       <div className="space-y-3">
         {filteredBookings.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground text-sm">
-            Bu kun uchun bronlar yo'q
+            {t("cal.empty")}
           </div>
         ) : (
           filteredBookings.map((b) => (
-            <BookingCard key={b.id} booking={b} onClick={() => setActiveBooking(b)} />
+            <BookingCard
+              key={b.id}
+              booking={b}
+              statusLabel={statusLabelMap[b.status]}
+              onClick={() => setActiveBooking(b)}
+            />
           ))
         )}
       </div>
@@ -490,6 +534,7 @@ function isTelegramConnected(): boolean {
 }
 
 function CalendarTelegramBanner() {
+  const { t } = useTranslation();
   const [, navigate] = useLocation();
   const [dismissed, setDismissed] = useState(false);
 
@@ -503,14 +548,14 @@ function CalendarTelegramBanner() {
     >
       <span className="text-base shrink-0">⚠️</span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-foreground leading-tight">Siz bildirishnomalarni olmayapsiz</p>
+        <p className="text-sm font-semibold text-foreground leading-tight">{t("cal.no_notifications")}</p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <button
           onClick={() => navigate("/verify-telegram")}
           className="h-8 px-3 rounded-xl bg-[#2AABEE] text-white text-xs font-bold hover:bg-[#229ED9] transition-colors"
         >
-          Ulanish
+          {t("cal.connect")}
         </button>
         <button
           onClick={() => setDismissed(true)}

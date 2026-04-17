@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/i18n/LanguageContext";
 import { Layout } from "@/components/Layout";
 import { Link, useLocation } from "wouter";
 import { ChevronRight } from "lucide-react";
@@ -50,12 +51,9 @@ function MenuRow({ item, index }: { item: MenuItem; index: number }) {
   );
 }
 
-function bonusAlert() {
-  alert("Tez kunda qo'shiladi 🔒");
-}
-
-// ── Telegram ulanmagan banner ─────────────────────────────────────────────────
+// ── Telegram banner ───────────────────────────────────────────────────────────
 function TelegramBanner() {
+  const { t } = useTranslation();
   const [, navigate] = useLocation();
   return (
     <motion.div
@@ -70,17 +68,17 @@ function TelegramBanner() {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-bold text-[#2AABEE] leading-tight">
-          ⚠️ Telegram ulanmagan
+          ⚠️ {t("settings.telegram.not_connected")}
         </p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Xabarlarni olish uchun ulang
+          {t("settings.telegram.connect_msg")}
         </p>
       </div>
       <button
         onClick={() => navigate("/verify-telegram")}
         className="shrink-0 h-8 px-3 rounded-xl bg-[#2AABEE] text-white text-xs font-bold hover:bg-[#229ED9] transition-all"
       >
-        Ulanish
+        {t("settings.telegram.connect_btn")}
       </button>
     </motion.div>
   );
@@ -88,13 +86,19 @@ function TelegramBanner() {
 
 // ── Individual view ───────────────────────────────────────────────────────────
 function IndividualSettings({ userName, telegramVerified }: { userName: string; telegramVerified: boolean }) {
+  const { t } = useTranslation();
+
+  function bonusAlert() {
+    alert(t("settings.coming_soon"));
+  }
+
   const items: MenuItem[] = [
-    { href: "/settings/profile",   emoji: "👤", label: "Mening profilim",      sub: "Shaxsiy ma'lumotlar" },
-    { href: "/settings/page",      emoji: "🌐", label: "Mening sahifam",       sub: "Mijozlar ko'radigan sahifa" },
-    { href: "/settings/analytics", emoji: "📊", label: "Tahlil va statistika", sub: "Daromad va bronlar" },
-    { href: "/settings/general",   emoji: "⚙️", label: "Umumiy sozlamalar",    sub: "Bildirishnomalar, xavfsizlik, til" },
-    { onClick: bonusAlert,         emoji: "💰", label: "Bonus dasturi",         sub: "Tez kunda qo'shiladi 🔒" },
-    { href: "/settings/feedback",  emoji: "💬", label: "Fikr va takliflar",     sub: "Bizga xabar yuboring" },
+    { href: "/settings/profile",   emoji: "👤", label: t("settings.profile.solo"),    sub: t("settings.profile.solo_sub") },
+    { href: "/settings/page",      emoji: "🌐", label: t("settings.page.solo"),        sub: t("settings.page.solo_sub") },
+    { href: "/settings/analytics", emoji: "📊", label: t("settings.analytics"),        sub: t("settings.analytics_sub") },
+    { href: "/settings/general",   emoji: "⚙️", label: t("settings.general"),          sub: t("settings.notifications_sub") },
+    { onClick: bonusAlert,         emoji: "💰", label: t("settings.bonus"),            sub: t("settings.bonus_sub") },
+    { href: "/settings/feedback",  emoji: "💬", label: t("settings.feedback"),         sub: t("settings.feedback_sub") },
   ];
 
   return (
@@ -112,10 +116,10 @@ function IndividualSettings({ userName, telegramVerified }: { userName: string; 
           <p className="font-display font-bold text-foreground text-xl leading-tight truncate">
             {userName}
           </p>
-          <p className="text-sm text-muted-foreground mt-0.5">Yakka barber</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("settings.role.solo")}</p>
           <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/10 border border-green-500/20">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs font-semibold text-green-400">Aktiv</span>
+            <span className="text-xs font-semibold text-green-400">{t("settings.active")}</span>
           </div>
         </div>
       </motion.div>
@@ -133,16 +137,21 @@ function IndividualSettings({ userName, telegramVerified }: { userName: string; 
 
 // ── Team view ─────────────────────────────────────────────────────────────────
 function TeamSettings({ brandName, userName }: { brandName: string; userName: string }) {
+  const { t } = useTranslation();
   const displayBrand = brandName || userName || "Barbershop";
 
+  function bonusAlert() {
+    alert(t("settings.coming_soon"));
+  }
+
   const items: MenuItem[] = [
-    { href: "/settings/profile",   emoji: "🏢",  label: "Barbershop profili",   sub: "Salon ma'lumotlari" },
-    { href: "/settings/page",      emoji: "🌐",  label: "Barbershop sahifasi",  sub: "Mijozlar uchun sahifa 🔥" },
-    { href: "/settings/analytics", emoji: "📊",  label: "Tahlil va statistika", sub: "Daromad va bronlar" },
-    { href: "/settings/barbers",   emoji: "👷‍♂️", label: "Ustalar boshqaruvi",  sub: "Ustalarni qo'shish, tahrirlash" },
-    { href: "/settings/general",   emoji: "⚙️",  label: "Umumiy sozlamalar",    sub: "Bildirishnomalar, xavfsizlik, til" },
-    { onClick: bonusAlert,         emoji: "💰",  label: "Bonus dasturi",         sub: "Tez kunda qo'shiladi 🔒" },
-    { href: "/settings/feedback",  emoji: "💬",  label: "Fikr va takliflar",     sub: "Bizga xabar yuboring" },
+    { href: "/settings/profile",   emoji: "🏢",  label: t("settings.profile.team"),   sub: t("settings.profile.team_sub") },
+    { href: "/settings/page",      emoji: "🌐",  label: t("settings.page.team"),       sub: t("settings.page.team_sub") },
+    { href: "/settings/analytics", emoji: "📊",  label: t("settings.analytics"),       sub: t("settings.analytics_sub") },
+    { href: "/settings/barbers",   emoji: "👷‍♂️", label: t("settings.barbers"),         sub: t("settings.barbers_sub") },
+    { href: "/settings/general",   emoji: "⚙️",  label: t("settings.general"),         sub: t("settings.notifications_sub") },
+    { onClick: bonusAlert,         emoji: "💰",  label: t("settings.bonus"),           sub: t("settings.bonus_sub") },
+    { href: "/settings/feedback",  emoji: "💬",  label: t("settings.feedback"),        sub: t("settings.feedback_sub") },
   ];
 
   return (
@@ -161,11 +170,11 @@ function TeamSettings({ brandName, userName }: { brandName: string; userName: st
             {displayBrand}
           </p>
           <p className="text-sm text-muted-foreground mt-0.5">
-            4 usta • Siz: <span className="text-amber-400 font-semibold">Admin</span>
+            4 {t("settings.team_count")} <span className="text-amber-400 font-semibold">{t("settings.role.team_admin")}</span>
           </p>
           <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/10 border border-green-500/20">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs font-semibold text-green-400">Aktiv</span>
+            <span className="text-xs font-semibold text-green-400">{t("settings.active")}</span>
           </div>
         </div>
       </motion.div>
@@ -179,14 +188,20 @@ function TeamSettings({ brandName, userName }: { brandName: string; userName: st
   );
 }
 
-// ── Barber member view (invite orqali qo'shilgan usta) ───────────────────────
+// ── Barber member view ───────────────────────────────────────────────────────
 function BarberMemberSettings({ userName, telegramVerified }: { userName: string; telegramVerified: boolean }) {
+  const { t } = useTranslation();
+
+  function bonusAlert() {
+    alert(t("settings.coming_soon"));
+  }
+
   const items: MenuItem[] = [
-    { href: "/settings/profile",   emoji: "👤", label: "Mening profilim",      sub: "Shaxsiy ma'lumotlar" },
-    { href: "/settings/analytics", emoji: "📊", label: "Tahlil va statistika", sub: "Daromad va bronlar" },
-    { href: "/settings/general",   emoji: "⚙️", label: "Umumiy sozlamalar",    sub: "Bildirishnomalar, xavfsizlik, til" },
-    { onClick: bonusAlert,         emoji: "💰", label: "Bonus dasturi",         sub: "Tez kunda qo'shiladi 🔒" },
-    { href: "/settings/feedback",  emoji: "💬", label: "Fikr va takliflar",     sub: "Bizga xabar yuboring" },
+    { href: "/settings/profile",   emoji: "👤", label: t("settings.profile.solo"),    sub: t("settings.profile.solo_sub") },
+    { href: "/settings/analytics", emoji: "📊", label: t("settings.analytics"),        sub: t("settings.analytics_sub") },
+    { href: "/settings/general",   emoji: "⚙️", label: t("settings.general"),          sub: t("settings.notifications_sub") },
+    { onClick: bonusAlert,         emoji: "💰", label: t("settings.bonus"),            sub: t("settings.bonus_sub") },
+    { href: "/settings/feedback",  emoji: "💬", label: t("settings.feedback"),         sub: t("settings.feedback_sub") },
   ];
 
   return (
@@ -203,10 +218,10 @@ function BarberMemberSettings({ userName, telegramVerified }: { userName: string
           <p className="font-display font-bold text-foreground text-xl leading-tight truncate">
             {userName}
           </p>
-          <p className="text-sm text-muted-foreground mt-0.5">Usta</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("settings.role.member")}</p>
           <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/10 border border-green-500/20">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs font-semibold text-green-400">Aktiv</span>
+            <span className="text-xs font-semibold text-green-400">{t("settings.active")}</span>
           </div>
         </div>
       </motion.div>
@@ -225,6 +240,7 @@ function BarberMemberSettings({ userName, telegramVerified }: { userName: string
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function Settings() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const isTeam = user?.mode === "team";
   const isMember = (user?.mode as string) === "barber_member";
   const userName = user?.name || user?.username || "Barber";
@@ -234,7 +250,7 @@ export default function Settings() {
   return (
     <Layout>
       <div className="mb-6">
-        <h1 className="text-2xl font-display font-bold text-foreground">Sozlamalar</h1>
+        <h1 className="text-2xl font-display font-bold text-foreground">{t("settings.title")}</h1>
       </div>
 
       {isTeam

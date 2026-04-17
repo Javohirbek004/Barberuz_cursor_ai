@@ -53,7 +53,7 @@ export default function SecuritySettings() {
           <ShieldCheck className="w-10 h-10 text-emerald-400" />
         </div>
         <p className="text-muted-foreground text-center px-4">
-          Hisobingiz himoyalangan. Parolingizni vaqti-vaqti bilan yangilab turishni maslahat beramiz.
+          {t('security.protected_msg')}
         </p>
       </div>
 
@@ -76,7 +76,7 @@ export default function SecuritySettings() {
               value={newPassword} 
               onChange={e => setNewPassword(e.target.value)} 
               className="bg-background/50 h-12 border-white/10 focus-visible:ring-primary"
-              placeholder="Kamida 6 ta belgi"
+              placeholder={t('security.new_pwd_placeholder')}
             />
           </div>
         </div>

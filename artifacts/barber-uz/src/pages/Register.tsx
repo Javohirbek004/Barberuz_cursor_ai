@@ -111,7 +111,7 @@ export default function Register() {
           <div className="glass-panel p-6 sm:p-8 rounded-3xl space-y-5">
             {/* Name */}
             <div className="space-y-2">
-              <Label className="text-white/80">Ism (majburiy)</Label>
+              <Label className="text-white/80">{t("register.name_required")}</Label>
               <Input
                 value={formData.name}
                 onChange={(e) => update("name", e.target.value)}
@@ -134,7 +134,7 @@ export default function Register() {
 
             {/* Password */}
             <div className="space-y-2">
-              <Label className="text-white/80">Yangi parol qo'ying</Label>
+              <Label className="text-white/80">{t("register.password_label")}</Label>
               <div className="relative">
                 <Input
                   type={showPassword ? "text" : "password"}
@@ -154,7 +154,7 @@ export default function Register() {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
-              <p className="text-white/40 text-xs">Parol kamida 6ta belgi bo'lishi shart !</p>
+              <p className="text-white/40 text-xs">{t("register.password_hint")}</p>
               {touched.password && pwdTooShort && (
                 <p className="text-red-400 text-xs">{t("register.error.pwd_short")}</p>
               )}
@@ -162,7 +162,7 @@ export default function Register() {
 
             {/* Confirm password */}
             <div className="space-y-2">
-              <Label className="text-white/80">Parolni qayta kiriting</Label>
+              <Label className="text-white/80">{t("register.confirm_password_label")}</Label>
               <div className="relative">
                 <Input
                   type={showConfirm ? "text" : "password"}

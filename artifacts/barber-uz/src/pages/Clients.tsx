@@ -1,19 +1,12 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/i18n/LanguageContext";
 import { Layout } from "@/components/Layout";
 import { useListClients } from "@workspace/api-client-react";
 import { Search, ChevronRight, Phone, Users } from "lucide-react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { MOCK_CLIENTS, SEGMENT_META, type Segment, type MockClient } from "@/data/mockClients";
-
-// ── Segment filter chips ──────────────────────────────────────────────────────
-const SEGMENTS = [
-  { id: "all",     label: "Hammasi",     emoji: "🟢" },
-  { id: "regular", label: "Doimiy",      emoji: "🔥" },
-  { id: "new",     label: "Yangi",       emoji: "✨" },
-  { id: "lost",    label: "Yo'qolgan",   emoji: "⚠️" },
-] as const;
 
 type SegmentFilter = "all" | Segment;
 
@@ -30,6 +23,7 @@ function ClientCard({
   showBarber: boolean;
   index: number;
 }) {
+  const { t } = useTranslation();
   const seg = SEGMENT_META[client.segment];
 
   return (
@@ -64,13 +58,13 @@ function ClientCard({
             </div>
 
             <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-              <span>So'nggi: {client.lastVisit}</span>
+              <span>{t("clients.last_visit")} {client.lastVisit}</span>
               <span>•</span>
-              <span className="text-primary/80 font-medium">{client.visitCount} marta</span>
+              <span className="text-primary/80 font-medium">{client.visitCount} {t("clients.visits")}</span>
               {showBarber && (
                 <>
                   <span>•</span>
-                  <span className="text-muted-foreground">{client.barber} barber</span>
+                  <span className="text-muted-foreground">{client.barber} {t("clients.barber_suffix")}</span>
                 </>
               )}
             </div>
@@ -86,6 +80,7 @@ function ClientCard({
 
 // ── Search bar ────────────────────────────────────────────────────────────────
 function SearchBar({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { t } = useTranslation();
   return (
     <div className="relative mb-5">
       <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-muted-foreground" />
@@ -93,7 +88,7 @@ function SearchBar({ value, onChange }: { value: string; onChange: (v: string) =
         type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Ism yoki telefon bo'yicha qidirish..."
+        placeholder={t("clients.search")}
         className="w-full h-12 pl-10 pr-4 rounded-2xl bg-card border border-white/8 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all text-sm"
       />
     </div>
@@ -108,6 +103,15 @@ function SegmentChips({
   value: SegmentFilter;
   onChange: (v: SegmentFilter) => void;
 }) {
+  const { t } = useTranslation();
+
+  const SEGMENTS = [
+    { id: "all",     label: t("clients.filter.all") },
+    { id: "regular", label: t("clients.filter.regular") },
+    { id: "new",     label: t("clients.filter.new") },
+    { id: "lost",    label: t("clients.filter.lost") },
+  ] as const;
+
   return (
     <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
       {SEGMENTS.map((s) => (
@@ -120,7 +124,6 @@ function SegmentChips({
               : "bg-card border border-white/5 text-muted-foreground hover:bg-white/5"
           }`}
         >
-          <span>{s.emoji}</span>
           {s.label}
         </button>
       ))}
@@ -135,7 +138,6 @@ function useMergedClients(search: string, segment: SegmentFilter) {
     search: search || undefined,
   });
 
-  // Convert API clients to MockClient shape
   const apiClients: MockClient[] = (apiData?.clients ?? []).map((c) => ({
     id: c.id,
     name: c.name,
@@ -148,10 +150,8 @@ function useMergedClients(search: string, segment: SegmentFilter) {
     bookingHistory: [],
   }));
 
-  // When API has no results, fill with mock data
   const base = apiClients.length > 0 ? apiClients : MOCK_CLIENTS;
 
-  // Filter mock data client-side
   const filtered = base.filter((c) => {
     const matchSegment = segment === "all" || c.segment === segment;
     const matchSearch =
@@ -166,6 +166,7 @@ function useMergedClients(search: string, segment: SegmentFilter) {
 
 // ── Individual view ───────────────────────────────────────────────────────────
 function IndividualView() {
+  const { t } = useTranslation();
   const [segment, setSegment] = useState<SegmentFilter>("all");
   const [search, setSearch] = useState("");
 
@@ -174,9 +175,9 @@ function IndividualView() {
   return (
     <>
       <div className="mb-5">
-        <h1 className="text-2xl font-display font-bold text-foreground">Mijozlar</h1>
+        <h1 className="text-2xl font-display font-bold text-foreground">{t("nav.clients")}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          {clients.length} ta mijoz
+          {clients.length} {t("clients.count")}
         </p>
       </div>
 
@@ -187,9 +188,9 @@ function IndividualView() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">Yuklanmoqda...</div>
+        <div className="text-center py-12 text-muted-foreground text-sm">{t("clients.loading")}</div>
       ) : clients.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">Mijoz topilmadi</div>
+        <div className="text-center py-12 text-muted-foreground text-sm">{t("clients.not_found")}</div>
       ) : (
         <div className="space-y-3">
           {clients.map((c, i) => (
@@ -203,13 +204,13 @@ function IndividualView() {
 
 // ── Team view ─────────────────────────────────────────────────────────────────
 function TeamView() {
+  const { t } = useTranslation();
   const [segment, setSegment] = useState<SegmentFilter>("all");
   const [barber, setBarber] = useState<string>("Barchasi");
   const [search, setSearch] = useState("");
 
   const { clients: allClients, isLoading } = useMergedClients(search, segment);
 
-  // Layer 2: barber filter (AND logic with segment already applied)
   const clients = allClients.filter(
     (c) => barber === "Barchasi" || c.barber === barber
   );
@@ -219,9 +220,9 @@ function TeamView() {
       <div className="mb-5">
         <div className="flex items-center gap-2">
           <Users className="w-5 h-5 text-primary" />
-          <h1 className="text-2xl font-display font-bold text-foreground">Mijozlar</h1>
+          <h1 className="text-2xl font-display font-bold text-foreground">{t("nav.clients")}</h1>
         </div>
-        <p className="text-sm text-muted-foreground mt-0.5">Butun barbershop • {clients.length} ta mijoz</p>
+        <p className="text-sm text-muted-foreground mt-0.5">{t("clients.all_shop")} • {clients.length} {t("clients.count")}</p>
       </div>
 
       <SearchBar value={search} onChange={setSearch} />
@@ -249,9 +250,9 @@ function TeamView() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">Yuklanmoqda...</div>
+        <div className="text-center py-12 text-muted-foreground text-sm">{t("clients.loading")}</div>
       ) : clients.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">Mijoz topilmadi</div>
+        <div className="text-center py-12 text-muted-foreground text-sm">{t("clients.not_found")}</div>
       ) : (
         <div className="space-y-3">
           {clients.map((c, i) => (

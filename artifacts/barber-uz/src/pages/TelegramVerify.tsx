@@ -119,18 +119,14 @@ export default function TelegramVerify() {
           </div>
           <div className="space-y-3">
             <h1 className="text-2xl font-display font-bold text-foreground">
-              {lang === "uz" ? "Tasdiqlandi!" : "Подтверждено!"}
+              {t("verify.confirmed.title")}
             </h1>
             <p className="text-muted-foreground text-base px-4 leading-relaxed">
-              {lang === "uz"
-                ? "Ro'yxatdan o'tish yakunlandi. Ilgari ochgan brauzer tabiga qayting — u avtomatik ochiladi."
-                : "Регистрация завершена. Вернитесь во вкладку браузера, которую открыли ранее — она откроется автоматически."}
+              {t("verify.confirmed.desc")}
             </p>
           </div>
           <div className="glass-panel rounded-2xl p-4 text-sm text-muted-foreground">
-            {lang === "uz"
-              ? "Bu tab yopishingiz mumkin."
-              : "Эту вкладку можно закрыть."}
+            {t("verify.confirmed.close")}
           </div>
         </motion.div>
       </div>
@@ -163,30 +159,9 @@ export default function TelegramVerify() {
 
         {/* Steps */}
         <div className="glass-panel rounded-2xl p-5 text-left space-y-3">
-          <Step
-            n={1}
-            text={
-              lang === "uz"
-                ? "Quyidagi tugmani bosib botni oching"
-                : "Нажмите кнопку ниже, чтобы открыть бота"
-            }
-          />
-          <Step
-            n={2}
-            text={
-              lang === "uz"
-                ? `Bot sizga salom beradi va "📱 Raqamni yuborish" tugmasini ko'rasiz`
-                : `Бот поприветствует вас и покажет кнопку "📱 Отправить номер"`
-            }
-          />
-          <Step
-            n={3}
-            text={
-              lang === "uz"
-                ? "Raqamni yuboring — sahifa avtomatik ochiladi"
-                : "Отправьте номер — страница откроется автоматически"
-            }
-          />
+          <Step n={1} text={t("verify.step1")} />
+          <Step n={2} text={t("verify.step2")} />
+          <Step n={3} text={t("verify.step3")} />
         </div>
 
         <a

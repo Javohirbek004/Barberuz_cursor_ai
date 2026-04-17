@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/i18n/LanguageContext";
 import { Layout } from "@/components/Layout";
 import { useParams, Link } from "wouter";
 import { useGetClient } from "@workspace/api-client-react";
@@ -25,11 +26,8 @@ function getMockClient(id: string): MockClient | undefined {
 }
 
 // ── Editable notes ────────────────────────────────────────────────────────────
-function NotesField({
-  initial,
-}: {
-  initial: string;
-}) {
+function NotesField({ initial }: { initial: string }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(initial);
   const [saved, setSaved] = useState(initial);
@@ -47,14 +45,14 @@ function NotesField({
   return (
     <div className="bg-card border border-white/8 rounded-2xl p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-muted-foreground">📝 Eslatma</h3>
+        <h3 className="text-sm font-semibold text-muted-foreground">📝 {t("client.notes")}</h3>
         {!editing ? (
           <button
             onClick={() => setEditing(true)}
             className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
           >
             <Pencil className="w-3.5 h-3.5" />
-            Tahrirlash
+            {t("client.notes.edit")}
           </button>
         ) : (
           <div className="flex items-center gap-2">
@@ -63,14 +61,14 @@ function NotesField({
               className="flex items-center gap-1 text-xs text-green-400 hover:text-green-300 transition-colors font-semibold"
             >
               <Check className="w-3.5 h-3.5" />
-              Saqlash
+              {t("client.notes.save")}
             </button>
             <button
               onClick={cancel}
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <X className="w-3.5 h-3.5" />
-              Bekor
+              {t("client.notes.cancel")}
             </button>
           </div>
         )}
@@ -81,14 +79,14 @@ function NotesField({
           autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="Eslatma yozing..."
+          placeholder={t("client.notes.placeholder")}
           rows={3}
           className="w-full px-3 py-2.5 rounded-xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/40 text-sm resize-none transition-all"
         />
       ) : (
         <p className="text-sm text-foreground/80 leading-relaxed min-h-[2.5rem]">
           {saved || (
-            <span className="text-muted-foreground/50 italic">Eslatma yo'q</span>
+            <span className="text-muted-foreground/50 italic">{t("client.notes.empty")}</span>
           )}
         </p>
       )}
@@ -102,13 +100,15 @@ function BookingHistory({
 }: {
   history: { date: string; service: string; price: string }[];
 }) {
+  const { t } = useTranslation();
+
   if (history.length === 0) return null;
 
   return (
     <div className="bg-card border border-white/8 rounded-2xl p-4">
       <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
         <CalendarDays className="w-4 h-4" />
-        Bronlar tarixi
+        {t("client.history")}
       </h3>
       <div className="space-y-2">
         {history.map((h, i) => (
@@ -125,7 +125,7 @@ function BookingHistory({
                 <p className="text-xs text-muted-foreground mt-0.5">{h.date}</p>
               </div>
             </div>
-            <span className="text-sm font-semibold text-primary">{h.price} so'm</span>
+            <span className="text-sm font-semibold text-primary">{h.price} {t("client.spent_unit")}</span>
           </div>
         ))}
       </div>
@@ -135,6 +135,7 @@ function BookingHistory({
 
 // ── Mock client detail page ───────────────────────────────────────────────────
 function MockClientDetail({ client }: { client: MockClient }) {
+  const { t } = useTranslation();
   const { user } = useAuth(false);
   const isTeam = user?.mode === "team";
   const seg = SEGMENT_META[client.segment];
@@ -148,7 +149,7 @@ function MockClientDetail({ client }: { client: MockClient }) {
             <ChevronLeft className="w-5 h-5" />
           </button>
         </Link>
-        <h1 className="text-lg font-display font-bold text-foreground">Mijoz profili</h1>
+        <h1 className="text-lg font-display font-bold text-foreground">{t("client.profile")}</h1>
       </div>
 
       {/* Avatar + name */}
@@ -170,16 +171,16 @@ function MockClientDetail({ client }: { client: MockClient }) {
         {/* Barber (team mode only) */}
         {isTeam && (
           <p className="mt-1.5 text-xs text-muted-foreground">
-            {client.barber} barber
+            {client.barber} {t("client.barber_suffix")}
           </p>
         )}
       </motion.div>
 
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3 mb-5">
-        <StatBox label="Tashriflar" value={`${client.visitCount} marta`} />
-        <StatBox label="So'nggi tashrif" value={client.lastVisit} />
-        <StatBox label="Holat" value={seg.label} />
+        <StatBox label={t("client.visits")} value={`${client.visitCount} ${t("client.visits_unit")}`} />
+        <StatBox label={t("client.last_visit")} value={client.lastVisit} />
+        <StatBox label={t("client.status")} value={seg.label} />
       </div>
 
       {/* Action buttons */}
@@ -189,11 +190,11 @@ function MockClientDetail({ client }: { client: MockClient }) {
           className="flex-1 flex items-center justify-center gap-2 h-12 rounded-2xl bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 transition-all font-semibold text-sm"
         >
           <Phone className="w-4 h-4" />
-          📞 Qo'ng'iroq
+          📞 {t("client.call")}
         </a>
         <button className="flex-1 flex items-center justify-center gap-2 h-12 rounded-2xl bg-card border border-white/8 text-foreground hover:bg-white/5 transition-all font-semibold text-sm">
           <Pencil className="w-4 h-4 text-primary" />
-          ✏️ Tahrirlash
+          ✏️ {t("client.edit")}
         </button>
       </div>
 
@@ -203,7 +204,7 @@ function MockClientDetail({ client }: { client: MockClient }) {
           <Phone className="w-4 h-4 text-primary" />
         </div>
         <div>
-          <p className="text-xs text-muted-foreground">Telefon raqam</p>
+          <p className="text-xs text-muted-foreground">{t("client.phone")}</p>
           <p className="text-sm font-semibold text-foreground">{client.phone}</p>
         </div>
       </div>
@@ -221,6 +222,7 @@ function MockClientDetail({ client }: { client: MockClient }) {
 
 // ── API client detail page ────────────────────────────────────────────────────
 function ApiClientDetail({ id }: { id: string }) {
+  const { t } = useTranslation();
   const { user } = useAuth(false);
   const isTeam = user?.mode === "team";
 
@@ -232,7 +234,7 @@ function ApiClientDetail({ id }: { id: string }) {
     return (
       <Layout>
         <div className="flex justify-center items-center py-20 text-muted-foreground text-sm">
-          Yuklanmoqda...
+          {t("client.loading")}
         </div>
       </Layout>
     );
@@ -242,10 +244,10 @@ function ApiClientDetail({ id }: { id: string }) {
     return (
       <Layout>
         <div className="text-center py-20">
-          <p className="text-muted-foreground text-sm">Mijoz topilmadi</p>
+          <p className="text-muted-foreground text-sm">{t("client.not_found")}</p>
           <Link href="/clients">
             <button className="mt-4 px-4 py-2 rounded-xl bg-primary/20 text-primary text-sm">
-              Orqaga
+              {t("client.back")}
             </button>
           </Link>
         </div>
@@ -264,7 +266,7 @@ function ApiClientDetail({ id }: { id: string }) {
             <ChevronLeft className="w-5 h-5" />
           </button>
         </Link>
-        <h1 className="text-lg font-display font-bold text-foreground">Mijoz profili</h1>
+        <h1 className="text-lg font-display font-bold text-foreground">{t("client.profile")}</h1>
       </div>
 
       {/* Avatar */}
@@ -286,8 +288,8 @@ function ApiClientDetail({ id }: { id: string }) {
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 mb-5">
-        <StatBox label="Tashriflar" value={`${client.visitCount} marta`} />
-        <StatBox label="Xarajat" value={`${client.totalSpent?.toLocaleString() ?? 0} so'm`} />
+        <StatBox label={t("client.visits")} value={`${client.visitCount} ${t("client.visits_unit")}`} />
+        <StatBox label={t("client.spent")} value={`${client.totalSpent?.toLocaleString() ?? 0} ${t("client.spent_unit")}`} />
       </div>
 
       {/* Buttons */}
@@ -298,11 +300,11 @@ function ApiClientDetail({ id }: { id: string }) {
             className="flex-1 flex items-center justify-center gap-2 h-12 rounded-2xl bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 transition-all font-semibold text-sm"
           >
             <Phone className="w-4 h-4" />
-            📞 Qo'ng'iroq
+            📞 {t("client.call")}
           </a>
           <button className="flex-1 flex items-center justify-center gap-2 h-12 rounded-2xl bg-card border border-white/8 text-foreground hover:bg-white/5 transition-all font-semibold text-sm">
             <Pencil className="w-4 h-4 text-primary" />
-            ✏️ Tahrirlash
+            ✏️ {t("client.edit")}
           </button>
         </div>
       )}
@@ -314,7 +316,7 @@ function ApiClientDetail({ id }: { id: string }) {
             <Phone className="w-4 h-4 text-primary" />
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Telefon raqam</p>
+            <p className="text-xs text-muted-foreground">{t("client.phone")}</p>
             <p className="text-sm font-semibold text-foreground">{client.phone}</p>
           </div>
         </div>
@@ -340,6 +342,7 @@ function StatBox({ label, value }: { label: string; value: string }) {
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function ClientDetail() {
+  const { t } = useTranslation();
   useAuth();
   const { id } = useParams<{ id: string }>();
 
@@ -350,7 +353,7 @@ export default function ClientDetail() {
     if (!mock) {
       return (
         <Layout>
-          <div className="text-center py-20 text-muted-foreground text-sm">Topilmadi</div>
+          <div className="text-center py-20 text-muted-foreground text-sm">{t("client.not_found_short")}</div>
         </Layout>
       );
     }
