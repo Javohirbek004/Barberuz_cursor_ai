@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
@@ -16,11 +16,19 @@ export default function LanguageSettings() {
   useAuth();
   const { lang, setLang } = useTranslation();
   const [saved, setSaved] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   const handleSelect = (code: Language) => {
     setLang(code);
     setSaved(true);
-    setTimeout(() => setSaved(false), 1800);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setSaved(false), 1800);
   };
 
   return (
@@ -58,7 +66,7 @@ export default function LanguageSettings() {
             className="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl border transition-all"
             style={{
               background: lang === code ? "hsl(var(--primary) / 0.08)" : "hsl(var(--card))",
-              borderColor: lang === code ? "hsl(var(--primary) / 0.3)" : "rgba(255,255,255,0.06)",
+              borderColor: lang === code ? "hsl(var(--primary) / 0.3)" : "hsl(var(--border))",
             }}
           >
             <span className="text-2xl">{emoji}</span>

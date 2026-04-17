@@ -37,7 +37,7 @@ export default function ThemeSettings() {
             className="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl border transition-all"
             style={{
               background: theme === code ? "hsl(var(--primary) / 0.08)" : "hsl(var(--card))",
-              borderColor: theme === code ? "hsl(var(--primary) / 0.3)" : "rgba(255,255,255,0.06)",
+              borderColor: theme === code ? "hsl(var(--primary) / 0.3)" : "hsl(var(--border))",
             }}
           >
             <span className="text-2xl">{emoji}</span>
