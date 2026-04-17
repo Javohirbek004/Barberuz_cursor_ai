@@ -23,6 +23,8 @@ import BonusPage from "@/pages/settings/BonusPage";
 import FeedbackPage from "@/pages/settings/FeedbackPage";
 import BarbersPage from "@/pages/settings/BarbersPage";
 import GeneralSettings from "@/pages/settings/GeneralSettings";
+import LanguageSettings from "@/pages/settings/LanguageSettings";
+import ThemeSettings from "@/pages/settings/ThemeSettings";
 import BarberSetup from "@/pages/BarberSetup";
 
 const queryClient = new QueryClient({
@@ -65,6 +67,8 @@ function AppRoutes() {
       <Route path="/settings/feedback" component={FeedbackPage} />
       <Route path="/settings/barbers" component={BarbersPage} />
       <Route path="/settings/general" component={GeneralSettings} />
+      <Route path="/settings/language" component={LanguageSettings} />
+      <Route path="/settings/theme" component={ThemeSettings} />
       <Route path="/barber-setup/:token" component={BarberSetup} />
 
       <Route component={NotFound} />
