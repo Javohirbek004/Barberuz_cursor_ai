@@ -105,8 +105,7 @@ const SOLO_BOOKINGS: MockBooking[] = [
   { id: "b3", time: "17:00", client: "Olim", phone: "+998 93 345 67 89", service: "Bolalar uchun", status: "cancelled" },
 ];
 
-const TEAM_BARBERS = [
-  { id: "all", name: "Barchasi", count: null },
+const TEAM_BARBER_INDIVIDUALS = [
   { id: "sardor", name: "Sardor", count: 5 },
   { id: "jasur", name: "Jasur", count: 3 },
   { id: "ali", name: "Ali", count: 0 },
@@ -443,7 +442,11 @@ function TeamCalendar() {
       ? allTeam
       : allTeam.filter((b) => b.barber?.toLowerCase() === activeBarber);
 
-  const activeCount = TEAM_BARBERS.filter((b) => b.id !== "all").length;
+  const activeCount = TEAM_BARBER_INDIVIDUALS.length;
+  const TEAM_BARBERS = [
+    { id: "all", name: t("team.all"), count: null },
+    ...TEAM_BARBER_INDIVIDUALS,
+  ];
 
   return (
     <>

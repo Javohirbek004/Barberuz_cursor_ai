@@ -139,6 +139,7 @@ function MockClientDetail({ client }: { client: MockClient }) {
   const { user } = useAuth(false);
   const isTeam = user?.mode === "team";
   const seg = SEGMENT_META[client.segment];
+  const segLabel = t(`segment.${client.segment}` as `segment.regular` | `segment.new` | `segment.lost`);
 
   return (
     <Layout>
@@ -165,7 +166,7 @@ function MockClientDetail({ client }: { client: MockClient }) {
 
         {/* Segment badge */}
         <span className={`mt-2 inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full border ${seg.bg} ${seg.color}`}>
-          {seg.emoji} {seg.label}
+          {seg.emoji} {segLabel}
         </span>
 
         {/* Barber (team mode only) */}
@@ -180,7 +181,7 @@ function MockClientDetail({ client }: { client: MockClient }) {
       <div className="grid grid-cols-3 gap-3 mb-5">
         <StatBox label={t("client.visits")} value={`${client.visitCount} ${t("client.visits_unit")}`} />
         <StatBox label={t("client.last_visit")} value={client.lastVisit} />
-        <StatBox label={t("client.status")} value={seg.label} />
+        <StatBox label={t("client.status")} value={segLabel} />
       </div>
 
       {/* Action buttons */}

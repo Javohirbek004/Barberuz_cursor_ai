@@ -11,7 +11,7 @@ import { MOCK_CLIENTS, SEGMENT_META, type Segment, type MockClient } from "@/dat
 type SegmentFilter = "all" | Segment;
 
 // ── Team barbers ──────────────────────────────────────────────────────────────
-const TEAM_BARBERS = ["Barchasi", "Sardor", "Jasur", "Ali", "Kamol"] as const;
+const TEAM_BARBER_NAMES = ["Sardor", "Jasur", "Ali", "Kamol"] as const;
 
 // ── Client card ───────────────────────────────────────────────────────────────
 function ClientCard({
@@ -25,6 +25,7 @@ function ClientCard({
 }) {
   const { t } = useTranslation();
   const seg = SEGMENT_META[client.segment];
+  const segLabel = t(`segment.${client.segment}` as `segment.regular` | `segment.new` | `segment.lost`);
 
   return (
     <motion.div
@@ -46,7 +47,7 @@ function ClientCard({
                 {client.name}
               </span>
               <span className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full border ${seg.bg} ${seg.color}`}>
-                {seg.emoji} {seg.label}
+                {seg.emoji} {segLabel}
               </span>
             </div>
 
@@ -206,14 +207,17 @@ function IndividualView() {
 function TeamView() {
   const { t } = useTranslation();
   const [segment, setSegment] = useState<SegmentFilter>("all");
-  const [barber, setBarber] = useState<string>("Barchasi");
+  const [barber, setBarber] = useState<string>("__all__");
   const [search, setSearch] = useState("");
 
   const { clients: allClients, isLoading } = useMergedClients(search, segment);
 
   const clients = allClients.filter(
-    (c) => barber === "Barchasi" || c.barber === barber
+    (c) => barber === "__all__" || c.barber === barber
   );
+
+  const allBarberLabel = t("team.all");
+  const barberList = [allBarberLabel, ...TEAM_BARBER_NAMES];
 
   return (
     <>
@@ -234,19 +238,22 @@ function TeamView() {
 
       {/* Layer 2: Barber */}
       <div className="flex gap-2 overflow-x-auto pb-1 mb-4 scrollbar-none">
-        {TEAM_BARBERS.map((b) => (
+        {barberList.map((b) => {
+          const id = b === allBarberLabel ? "__all__" : b;
+          return (
           <button
-            key={b}
-            onClick={() => setBarber(b)}
+            key={id}
+            onClick={() => setBarber(id)}
             className={`shrink-0 px-3.5 py-2 rounded-2xl text-sm font-medium border transition-all ${
-              barber === b
+              barber === id
                 ? "bg-foreground/10 border-foreground/20 text-foreground"
                 : "bg-card border-white/5 text-muted-foreground hover:bg-white/5"
             }`}
           >
             {b}
           </button>
-        ))}
+          );
+        })}
       </div>
 
       {isLoading ? (
