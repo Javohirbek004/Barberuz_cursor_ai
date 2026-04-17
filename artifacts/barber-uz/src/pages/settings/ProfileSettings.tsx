@@ -541,17 +541,17 @@ function ScheduleForm({
     for (const day of DAY_KEYS) {
       if (!sched[day].enabled) continue;
       if (sched[day].start >= sched[day].end) {
-        errs.push(`${t(DAY_KEY_TO_T[day])}: ${t("profile.schedule.title").toLowerCase()} — boshlanish vaqti tugash vaqtidan oldin bo'lishi kerak`);
+        errs.push(`${t(DAY_KEY_TO_T[day])}: ${t("profile.schedule.error.time_order")}`);
       }
       if (lunchOn) {
         if (lunchStart < sched[day].start || lunchEnd > sched[day].end) {
-          errs.push(`${t(DAY_KEY_TO_T[day])}: ${t("profile.schedule.lunch").replace("🍽 ", "")} (${sched[day].start}–${sched[day].end})`);
+          errs.push(`${t(DAY_KEY_TO_T[day])}: ${t("profile.schedule.error.lunch_outside")} (${sched[day].start}–${sched[day].end})`);
         }
       }
     }
 
     if (lunchOn && lunchStart >= lunchEnd) {
-      errs.push(`${t("profile.schedule.lunch").replace("🍽 ", "")}: boshlanish vaqti tugash vaqtidan oldin bo'lishi kerak`);
+      errs.push(`${t("profile.schedule.lunch").replace("🍽 ", "")}: ${t("profile.schedule.error.time_order")}`);
     }
 
     setErrors(errs);

@@ -6,7 +6,7 @@ import { Link } from "wouter";
 import { useGetNotificationSettings, useUpdateNotificationSettings } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, BellRing, BellOff, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function NotificationSettings() {
@@ -64,12 +64,14 @@ export default function NotificationSettings() {
           </p>
           <div className="space-y-2">
             <SwitchRow
+              icon={<BellRing className="w-4 h-4 text-primary" />}
               title={t("notif.new_booking")}
               desc={t("notif.new_booking_desc")}
               checked={formData.newBooking}
               onChange={v => handleChange("newBooking", v)}
             />
             <SwitchRow
+              icon={<BellOff className="w-4 h-4 text-red-400" />}
               title={t("notif.cancellation")}
               desc={t("notif.cancellation_desc")}
               checked={formData.cancellation}
@@ -84,6 +86,7 @@ export default function NotificationSettings() {
           </p>
           <div className="space-y-2">
             <SwitchRow
+              icon={<Clock className="w-4 h-4 text-amber-400" />}
               title={t("notif.reminder")}
               desc={t("notif.reminder_desc")}
               checked={formData.reminders}
@@ -97,11 +100,13 @@ export default function NotificationSettings() {
 }
 
 function SwitchRow({
+  icon,
   title,
   desc,
   checked,
   onChange,
 }: {
+  icon: React.ReactNode;
   title: string;
   desc: string;
   checked: boolean;
@@ -110,6 +115,9 @@ function SwitchRow({
   return (
     <div className="bg-card/50 px-4 py-4 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
       <div className="flex items-start gap-3 flex-1 min-w-0">
+        <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0 mt-0.5">
+          {icon}
+        </div>
         <div className="min-w-0">
           <p className="font-semibold text-sm text-foreground leading-tight">{title}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>

@@ -221,7 +221,7 @@ function DetailModal({
             <InfoRow label={t("cal.phone")} value={booking.phone} />
             <InfoRow label={t("cal.service")} value={booking.service} />
             <InfoRow label={t("cal.time")} value={booking.time} />
-            {booking.barber && <InfoRow label="Barber" value={booking.barber} />}
+            {booking.barber && <InfoRow label={t("cal.barber")} value={booking.barber} />}
             <div className="flex items-center justify-between py-3 border-b border-white/5">
               <span className="text-sm text-muted-foreground">{t("cal.status")}</span>
               <span className={`flex items-center gap-2 text-sm font-semibold ${STATUS_TEXT[booking.status]}`}>

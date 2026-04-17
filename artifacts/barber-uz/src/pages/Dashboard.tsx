@@ -125,7 +125,7 @@ function IndividualDashboard() {
     },
     {
       label: t("dash.free_slots"),
-      value: `${freeSlots} ta`,
+      value: `${freeSlots}${t("dash.slots_unit") ? " " + t("dash.slots_unit") : ""}`,
       icon: Timer,
       iconColor: "text-blue-400",
       loading: statsLoading,
