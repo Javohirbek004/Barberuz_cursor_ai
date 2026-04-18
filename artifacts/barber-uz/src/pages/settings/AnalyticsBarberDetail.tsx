@@ -165,8 +165,9 @@ export default function AnalyticsBarberDetail({ params }: Props) {
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <Link href="/settings/analytics">
-          <button className="w-10 h-10 rounded-2xl bg-card border border-white/8 flex items-center justify-center hover:bg-white/5 transition-colors">
-            <ChevronLeft className="w-5 h-5" />
+          <button className="flex items-center gap-1.5 h-10 px-3 rounded-2xl bg-card border border-white/8 hover:bg-white/5 transition-colors text-sm font-semibold">
+            <ChevronLeft className="w-4 h-4" />
+            Orqaga
           </button>
         </Link>
         <h1 className="text-xl font-display font-bold text-foreground">

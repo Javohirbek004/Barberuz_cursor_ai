@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -367,8 +367,8 @@ function JamoaAnalytics({ period }: { period: Period }) {
         </div>
       </Section>
 
-      {/* Insight */}
-      <Section title="📈 Insight" index={2}>
+      {/* Ko'rsatkich */}
+      <Section title="📈 Ko'rsatkich" index={2}>
         <div className="space-y-3">
           <div className="flex items-start gap-3">
             <span className="text-lg">🏆</span>
