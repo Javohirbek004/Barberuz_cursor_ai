@@ -735,7 +735,7 @@ function TelegramBanner() {
 }
 
 export default function ProfileSettings() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { t } = useTranslation();
   const isTeam = user?.mode === "team";
 
@@ -889,14 +889,6 @@ export default function ProfileSettings() {
         ))}
       </div>
 
-      <div className="mt-8 pb-4">
-        <button
-          onClick={logout}
-          className="w-full p-4 rounded-2xl bg-destructive/10 text-destructive font-bold text-base flex items-center justify-center gap-2 hover:bg-destructive/20 transition-all border border-destructive/20"
-        >
-          🚪 {t("settings.logout")}
-        </button>
-      </div>
     </Layout>
   );
 }
