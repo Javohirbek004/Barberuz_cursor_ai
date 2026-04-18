@@ -17,6 +17,7 @@ import Settings from "@/pages/Settings";
 import ProfileSettings from "@/pages/settings/ProfileSettings";
 import NotificationSettings from "@/pages/settings/NotificationSettings";
 import AnalyticsPage from "@/pages/settings/Analytics";
+import AnalyticsBarberDetail from "@/pages/settings/AnalyticsBarberDetail";
 import SecuritySettings from "@/pages/settings/Security";
 import PersonalPage from "@/pages/settings/PersonalPage";
 import BonusPage from "@/pages/settings/BonusPage";
@@ -62,6 +63,7 @@ function AppRoutes() {
       <Route path="/settings/page" component={PersonalPage} />
       <Route path="/settings/notifications" component={NotificationSettings} />
       <Route path="/settings/analytics" component={AnalyticsPage} />
+      <Route path="/settings/analytics/barber/:name" component={AnalyticsBarberDetail} />
       <Route path="/settings/security" component={SecuritySettings} />
       <Route path="/settings/bonus" component={BonusPage} />
       <Route path="/settings/feedback" component={FeedbackPage} />
