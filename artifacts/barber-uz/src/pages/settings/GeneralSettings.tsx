@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { ChevronLeft, ChevronRight, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "@/i18n/LanguageContext";
@@ -50,14 +50,12 @@ export default function GeneralSettings() {
   const { logout } = useAuth();
   const { lang } = useTranslation();
   const { theme } = useTheme();
-  const [, navigate] = useLocation();
   const [showConfirm, setShowConfirm] = useState(false);
 
   function handleLogoutConfirm() {
     setShowConfirm(false);
     localStorage.clear();
     logout();
-    navigate("/login");
   }
 
   return (
