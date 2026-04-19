@@ -88,16 +88,11 @@ function TelegramBanner() {
 function IndividualSettings({ userName, telegramVerified }: { userName: string; telegramVerified: boolean }) {
   const { t } = useTranslation();
 
-  function bonusAlert() {
-    alert(t("settings.coming_soon"));
-  }
-
   const items: MenuItem[] = [
     { href: "/settings/profile",   emoji: "👤", label: t("settings.profile.solo"),    sub: t("settings.profile.solo_sub") },
     { href: "/settings/page",      emoji: "🌐", label: t("settings.page.solo"),        sub: t("settings.page.solo_sub") },
     { href: "/settings/analytics", emoji: "📊", label: t("settings.analytics"),        sub: t("settings.analytics_sub") },
     { href: "/settings/general",   emoji: "⚙️", label: t("settings.general"),          sub: t("settings.notifications_sub") },
-    { onClick: bonusAlert,         emoji: "💰", label: t("settings.bonus"),            sub: t("settings.bonus_sub") },
     { href: "/settings/feedback",  emoji: "💬", label: t("settings.feedback"),         sub: t("settings.feedback_sub") },
   ];
 
@@ -140,17 +135,12 @@ function TeamSettings({ brandName, userName }: { brandName: string; userName: st
   const { t } = useTranslation();
   const displayBrand = brandName || userName || "Barbershop";
 
-  function bonusAlert() {
-    alert(t("settings.coming_soon"));
-  }
-
   const items: MenuItem[] = [
     { href: "/settings/profile",   emoji: "🏢",  label: t("settings.profile.team"),   sub: t("settings.profile.team_sub") },
     { href: "/settings/page",      emoji: "🌐",  label: t("settings.page.team"),       sub: t("settings.page.team_sub") },
     { href: "/settings/analytics", emoji: "📊",  label: t("settings.analytics"),       sub: t("settings.analytics_sub") },
     { href: "/settings/barbers",   emoji: "👷‍♂️", label: t("settings.barbers"),         sub: t("settings.barbers_sub") },
     { href: "/settings/general",   emoji: "⚙️",  label: t("settings.general"),         sub: t("settings.notifications_sub") },
-    { onClick: bonusAlert,         emoji: "💰",  label: t("settings.bonus"),           sub: t("settings.bonus_sub") },
     { href: "/settings/feedback",  emoji: "💬",  label: t("settings.feedback"),        sub: t("settings.feedback_sub") },
   ];
 
@@ -192,15 +182,10 @@ function TeamSettings({ brandName, userName }: { brandName: string; userName: st
 function BarberMemberSettings({ userName, telegramVerified }: { userName: string; telegramVerified: boolean }) {
   const { t } = useTranslation();
 
-  function bonusAlert() {
-    alert(t("settings.coming_soon"));
-  }
-
   const items: MenuItem[] = [
     { href: "/settings/profile",   emoji: "👤", label: t("settings.profile.solo"),    sub: t("settings.profile.solo_sub") },
     { href: "/settings/analytics", emoji: "📊", label: t("settings.analytics"),        sub: t("settings.analytics_sub") },
     { href: "/settings/general",   emoji: "⚙️", label: t("settings.general"),          sub: t("settings.notifications_sub") },
-    { onClick: bonusAlert,         emoji: "💰", label: t("settings.bonus"),            sub: t("settings.bonus_sub") },
     { href: "/settings/feedback",  emoji: "💬", label: t("settings.feedback"),         sub: t("settings.feedback_sub") },
   ];
 
