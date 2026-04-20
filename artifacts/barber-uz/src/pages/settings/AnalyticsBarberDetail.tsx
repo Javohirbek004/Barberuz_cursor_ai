@@ -1,93 +1,34 @@
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
 import { ChevronLeft } from "lucide-react";
 import { motion } from "framer-motion";
 
-// ── Mock data per barber ──────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-type BarberStats = {
+type Period = "bugun" | "hafta" | "oy";
+
+const PERIOD_API: Record<Period, string> = {
+  bugun: "today",
+  hafta: "week",
+  oy: "month",
+};
+
+interface BarberStats {
+  barberId: string;
+  name: string;
   revenue: number;
   clients: number;
+  activeBookings: number;
+  totalBookings: number;
   cancelled: number;
   noshow: number;
-  topService: { name: string; count: number };
+  topService: { name: string; count: number } | null;
   busiestTime: string;
-  traffic: { source: string; visits: number; bookings: number }[];
   daily: { day: string; clients: number; revenue: number }[];
   tips: string[];
-};
-
-const BARBER_MOCK: Record<string, BarberStats> = {
-  Sardor: {
-    revenue: 2_000_000, clients: 20, cancelled: 2, noshow: 1,
-    topService: { name: "Fade", count: 10 },
-    busiestTime: "17:00 – 20:00",
-    traffic: [
-      { source: "QR", visits: 12, bookings: 6 },
-      { source: "Link", visits: 18, bookings: 7 },
-      { source: "Direct", visits: 5, bookings: 2 },
-    ],
-    daily: [
-      { day: "Dushanba", clients: 4, revenue: 400_000 },
-      { day: "Seshanba", clients: 3, revenue: 300_000 },
-      { day: "Chorshanba", clients: 5, revenue: 500_000 },
-      { day: "Payshanba", clients: 4, revenue: 400_000 },
-      { day: "Juma", clients: 4, revenue: 400_000 },
-    ],
-    tips: [
-      "Kechki vaqtlar juda samarali",
-      "No-show past — yaxshi natija",
-      "Fade eng daromadli xizmat",
-    ],
-  },
-  Javohir: {
-    revenue: 1_800_000, clients: 18, cancelled: 3, noshow: 2,
-    topService: { name: "Classic", count: 9 },
-    busiestTime: "16:00 – 19:00",
-    traffic: [
-      { source: "QR", visits: 10, bookings: 5 },
-      { source: "Link", visits: 15, bookings: 6 },
-      { source: "Direct", visits: 4, bookings: 2 },
-    ],
-    daily: [
-      { day: "Dushanba", clients: 3, revenue: 300_000 },
-      { day: "Seshanba", clients: 4, revenue: 400_000 },
-      { day: "Chorshanba", clients: 4, revenue: 400_000 },
-      { day: "Payshanba", clients: 3, revenue: 300_000 },
-      { day: "Juma", clients: 4, revenue: 400_000 },
-    ],
-    tips: [
-      "Classic xizmat talab yuqori",
-      "Trafik muvozanatlangan",
-      "No-show kamaytirish mumkin",
-    ],
-  },
-  Ali: {
-    revenue: 1_200_000, clients: 14, cancelled: 4, noshow: 3,
-    topService: { name: "Beard trim", count: 7 },
-    busiestTime: "15:00 – 18:00",
-    traffic: [
-      { source: "QR", visits: 8, bookings: 3 },
-      { source: "Link", visits: 12, bookings: 4 },
-      { source: "Direct", visits: 6, bookings: 2 },
-    ],
-    daily: [
-      { day: "Dushanba", clients: 2, revenue: 200_000 },
-      { day: "Seshanba", clients: 3, revenue: 300_000 },
-      { day: "Chorshanba", clients: 3, revenue: 300_000 },
-      { day: "Payshanba", clients: 3, revenue: 200_000 },
-      { day: "Juma", clients: 3, revenue: 200_000 },
-    ],
-    tips: [
-      "No-show yuqori — eslatma yuboring",
-      "Kechki vaqtlar bo'sh qolmoqda",
-      "QR trafik oshirilishi mumkin",
-    ],
-  },
-};
-
-const DEFAULT_STATS: BarberStats = BARBER_MOCK["Sardor"];
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -99,6 +40,34 @@ function fmtShort(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)} mln`;
   if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
   return String(n);
+}
+
+function getToken() {
+  return localStorage.getItem("barber_token") ?? "";
+}
+
+async function fetchBarberDetail(barberId: string, period: string): Promise<BarberStats> {
+  const res = await fetch(`/api/analytics/barber/${encodeURIComponent(barberId)}?period=${period}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error("fetch_error");
+  return res.json();
+}
+
+// ── Skeleton ──────────────────────────────────────────────────────────────────
+
+function Skeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="h-24 rounded-2xl bg-white/5 animate-pulse" />
+        ))}
+      </div>
+      <div className="h-32 rounded-2xl bg-white/5 animate-pulse" />
+      <div className="h-40 rounded-2xl bg-white/5 animate-pulse" />
+    </div>
+  );
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -132,19 +101,30 @@ function Section({ title, children, index }: { title: string; children: React.Re
   );
 }
 
-function TrafficRow({ source, visits, bookings }: { source: string; visits: number; bookings: number }) {
-  const pct = Math.round((bookings / visits) * 100);
+// ── Period filter ─────────────────────────────────────────────────────────────
+
+const PERIODS: { key: Period; label: string }[] = [
+  { key: "bugun", label: "Bugun" },
+  { key: "hafta", label: "Hafta" },
+  { key: "oy", label: "Oy" },
+];
+
+function PeriodFilter({ period, onChange }: { period: Period; onChange: (p: Period) => void }) {
   return (
-    <div className="flex items-center justify-between py-1.5">
-      <span className="text-sm text-muted-foreground w-14">{source}</span>
-      <div className="flex-1 mx-3">
-        <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
-          <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
-        </div>
-      </div>
-      <span className="text-xs text-muted-foreground w-24 text-right">
-        {visits} → <span className="text-foreground font-semibold">{bookings} bron</span>
-      </span>
+    <div className="flex gap-1.5 bg-card p-1 rounded-2xl border border-white/6 mb-6">
+      {PERIODS.map(({ key, label }) => (
+        <button
+          key={key}
+          onClick={() => onChange(key)}
+          className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${
+            period === key
+              ? "bg-primary text-black shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -152,17 +132,29 @@ function TrafficRow({ source, visits, bookings }: { source: string; visits: numb
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 interface Props {
-  params: { name: string };
+  params: { barberId: string };
 }
 
 export default function AnalyticsBarberDetail({ params }: Props) {
   useAuth();
-  const name = decodeURIComponent(params?.name ?? "Sardor");
-  const stats = BARBER_MOCK[name] ?? DEFAULT_STATS;
+  const barberId = decodeURIComponent(params?.barberId ?? "");
+  const [period, setPeriod] = useState<Period>("bugun");
+  const [stats, setStats] = useState<BarberStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!barberId) return;
+    setLoading(true);
+    fetchBarberDetail(barberId, PERIOD_API[period])
+      .then(setStats)
+      .catch(() => setStats(null))
+      .finally(() => setLoading(false));
+  }, [barberId, period]);
+
+  const displayName = stats?.name ?? "Usta";
 
   return (
     <Layout>
-      {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <Link href="/settings/analytics">
           <button className="flex items-center gap-1.5 h-10 px-3 rounded-2xl bg-card border border-white/8 hover:bg-white/5 transition-colors text-sm font-semibold">
@@ -171,68 +163,83 @@ export default function AnalyticsBarberDetail({ params }: Props) {
           </button>
         </Link>
         <h1 className="text-xl font-display font-bold text-foreground">
-          📊 {name} — Tahlil
+          📊 {displayName} — Tahlil
         </h1>
       </div>
 
-      <div className="space-y-4">
-        {/* KPI */}
-        <div className="grid grid-cols-2 gap-3">
-          <KpiCard index={0} emoji="💰" label="Daromad" value={fmtFull(stats.revenue)} />
-          <KpiCard index={1} emoji="👥" label="Mijozlar" value={`${stats.clients} ta`} />
-          <KpiCard index={2} emoji="❌" label="Bekor" value={`${stats.cancelled} ta`} />
-          <KpiCard index={3} emoji="🔴" label="Kelmadi" value={`${stats.noshow} ta`} />
+      <PeriodFilter period={period} onChange={setPeriod} />
+
+      {loading ? (
+        <Skeleton />
+      ) : !stats ? (
+        <div className="text-center py-10 text-sm text-muted-foreground">
+          Ma'lumot yuklanmadi
         </div>
-
-        {/* Faoliyat */}
-        <Section title="🏆 Faoliyat" index={1}>
-          <div className="space-y-3">
-            <div>
-              <div className="text-xs text-muted-foreground">Eng ko'p xizmat</div>
-              <div className="font-bold text-foreground mt-0.5">
-                {stats.topService.name} — {stats.topService.count} ta
-              </div>
-            </div>
-            <div className="h-px bg-white/6" />
-            <div>
-              <div className="text-xs text-muted-foreground">Eng band vaqt</div>
-              <div className="font-bold text-foreground mt-0.5">🕒 {stats.busiestTime}</div>
-            </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <KpiCard index={0} emoji="💰" label="Daromad" value={fmtFull(stats.revenue)} />
+            <KpiCard index={1} emoji="👥" label="Mijozlar" value={`${stats.clients} ta`} />
+            <KpiCard index={2} emoji="❌" label="Bekor" value={`${stats.cancelled} ta`} />
+            <KpiCard index={3} emoji="📅" label="Jami bronlar" value={`${stats.totalBookings} ta`} />
           </div>
-        </Section>
 
-        {/* Trafik */}
-        <Section title="🚀 Trafik" index={2}>
-          {stats.traffic.map(t => (
-            <TrafficRow key={t.source} source={t.source} visits={t.visits} bookings={t.bookings} />
-          ))}
-        </Section>
-
-        {/* Kunlik faollik */}
-        <Section title="📅 Oxirgi kunlar" index={3}>
-          <div className="space-y-1">
-            {stats.daily.map((d, i) => (
-              <div key={i} className="flex items-center justify-between py-2">
-                <span className="text-sm text-muted-foreground w-28">{d.day}</span>
-                <span className="text-sm text-foreground flex-1 text-center">{d.clients} mijoz</span>
-                <span className="text-sm font-semibold text-primary text-right">{fmtShort(d.revenue)}</span>
+          {stats.topService && (
+            <Section title="🏆 Faoliyat" index={1}>
+              <div className="space-y-3">
+                <div>
+                  <div className="text-xs text-muted-foreground">Eng ko'p xizmat</div>
+                  <div className="font-bold text-foreground mt-0.5">
+                    {stats.topService.name} — {stats.topService.count} ta
+                  </div>
+                </div>
+                {stats.busiestTime !== "—" && (
+                  <>
+                    <div className="h-px bg-white/6" />
+                    <div>
+                      <div className="text-xs text-muted-foreground">Eng band vaqt</div>
+                      <div className="font-bold text-foreground mt-0.5">🕒 {stats.busiestTime}</div>
+                    </div>
+                  </>
+                )}
               </div>
-            ))}
-          </div>
-        </Section>
+            </Section>
+          )}
 
-        {/* Tavsiyalar */}
-        <Section title="💡 Tavsiyalar" index={4}>
-          <ul className="space-y-2">
-            {stats.tips.map((tip, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-                <span className="text-primary mt-0.5">•</span>
-                {tip}
-              </li>
-            ))}
-          </ul>
-        </Section>
-      </div>
+          {stats.daily.length > 0 && (
+            <Section title="📅 Oxirgi kunlar" index={2}>
+              <div className="space-y-1">
+                {stats.daily.map((d, i) => (
+                  <div key={i} className="flex items-center justify-between py-2">
+                    <span className="text-sm text-muted-foreground w-28">{d.day}</span>
+                    <span className="text-sm text-foreground flex-1 text-center">{d.clients} mijoz</span>
+                    <span className="text-sm font-semibold text-primary text-right">{fmtShort(d.revenue)}</span>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {stats.daily.length === 0 && (
+            <Section title="📅 Oxirgi kunlar" index={2}>
+              <div className="text-sm text-muted-foreground text-center py-4">
+                Bu davr uchun ma'lumot yo'q
+              </div>
+            </Section>
+          )}
+
+          <Section title="💡 Tavsiyalar" index={3}>
+            <ul className="space-y-2">
+              {stats.tips.map((tip, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                  <span className="text-primary mt-0.5">•</span>
+                  {tip}
+                </li>
+              ))}
+            </ul>
+          </Section>
+        </div>
+      )}
     </Layout>
   );
 }

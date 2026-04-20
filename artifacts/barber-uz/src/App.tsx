@@ -62,7 +62,7 @@ function AppRoutes() {
       <Route path="/settings/page" component={PersonalPage} />
       <Route path="/settings/notifications" component={NotificationSettings} />
       <Route path="/settings/analytics" component={AnalyticsPage} />
-      <Route path="/settings/analytics/barber/:name" component={AnalyticsBarberDetail} />
+      <Route path="/settings/analytics/barber/:barberId" component={AnalyticsBarberDetail} />
       <Route path="/settings/security" component={SecuritySettings} />
       <Route path="/settings/feedback" component={FeedbackPage} />
       <Route path="/settings/barbers" component={BarbersPage} />

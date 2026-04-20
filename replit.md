@@ -71,6 +71,19 @@ To set up the actual Telegram bot:
 3. Bot should call `POST /api/auth/telegram-verify` with `{ userId, telegramId, telegramUsername, secret }`
 4. The `userId` comes from `start=reg_{userId}_{lang}` parameter in the deep link
 
+## Analytics API
+
+New dedicated analytics endpoints at `/api/analytics/`:
+- `GET /api/analytics/solo?period=today|week|month` — Solo barber analytics (real DB)
+- `GET /api/analytics/team?period=today|week|month` — Team analytics (currently self-only)
+- `GET /api/analytics/barber/:barberId?period=today|week|month` — Barber detail (self-only)
+
+**Important**: Team analytics (`/team` and `/barber/:barberId`) are currently restricted to
+the authenticated user's own data. Multi-barber aggregation requires a proper invite-based
+team membership model — `brandName` (user-editable) cannot be used as a security boundary.
+Once a `team_members` table or similar invite system is implemented, these endpoints can
+be extended to aggregate across team members.
+
 ## Development Commands
 
 - `pnpm --filter @workspace/api-server run dev` — Start API server
