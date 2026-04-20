@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
-import { ChevronLeft, ChevronRight, Plus, Copy, Check, Share2, Trash2, Pencil, Camera, X, Scissors } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Copy, Check, Share2, Trash2, Camera, X, Scissors } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -208,12 +208,10 @@ function barberToForm(b: Barber): FormState {
 function LinkBottomSheet({
   barber,
   onClose,
-  onEdit,
   onDelete,
 }: {
   barber: Barber;
   onClose: () => void;
-  onEdit: () => void;
   onDelete: () => void;
 }) {
   const link = barberLink(barber.slug);
@@ -228,7 +226,7 @@ function LinkBottomSheet({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-6">
+    <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-20">
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -241,7 +239,7 @@ function LinkBottomSheet({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 60 }}
         transition={{ type: "spring", stiffness: 320, damping: 28 }}
-        className="relative w-full max-w-sm bg-card border border-white/10 rounded-3xl p-5 shadow-2xl"
+        className="relative w-full max-w-sm bg-card border border-white/10 rounded-3xl p-5 shadow-2xl max-h-[80vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -271,14 +269,6 @@ function LinkBottomSheet({
             <Share2 className="w-4 h-4" /> Ulashish
           </button>
         </div>
-
-        {/* Edit */}
-        <button
-          onClick={onEdit}
-          className="w-full h-10 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 bg-white/5 border border-white/8 hover:bg-white/10 transition-all text-foreground mb-3"
-        >
-          <Pencil className="w-4 h-4" /> Tahrirlash
-        </button>
 
         {/* Divider + Delete */}
         <div className="h-px bg-white/6 mb-3" />
@@ -350,7 +340,12 @@ function DeleteModal({
 
 // ── Barber card ────────────────────────────────────────────────────────────────
 
-function BarberCard({ barber, onLinkClick, index }: { barber: Barber; onLinkClick: () => void; index: number }) {
+function BarberCard({ barber, onLinkClick, onEdit, index }: {
+  barber: Barber;
+  onLinkClick: () => void;
+  onEdit: () => void;
+  index: number;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -358,7 +353,11 @@ function BarberCard({ barber, onLinkClick, index }: { barber: Barber; onLinkClic
       exit={{ opacity: 0, x: -20 }}
       transition={{ delay: index * 0.05 }}
     >
-      <div className="bg-card border border-white/6 rounded-2xl p-4 flex items-center gap-3">
+      <motion.div
+        whileTap={{ scale: 0.98 }}
+        onClick={onEdit}
+        className="bg-card border border-white/6 rounded-2xl p-4 flex items-center gap-3 cursor-pointer"
+      >
         <Avatar barber={barber} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -376,13 +375,17 @@ function BarberCard({ barber, onLinkClick, index }: { barber: Barber; onLinkClic
             </div>
           )}
         </div>
-        <button
-          onClick={onLinkClick}
-          className="flex items-center gap-1 pl-3 pr-2 py-2 rounded-xl bg-white/5 border border-white/8 hover:bg-white/10 transition-all text-xs font-semibold text-muted-foreground hover:text-foreground shrink-0"
-        >
-          Link olish <ChevronRight className="w-3.5 h-3.5" />
-        </button>
-      </div>
+        {/* Right actions */}
+        <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+          <button
+            onClick={onLinkClick}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 border border-white/8 hover:bg-white/10 transition-all text-xs font-semibold text-muted-foreground hover:text-foreground"
+          >
+            🔗 Link olish
+          </button>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground/40 shrink-0" />
+      </motion.div>
     </motion.div>
   );
 }
@@ -792,12 +795,19 @@ export default function BarbersPage() {
           </Link>
           <h1 className="text-xl font-display font-bold text-foreground">👷 Ustalar boshqaruvi</h1>
         </div>
-        <button
-          onClick={() => { setEditingId(null); setView("add"); }}
-          className="flex items-center gap-1.5 h-9 px-3 rounded-2xl bg-primary text-black text-sm font-bold hover:bg-primary/90 transition-all"
-        >
-          <Plus className="w-4 h-4" /> Usta qo'shish
-        </button>
+        <AnimatePresence>
+          {!linkSheetBarber && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.85 }}
+              onClick={() => { setEditingId(null); setView("add"); }}
+              className="flex items-center gap-1.5 h-9 px-3 rounded-2xl bg-primary text-black text-sm font-bold hover:bg-primary/90 transition-all"
+            >
+              <Plus className="w-4 h-4" /> Usta qo'shish
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Stats */}
@@ -825,6 +835,7 @@ export default function BarbersPage() {
               barber={b}
               index={i}
               onLinkClick={() => setLinkSheetBarber(b)}
+              onEdit={() => openEdit(b)}
             />
           ))}
         </AnimatePresence>
@@ -849,7 +860,6 @@ export default function BarbersPage() {
           <LinkBottomSheet
             barber={linkSheetBarber}
             onClose={() => setLinkSheetBarber(null)}
-            onEdit={() => openEdit(linkSheetBarber)}
             onDelete={() => openDelete(linkSheetBarber)}
           />
         )}
