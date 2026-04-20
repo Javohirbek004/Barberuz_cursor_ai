@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
@@ -408,6 +408,10 @@ function BarberForm({
   const set = (k: keyof FormState, v: string) => setForm(f => ({ ...f, [k]: v }));
 
   function handlePhoneChange(raw: string) {
+    if (raw === "" || raw === "+998 " || raw.replace(/\D/g, "").length <= 3) {
+      set("phone", "");
+      return;
+    }
     const clean = raw.replace(/\D/g, "");
     const withPrefix = clean.startsWith("998") ? clean : "998" + clean.replace(/^0+/, "");
     set("phone", formatPhone(withPrefix));
@@ -415,6 +419,10 @@ function BarberForm({
 
   function handlePhoneFocus() {
     if (!form.phone) set("phone", "+998 ");
+  }
+
+  function handlePhoneBlur() {
+    if (form.phone === "+998 ") set("phone", "");
   }
 
   function handleImage(e: React.ChangeEvent<HTMLInputElement>) {
@@ -564,6 +572,7 @@ function BarberForm({
           <input
             value={form.phone}
             onFocus={handlePhoneFocus}
+            onBlur={handlePhoneBlur}
             onChange={e => handlePhoneChange(e.target.value)}
             placeholder="+998 (90) 123-45-67"
             inputMode="tel"
