@@ -121,7 +121,7 @@ function TelegramSoftPopup({
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
-export function Layout({ children }: { children: ReactNode }) {
+export function Layout({ children, hideBottomNav }: { children: ReactNode; hideBottomNav?: boolean }) {
   const [, navigate] = useLocation();
   const [popupDay, setPopupDay] = useState<number | null>(null);
 
@@ -145,11 +145,11 @@ export function Layout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-background relative pb-28">
+    <div className={`min-h-screen bg-background relative ${hideBottomNav ? "pb-4" : "pb-28"}`}>
       <main className="max-w-md mx-auto p-4 sm:p-6 w-full relative z-10">
         {children}
       </main>
-      <BottomNav />
+      {!hideBottomNav && <BottomNav />}
 
       <AnimatePresence>
         {popupDay !== null && (

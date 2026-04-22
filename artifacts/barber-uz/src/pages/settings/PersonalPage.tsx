@@ -912,6 +912,7 @@ function CustomerView({
   services: ServiceItem[];
   isTeam: boolean;
 }) {
+  const [previewTab, setPreviewTab] = useState<"asosiy" | "xizmatlar">("asosiy");
   const [activeCat, setActiveCat] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bookingOpen, setBookingOpen] = useState(false);
@@ -953,7 +954,6 @@ function CustomerView({
     <div className="pb-28 -mx-4">
       {/* ── Hero section ─────────────────────────────────────────────────── */}
       <div className="relative">
-        {/* Cover */}
         <div className="w-full h-52 relative overflow-hidden">
           {profile.coverImage
             ? <img src={profile.coverImage} className="w-full h-full object-cover" />
@@ -962,11 +962,8 @@ function CustomerView({
                 <div className={`absolute inset-0 bg-gradient-to-br ${COVER_GRAD[gradIdx]}`} />
               </div>
           }
-          {/* Gradient overlay from bottom */}
           <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent" />
         </div>
-
-        {/* Avatar — overlapping cover */}
         <div className="absolute bottom-0 left-4 translate-y-8">
           <div className="w-20 h-20 rounded-full border-4 border-background overflow-hidden bg-gradient-to-br from-primary/40 to-primary/15 flex items-center justify-center shadow-2xl shadow-black/40">
             {profile.profileImage
@@ -977,147 +974,184 @@ function CustomerView({
         </div>
       </div>
 
-      {/* ── Profile info ─────────────────────────────────────────────────── */}
-      <div className="px-4 pt-12">
+      {/* ── Name + bio (always visible) ──────────────────────────────────── */}
+      <div className="px-4 pt-12 pb-4">
         <h1 className="text-2xl font-display font-bold text-foreground mb-1">{profile.name}</h1>
-        {profile.bio && <p className="text-sm text-muted-foreground leading-relaxed mb-3">{profile.bio}</p>}
-
-        {profile.speciality.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-4">
-            {profile.speciality.map((s, i) => (
-              <span key={i} className="px-2.5 py-1 rounded-full bg-primary/12 border border-primary/20 text-xs text-primary font-medium">{s}</span>
-            ))}
-          </div>
-        )}
-
-        {/* Work hours pill */}
-        {profile.workDays && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-4 bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
-            <Clock className="w-3.5 h-3.5 text-primary/70 shrink-0" />
-            <span>{profile.workDays} · {profile.workStart}–{profile.workEnd}</span>
-          </div>
-        )}
-
-        {/* Map card */}
-        {profile.address && (
-          <a
-            href={profile.mapLink || "#"}
-            target={profile.mapLink ? "_blank" : "_self"}
-            rel="noopener noreferrer"
-            className="block bg-card border border-white/8 rounded-2xl overflow-hidden mb-4 hover:border-white/15 transition-colors"
-          >
-            {/* Fake map bg */}
-            <div className="h-20 bg-zinc-900 relative overflow-hidden">
-              <div className="absolute inset-0 opacity-15" style={{ backgroundImage: "linear-gradient(#4af 1px, transparent 1px), linear-gradient(90deg, #4af 1px, transparent 1px)", backgroundSize: "30px 30px" }} />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-5 h-5 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center">
-                  <div className="w-2 h-2 rounded-full bg-white" />
-                </div>
-              </div>
-            </div>
-            <div className="px-4 py-3 flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-primary shrink-0" />
-              <span className="text-sm text-foreground flex-1">{profile.address}</span>
-              {profile.mapLink && <span className="text-xs text-primary font-semibold">Ko'rish →</span>}
-            </div>
-          </a>
-        )}
-
-        {/* Social links */}
-        {(profile.telegram || profile.instagram) && (
-          <div className="mb-5">
-            <p className="text-xs text-muted-foreground mb-2.5">Bizni ijtimoiy tarmoqlarda kuzating</p>
-            <div className="flex flex-wrap gap-2">
-              {profile.telegram && (
-                <a href={`https://t.me/${profile.telegram.replace("@", "")}`} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#2AABEE]/10 border border-[#2AABEE]/25 text-[#2AABEE] text-sm font-medium hover:bg-[#2AABEE]/20 transition-colors">
-                  <Send className="w-3.5 h-3.5" /> {profile.telegram}
-                </a>
-              )}
-              {profile.instagram && (
-                <a href={`https://instagram.com/${profile.instagram.replace("@", "")}`} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gradient-to-r from-pink-500/10 to-violet-500/10 border border-pink-500/20 text-pink-400 text-sm font-medium hover:from-pink-500/20 hover:to-violet-500/20 transition-colors">
-                  <Instagram className="w-3.5 h-3.5" /> {profile.instagram}
-                </a>
-              )}
-            </div>
-          </div>
-        )}
+        {profile.bio && <p className="text-sm text-muted-foreground leading-relaxed">{profile.bio}</p>}
       </div>
 
-      {/* ── Team barbers ─────────────────────────────────────────────────── */}
-      {isTeam && (
-        <div className="px-4 mb-5">
-          <p className="text-sm font-bold text-foreground mb-3">👷 Ustalar</p>
-          <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-hide">
-            {TEAM_BARBERS.map(b => (
-              <div key={b.id} className="flex flex-col items-center gap-2 shrink-0">
-                <BarbAvatar barber={b} size="lg" />
-                <p className="text-sm font-semibold text-foreground text-center">{b.name}</p>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${DARAJA_CLS[b.daraja]}`}>{DARAJA_LABEL[b.daraja]}</span>
-                <p className="text-[10px] text-muted-foreground text-center max-w-16 leading-snug">{b.speciality[0]}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Divider */}
-      <div className="border-t border-white/6 mx-4 mb-5" />
-
-      {/* ── Services ─────────────────────────────────────────────────────── */}
-      <div className="px-4">
-        <p className="text-base font-bold text-foreground mb-3">💈 Xizmatlar</p>
-
-        {/* Category filter */}
-        <div className="flex gap-2 overflow-x-auto pb-3 mb-4 scrollbar-hide">
-          {catChips.map(c => (
-            <button key={c.id} onClick={() => setActiveCat(c.id)}
-              className={`shrink-0 px-3.5 py-2 rounded-full text-xs font-semibold border transition-all ${activeCat === c.id ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground hover:text-foreground"}`}>
-              {c.label}
-            </button>
+      {/* ── Instagram-style pill tabs ─────────────────────────────────────── */}
+      <div className="px-4 mb-1">
+        <div className="flex gap-2">
+          {(["asosiy", "xizmatlar"] as const).map(t => (
+            <motion.button
+              key={t}
+              onClick={() => setPreviewTab(t)}
+              whileTap={{ scale: 0.96 }}
+              className={`px-5 py-2 rounded-full text-sm font-semibold border transition-all ${
+                previewTab === t
+                  ? "bg-card border-white/20 text-foreground shadow-md"
+                  : "bg-transparent border-white/10 text-muted-foreground hover:text-foreground hover:border-white/20"
+              }`}
+            >
+              {t === "asosiy" ? "Asosiy" : "Xizmatlar"}
+            </motion.button>
           ))}
         </div>
-
-        <div className="space-y-3">
-          {filtered.map(s => {
-            const isSelected = selectedIds.includes(s.id);
-            return (
-              <motion.div key={s.id} whileTap={{ scale: 0.985 }}>
-                <div
-                  className={`bg-card border rounded-2xl p-4 flex items-center gap-3 cursor-pointer transition-all ${isSelected ? "border-primary/40 bg-primary/6 shadow-sm shadow-primary/10" : "border-white/6 hover:border-white/12"}`}
-                  onClick={() => setDetailSvc(s)}
-                >
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 border ${isSelected ? "bg-primary/10 border-primary/20" : "bg-white/5 border-white/8"}`}>
-                    {catEmoji(s.category)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <p className="font-semibold text-sm text-foreground">{s.name}</p>
-                      {s.comboIds && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">COMBO</span>}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      <span>{formatDur(s.duration)}</span>
-                      <span className="mx-1">·</span>
-                      <span className="text-foreground/80 font-medium">{formatPriceShort(s.price)} so'm</span>
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <motion.button
-                      whileTap={{ scale: 0.9 }}
-                      onClick={e => { e.stopPropagation(); toggleService(s.id); }}
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all ${isSelected ? "bg-primary text-black border-primary shadow-md shadow-primary/30" : "bg-white/5 border-white/12 text-muted-foreground hover:border-primary/40 hover:text-primary"}`}>
-                      {isSelected ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                    </motion.button>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
       </div>
 
-      {/* ── Fixed bottom CTA ─────────────────────────────────────────────── */}
+      {/* ── Tab content ──────────────────────────────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {previewTab === "asosiy" && (
+          <motion.div
+            key="asosiy"
+            initial={{ opacity: 0, x: -12 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 12 }}
+            transition={{ duration: 0.18 }}
+          >
+            <div className="px-4 pt-4">
+              {/* Speciality tags */}
+              {profile.speciality.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  {profile.speciality.map((s, i) => (
+                    <span key={i} className="px-2.5 py-1 rounded-full bg-primary/12 border border-primary/20 text-xs text-primary font-medium">{s}</span>
+                  ))}
+                </div>
+              )}
+
+              {/* Work hours pill */}
+              {profile.workDays && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-4 bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
+                  <Clock className="w-3.5 h-3.5 text-primary/70 shrink-0" />
+                  <span>{profile.workDays} · {profile.workStart}–{profile.workEnd}</span>
+                </div>
+              )}
+
+              {/* Map card */}
+              {profile.address && (
+                <a
+                  href={profile.mapLink || "#"}
+                  target={profile.mapLink ? "_blank" : "_self"}
+                  rel="noopener noreferrer"
+                  className="block bg-card border border-white/8 rounded-2xl overflow-hidden mb-4 hover:border-white/15 transition-colors"
+                >
+                  <div className="h-20 bg-zinc-900 relative overflow-hidden">
+                    <div className="absolute inset-0 opacity-15" style={{ backgroundImage: "linear-gradient(#4af 1px, transparent 1px), linear-gradient(90deg, #4af 1px, transparent 1px)", backgroundSize: "30px 30px" }} />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-5 h-5 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center">
+                        <div className="w-2 h-2 rounded-full bg-white" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="px-4 py-3 flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-sm text-foreground flex-1">{profile.address}</span>
+                    {profile.mapLink && <span className="text-xs text-primary font-semibold">Ko'rish →</span>}
+                  </div>
+                </a>
+              )}
+
+              {/* Social links */}
+              {(profile.telegram || profile.instagram) && (
+                <div className="mb-5">
+                  <p className="text-xs text-muted-foreground mb-2.5">Bizni ijtimoiy tarmoqlarda kuzating</p>
+                  <div className="flex flex-wrap gap-2">
+                    {profile.telegram && (
+                      <a href={`https://t.me/${profile.telegram.replace("@", "")}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#2AABEE]/10 border border-[#2AABEE]/25 text-[#2AABEE] text-sm font-medium hover:bg-[#2AABEE]/20 transition-colors">
+                        <Send className="w-3.5 h-3.5" /> {profile.telegram}
+                      </a>
+                    )}
+                    {profile.instagram && (
+                      <a href={`https://instagram.com/${profile.instagram.replace("@", "")}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gradient-to-r from-pink-500/10 to-violet-500/10 border border-pink-500/20 text-pink-400 text-sm font-medium hover:from-pink-500/20 hover:to-violet-500/20 transition-colors">
+                        <Instagram className="w-3.5 h-3.5" /> {profile.instagram}
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Team barbers */}
+            {isTeam && (
+              <div className="px-4 mb-5">
+                <p className="text-sm font-bold text-foreground mb-3">👷 Ustalar</p>
+                <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-hide">
+                  {TEAM_BARBERS.map(b => (
+                    <div key={b.id} className="flex flex-col items-center gap-2 shrink-0">
+                      <BarbAvatar barber={b} size="lg" />
+                      <p className="text-sm font-semibold text-foreground text-center">{b.name}</p>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${DARAJA_CLS[b.daraja]}`}>{DARAJA_LABEL[b.daraja]}</span>
+                      <p className="text-[10px] text-muted-foreground text-center max-w-16 leading-snug">{b.speciality[0]}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {previewTab === "xizmatlar" && (
+          <motion.div
+            key="xizmatlar"
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -12 }}
+            transition={{ duration: 0.18 }}
+          >
+            <div className="px-4 pt-4">
+              {/* Category filter */}
+              <div className="flex gap-2 overflow-x-auto pb-3 mb-4 scrollbar-hide">
+                {catChips.map(c => (
+                  <button key={c.id} onClick={() => setActiveCat(c.id)}
+                    className={`shrink-0 px-3.5 py-2 rounded-full text-xs font-semibold border transition-all ${activeCat === c.id ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground hover:text-foreground"}`}>
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-3">
+                {filtered.map(s => {
+                  const isSelected = selectedIds.includes(s.id);
+                  return (
+                    <motion.div key={s.id} whileTap={{ scale: 0.985 }}>
+                      <div
+                        className={`bg-card border rounded-2xl p-4 flex items-center gap-3 cursor-pointer transition-all ${isSelected ? "border-primary/40 bg-primary/6 shadow-sm shadow-primary/10" : "border-white/6 hover:border-white/12"}`}
+                        onClick={() => setDetailSvc(s)}
+                      >
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 border ${isSelected ? "bg-primary/10 border-primary/20" : "bg-white/5 border-white/8"}`}>
+                          {catEmoji(s.category)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <p className="font-semibold text-sm text-foreground">{s.name}</p>
+                            {s.comboIds && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">COMBO</span>}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            <span>{formatDur(s.duration)}</span>
+                            <span className="mx-1">·</span>
+                            <span className="text-foreground/80 font-medium">{formatPriceShort(s.price)} so'm</span>
+                          </p>
+                        </div>
+                        <motion.button
+                          whileTap={{ scale: 0.9 }}
+                          onClick={e => { e.stopPropagation(); toggleService(s.id); }}
+                          className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all shrink-0 ${isSelected ? "bg-primary text-black border-primary shadow-md shadow-primary/30" : "bg-white/5 border-white/12 text-muted-foreground hover:border-primary/40 hover:text-primary"}`}>
+                          {isSelected ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                        </motion.button>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Fixed bottom CTA (always visible) ───────────────────────────── */}
       <div className="fixed bottom-0 left-0 right-0 z-40">
         <div className="max-w-md mx-auto px-4 py-3 bg-card/95 backdrop-blur-xl border-t border-white/8">
           <AnimatePresence mode="wait">
@@ -1136,8 +1170,10 @@ function CustomerView({
               </motion.div>
             ) : (
               <motion.div key="inactive" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <button disabled className="w-full h-12 rounded-2xl bg-white/6 border border-white/8 text-muted-foreground font-semibold text-sm cursor-not-allowed">
-                  Xizmat tanlang
+                <button
+                  onClick={() => setPreviewTab("xizmatlar")}
+                  className="w-full h-12 rounded-2xl bg-white/6 border border-white/8 text-muted-foreground font-semibold text-sm hover:bg-white/10 hover:text-foreground transition-all">
+                  💈 Xizmat tanlash
                 </button>
               </motion.div>
             )}
@@ -1224,7 +1260,7 @@ export default function PersonalPage() {
   ];
 
   return (
-    <Layout>
+    <Layout hideBottomNav>
       {/* ── Page header ───────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-4">
         <Link href="/settings">
