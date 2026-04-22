@@ -1139,18 +1139,18 @@ function CustomerView({
         {profile.bio && <p className="text-sm text-muted-foreground leading-relaxed">{profile.bio}</p>}
       </div>
 
-      {/* ── Instagram-style pill tabs ─────────────────────────────────────── */}
+      {/* ── Tab bar ───────────────────────────────────────────────────────── */}
       <div className="px-4 mb-1">
-        <div className="flex gap-2">
+        <div className="flex gap-1 bg-white/5 p-1 rounded-2xl">
           {(["asosiy", "xizmatlar"] as const).map(t => (
             <motion.button
               key={t}
               onClick={() => setPreviewTab(t)}
-              whileTap={{ scale: 0.96 }}
-              className={`px-5 py-2 rounded-full text-sm font-semibold border transition-all ${
+              whileTap={{ scale: 0.97 }}
+              className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${
                 previewTab === t
-                  ? "bg-card border-white/20 text-foreground shadow-md"
-                  : "bg-transparent border-white/10 text-muted-foreground hover:text-foreground hover:border-white/20"
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {t === "asosiy" ? "Asosiy" : "Xizmatlar"}
