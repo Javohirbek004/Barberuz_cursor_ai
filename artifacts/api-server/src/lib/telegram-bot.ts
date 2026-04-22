@@ -21,8 +21,8 @@
  *  4. Frontend polls /api/auth/telegram-login-status/{code} → gets token → redirects
  */
 
-import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, usersTable, bookingSessionsTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { generateToken } from "./auth";
 
 function getToken(): string {
@@ -351,6 +351,13 @@ export async function handleTelegramUpdate(update: unknown) {
       return;
     }
 
+    // Customer booking deep-link
+    const bookingParsed = parseBookingPayload(payload);
+    if (bookingParsed) {
+      await handleBookingStart(chatId, bookingParsed.sessionId, from);
+      return;
+    }
+
     // Generic welcome
     await sendGenericWelcome(chatId);
     return;
@@ -549,6 +556,17 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
     pendingAuthLogins.delete(chatId);
     console.log(`[TelegramBot] Auth cancelled: chatId=${chatId} code=${code}`);
     await sendLoginCancelled(chatId, lang);
+    return;
+  }
+
+  if (callbackData.startsWith("book_confirm_")) {
+    const sessionId = callbackData.slice("book_confirm_".length);
+    const firstName = (from.first_name as string) || "Mijoz";
+    const tgUserId  = String(from.id);
+    const tgUsername = (from.username as string) || null;
+    console.log(`[TelegramBot] Book confirm: sessionId=${sessionId} tgUser=${tgUserId}`);
+    await confirmBookingSession(chatId, sessionId, tgUserId, firstName, tgUsername);
+    return;
   }
 }
 
@@ -645,6 +663,197 @@ async function handleRegContact(
       text: "Xatolik yuz berdi. Iltimos, qayta harakat qiling.",
     });
   }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Booking flow — customer-facing booking verification
+// ──────────────────────────────────────────────────────────────
+
+interface BookingData {
+  barberName:     string;
+  barberAddress:  string;
+  mapLink:        string;
+  barberPageLink: string;
+  isTeam:         boolean;
+  teamBarberName: string | null;
+  date:           string;
+  time:           string;
+  totalPrice:     number;
+  services:       { name: string; price: number; duration: number }[];
+}
+
+function parseBookingPayload(payload: string): { sessionId: string } | null {
+  const match = payload.match(/^booking_([a-f0-9]{8,20})$/i);
+  if (!match) return null;
+  return { sessionId: match[1]! };
+}
+
+function formatDateLabel(dateStr: string): string {
+  if (dateStr === "today" || dateStr === "bugun") return "Bugun";
+  if (dateStr === "tomorrow" || dateStr === "ertaga") return "Ertaga";
+  return dateStr;
+}
+
+async function sendBookingWelcome(
+  chatId: number,
+  firstName: string,
+  sessionId: string,
+  data: BookingData,
+) {
+  const barberLine = data.isTeam && data.teamBarberName
+    ? `\n🧑‍🦱 Usta: <b>${data.teamBarberName}</b>`
+    : "";
+  const serviceNames = data.services.map((s: { name: string }) => s.name).join(", ");
+
+  const text = `Xush kelibsiz! 💈\n\nBu bot orqali siz:\n• Online navbatga yozilasiz\n• Bronlaringizni tasdiqlaysiz\n• Eslatmalarni olasiz\n• Chegirmalar va aksiyalar haqida xabardor bo'lasiz\n\n💈 Sahifamiz:\n${data.barberPageLink}\n\n━━━━━━━━━━━━━━\n<b>Bron ma'lumotlari:</b>${barberLine}\n✂️ Xizmat: <b>${serviceNames}</b>\n🕒 Vaqt: <b>${formatDateLabel(data.date)}, ${data.time}</b>\n━━━━━━━━━━━━━━\n\n👇 Bronni tasdiqlash uchun tugmani bosing`;
+
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "✅ Tasdiqlash", callback_data: `book_confirm_${sessionId}` }],
+      ],
+    },
+  });
+}
+
+async function sendBookingAlreadyDone(chatId: number, data: BookingData) {
+  const barberLine = data.isTeam && data.teamBarberName
+    ? `\n🧑‍🦱 Usta: ${data.teamBarberName}` : "";
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: `✅ Bu bron allaqachon tasdiqlangan!\n${barberLine}\n🕒 ${formatDateLabel(data.date)}, ${data.time}`,
+    reply_markup: {
+      inline_keyboard: [[{ text: "🌐 Ilovaga qaytish", url: data.barberPageLink }]],
+    },
+  });
+}
+
+async function sendExpiredSession(chatId: number) {
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: "❗ Bu bron allaqachon yakunlangan yoki eskirgan.\n\nYangi bron qilish uchun barber sahifasiga qayting.",
+  });
+}
+
+async function confirmBookingSession(
+  chatId: number,
+  sessionId: string,
+  tgUserId: string,
+  firstName: string,
+  tgUsername: string | null,
+) {
+  const [session] = await db
+    .select()
+    .from(bookingSessionsTable)
+    .where(eq(bookingSessionsTable.sessionId, sessionId))
+    .limit(1);
+
+  if (!session) {
+    await sendExpiredSession(chatId);
+    return;
+  }
+
+  if (session.status === "expired") {
+    await sendExpiredSession(chatId);
+    return;
+  }
+
+  if (session.status === "confirmed") {
+    let data: BookingData;
+    try { data = JSON.parse(session.bookingData) as BookingData; } catch { return; }
+    await sendBookingAlreadyDone(chatId, data);
+    return;
+  }
+
+  let data: BookingData;
+  try { data = JSON.parse(session.bookingData) as BookingData; } catch {
+    await callTelegram("sendMessage", { chat_id: chatId, text: "Xatolik yuz berdi. Iltimos qayta urining." });
+    return;
+  }
+
+  await db
+    .update(bookingSessionsTable)
+    .set({
+      status: "confirmed",
+      clientTelegramId: tgUserId,
+      clientName: firstName,
+      clientTelegramUsername: tgUsername,
+    })
+    .where(eq(bookingSessionsTable.sessionId, sessionId));
+
+  console.log(`[TelegramBot] Booking confirmed: session=${sessionId} tgUser=${tgUserId}`);
+
+  const barberLine = data.isTeam && data.teamBarberName
+    ? `\n🧑‍🦱 Usta: <b>${data.teamBarberName}</b>` : "";
+  const mapLine = data.mapLink
+    ? `\n📍 <a href="${data.mapLink}">Manzilni ko'rish</a>`
+    : data.barberAddress ? `\n📍 ${data.barberAddress}` : "";
+
+  const confirmText = `${firstName}, sizning navbatingiz tasdiqlandi ✅${barberLine}\n🕒 Vaqt: <b>${formatDateLabel(data.date)}, ${data.time}</b>${mapLine}\n\n💈 Qayta bron qilish:\n${data.barberPageLink}\n\n⏰ Iltimos, belgilangan vaqtdan 5-10 daqiqa oldin keling.`;
+
+  const appUrl = getAppUrl();
+  const returnUrl = `${appUrl}/barber-uz?session_confirmed=${sessionId}&tg_id=${tgUserId}`;
+
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: confirmText,
+    parse_mode: "HTML",
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "🌐 Ilovaga qaytish", url: returnUrl }],
+      ],
+    },
+  });
+}
+
+async function handleBookingStart(
+  chatId: number,
+  sessionId: string,
+  from: Record<string, unknown> | undefined,
+) {
+  const firstName = (from?.first_name as string) || "Mijoz";
+  const tgUserId = String(from?.id || chatId);
+  const tgUsername = (from?.username as string) || null;
+
+  const [session] = await db
+    .select()
+    .from(bookingSessionsTable)
+    .where(eq(bookingSessionsTable.sessionId, sessionId))
+    .limit(1);
+
+  if (!session || session.status === "expired" || new Date() > session.expiresAt) {
+    await sendExpiredSession(chatId);
+    return;
+  }
+
+  if (session.status === "confirmed") {
+    let data: BookingData;
+    try { data = JSON.parse(session.bookingData) as BookingData; } catch { return; }
+    await sendBookingAlreadyDone(chatId, data);
+    return;
+  }
+
+  let data: BookingData;
+  try { data = JSON.parse(session.bookingData) as BookingData; } catch {
+    await sendExpiredSession(chatId);
+    return;
+  }
+
+  const existingUser = await db
+    .select()
+    .from(bookingSessionsTable)
+    .where(eq(bookingSessionsTable.clientTelegramId, tgUserId))
+    .limit(1);
+
+  if (existingUser.length > 0 && existingUser[0]?.status === "confirmed") {
+    await confirmBookingSession(chatId, sessionId, tgUserId, firstName, tgUsername);
+    return;
+  }
+
+  await sendBookingWelcome(chatId, firstName, sessionId, data);
 }
 
 // ──────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import app from "./app";
 import { registerWebhook, isBotConfigured } from "./lib/telegram-bot";
+import { startReminderJob } from "./lib/reminders";
 
 const rawPort = process.env["PORT"];
 
@@ -15,6 +16,7 @@ if (Number.isNaN(port) || port <= 0) {
 
 app.listen(port, async () => {
   console.log(`Server listening on port ${port}`);
+  startReminderJob();
 
   if (!isBotConfigured()) {
     console.warn(

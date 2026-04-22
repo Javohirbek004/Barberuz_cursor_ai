@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
@@ -672,18 +672,55 @@ function QRLinkTab({ username }: { username: string }) {
 // BOOKING MODAL
 // ──────────────────────────────────────────────────────────────────────────────
 
-type BookingStep = "time" | "info" | "done";
+type BookingStep = "time" | "info" | "verifying" | "done";
 type DateOpt = "today" | "tomorrow" | "custom";
+
+interface TgCustomer { tgId: string; name: string; username: string | null }
+
+function loadTgCustomer(): TgCustomer | null {
+  try { return JSON.parse(localStorage.getItem("tg_customer") || "null"); } catch { return null; }
+}
+function saveTgCustomer(c: TgCustomer) {
+  localStorage.setItem("tg_customer", JSON.stringify(c));
+}
+
+const API_BASE = "";
+
+async function createBookingSession(payload: {
+  barberId: string; barberName: string; barberAddress: string;
+  mapLink: string; barberPageLink: string; isTeam: boolean;
+  teamBarberName: string | null; services: { name: string; price: number; duration: number }[];
+  totalPrice: number; totalDuration: number; date: string; time: string;
+  tgCustomer?: TgCustomer;
+}): Promise<{ sessionId: string; deepLink: string | null; status: string }> {
+  const res = await fetch(`${API_BASE}/api/public/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Session creation failed");
+  return res.json();
+}
+
+async function pollSession(sessionId: string): Promise<{ status: string; clientName?: string; clientTelegramId?: string; clientTelegramUsername?: string }> {
+  const res = await fetch(`${API_BASE}/api/public/sessions/${sessionId}`);
+  if (!res.ok) throw new Error("Poll failed");
+  return res.json();
+}
 
 function BookingModal({
   selectedServices,
   totalDuration,
   isTeam,
+  barberId,
+  profile,
   onClose,
 }: {
   selectedServices: ServiceItem[];
   totalDuration: number;
   isTeam: boolean;
+  barberId: string;
+  profile: ProfileData;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<BookingStep>("time");
@@ -692,6 +729,96 @@ function BookingModal({
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("+998 ");
+  const [submitting, setSubmitting] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+  }, []);
+
+  useEffect(() => () => stopPolling(), [stopPolling]);
+
+  function getDateStr() {
+    return dateOpt;
+  }
+
+  function getTeamBarberName() {
+    if (!isTeam || !selectedBarber || selectedBarber === "any" || selectedBarber === "solo") return null;
+    return TEAM_BARBERS.find(b => b.id === selectedBarber)?.name || null;
+  }
+
+  function getBarberPageLink() {
+    const base = window.location.origin;
+    return `${base}/barber-uz`;
+  }
+
+  async function handleBookingSubmit() {
+    if (!clientName.trim() || !selectedTime || submitting) return;
+    setSubmitting(true);
+
+    try {
+      const tgCustomer = loadTgCustomer();
+      const services = selectedServices.map(s => ({ name: s.name, price: s.price, duration: s.duration }));
+      const totalPrice = selectedServices.reduce((a, s) => a + s.price, 0);
+
+      const payload = {
+        barberId: barberId || "demo",
+        barberName: profile.name,
+        barberAddress: profile.address,
+        mapLink: profile.mapLink,
+        barberPageLink: getBarberPageLink(),
+        isTeam,
+        teamBarberName: getTeamBarberName(),
+        services,
+        totalPrice,
+        totalDuration,
+        date: getDateStr(),
+        time: selectedTime,
+        tgCustomer: tgCustomer || undefined,
+      };
+
+      const result = await createBookingSession(payload);
+
+      if (result.status === "confirmed") {
+        setStep("done");
+        setSubmitting(false);
+        return;
+      }
+
+      setSessionId(result.sessionId);
+
+      if (result.deepLink) {
+        window.open(result.deepLink, "_blank");
+      }
+
+      setStep("verifying");
+      setSubmitting(false);
+
+      pollingRef.current = setInterval(async () => {
+        try {
+          const poll = await pollSession(result.sessionId);
+          if (poll.status === "confirmed") {
+            stopPolling();
+            if (poll.clientTelegramId) {
+              saveTgCustomer({
+                tgId: poll.clientTelegramId,
+                name: poll.clientName || clientName,
+                username: poll.clientTelegramUsername || null,
+              });
+            }
+            setStep("done");
+          } else if (poll.status === "expired") {
+            stopPolling();
+            setStep("info");
+          }
+        } catch {
+        }
+      }, 3000);
+    } catch {
+      setSubmitting(false);
+    }
+  }
 
   const totalPrice = selectedServices.reduce((acc, s) => acc + s.price, 0);
   const barberSlots = isTeam
@@ -717,7 +844,8 @@ function BookingModal({
           )}
           <div className="flex-1">
             {step === "time" && <h2 className="font-bold text-base">Vaqt tanlash</h2>}
-            {step === "info" && <h2 className="font-bold text-base">Ism va telefon</h2>}
+            {step === "info" && <h2 className="font-bold text-base">Bronni tasdiqlash</h2>}
+            {step === "verifying" && <h2 className="font-bold text-base text-[#2AABEE]">Telegram tasdiq...</h2>}
             {step === "done" && <h2 className="font-bold text-base text-emerald-400">Bron tasdiqlandi!</h2>}
           </div>
           {step !== "done" && (
@@ -867,11 +995,40 @@ function BookingModal({
                   <div className="bg-[#2AABEE]/8 border border-[#2AABEE]/20 rounded-2xl px-4 py-3">
                     <p className="text-xs text-[#2AABEE]/80 flex items-center gap-1.5"><Send className="w-3.5 h-3.5 shrink-0" /> Telegram bot bron tasdiqlaydi va eslatma yuboradi</p>
                   </div>
-                  <button onClick={() => clientName.trim() && setStep("done")} disabled={!clientName.trim()}
+                  <button onClick={handleBookingSubmit} disabled={!clientName.trim() || submitting}
                     className="w-full h-12 rounded-2xl bg-[#2AABEE] text-white font-bold flex items-center justify-center gap-2 disabled:opacity-30 text-sm">
-                    <Send className="w-4 h-4" /> Bron qilish
+                    {submitting
+                      ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Yuklanmoqda...</>
+                      : <><Send className="w-4 h-4" /> Telegram orqali tasdiqlash</>
+                    }
                   </button>
                 </div>
+              </motion.div>
+            )}
+
+            {/* STEP: VERIFYING */}
+            {step === "verifying" && (
+              <motion.div key="verifying" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-10">
+                <div className="w-20 h-20 rounded-3xl bg-[#2AABEE]/10 border border-[#2AABEE]/20 flex items-center justify-center text-4xl mx-auto mb-5">💬</div>
+                <h2 className="text-lg font-bold mb-1">Telegram bot kutilmoqda</h2>
+                <p className="text-sm text-muted-foreground mb-6">Telegram botda <b>✅ Tasdiqlash</b> tugmasini bosing</p>
+                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-6">
+                  <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                  <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:0.2s]" />
+                  <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:0.4s]" />
+                  <span className="ml-1">Tasdiq kutilmoqda</span>
+                </div>
+                {sessionId && (
+                  <button
+                    onClick={() => {
+                      const botName = "Barberuz_yordamchi_bot";
+                      window.open(`https://t.me/${botName}?start=booking_${sessionId}`, "_blank");
+                    }}
+                    className="w-full h-12 rounded-2xl bg-[#2AABEE]/15 border border-[#2AABEE]/30 text-[#2AABEE] font-semibold text-sm flex items-center justify-center gap-2 mb-3">
+                    <Send className="w-4 h-4" /> Telegram botni qayta ochish
+                  </button>
+                )}
+                <button onClick={() => { stopPolling(); setStep("info"); }} className="text-xs text-muted-foreground underline">Bekor qilish</button>
               </motion.div>
             )}
 
@@ -907,10 +1064,12 @@ function CustomerView({
   profile,
   services,
   isTeam,
+  barberId,
 }: {
   profile: ProfileData;
   services: ServiceItem[];
   isTeam: boolean;
+  barberId: string;
 }) {
   const [previewTab, setPreviewTab] = useState<"asosiy" | "xizmatlar">("asosiy");
   const [activeCat, setActiveCat] = useState<string>("all");
@@ -1228,6 +1387,8 @@ function CustomerView({
             selectedServices={selectedServices}
             totalDuration={totalDur}
             isTeam={isTeam}
+            barberId={barberId}
+            profile={profile}
             onClose={() => setBookingOpen(false)}
           />
         )}
@@ -1288,7 +1449,7 @@ export default function PersonalPage() {
               ← Tahrirlash
             </button>
           </div>
-          <CustomerView profile={profile} services={services} isTeam={isTeam} />
+          <CustomerView profile={profile} services={services} isTeam={isTeam} barberId={user?.id || ""} />
         </>
       ) : (
         /* ── EDIT MODE ────────────────────────────────────────────────── */

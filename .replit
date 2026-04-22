@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 
 [[artifacts]]
 id = "artifacts/api-server"
@@ -29,3 +29,6 @@ timeoutMs = 20000
 
 [userenv.shared]
 APP_URL = "https://c5fc5864-6a65-4b13-8a28-5be8ea9a324e-00-31nk0da5iuqac.worf.replit.dev"
+
+[nix]
+channel = "stable-25_05"
