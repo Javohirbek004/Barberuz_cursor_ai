@@ -21,6 +21,7 @@
  *  4. Frontend polls /api/auth/telegram-login-status/{code} → gets token → redirects
  */
 
+import { randomBytes } from "crypto";
 import { db, usersTable, bookingSessionsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { generateToken } from "./auth";
@@ -66,6 +67,22 @@ interface LoginResult {
 }
 const pendingLoginResults = new Map<string, LoginResult>();
 
+/** Secure login tokens: token → { userId, expiresAt } — single use, 5 min */
+const loginTokens = new Map<string, { userId: string; expiresAt: number }>();
+
+/** Called by auth route to store a secure login token before sending deep link */
+export function storeLoginToken(token: string, userId: string, ttlMs = 5 * 60 * 1000) {
+  loginTokens.set(token, { userId, expiresAt: Date.now() + ttlMs });
+}
+
+function consumeLoginToken(token: string): string | null {
+  const entry = loginTokens.get(token);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { loginTokens.delete(token); return null; }
+  loginTokens.delete(token); // single use
+  return entry.userId;
+}
+
 /** Exported: called by the auth route to check polling */
 export function getTelegramLoginResult(code: string): LoginResult | null {
   const result = pendingLoginResults.get(code);
@@ -96,8 +113,8 @@ async function callTelegram(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const json = await res.json();
-    if (!json.ok) {
+    const json = await res.json() as Record<string, unknown>;
+    if (!json["ok"]) {
       console.error(`[TelegramBot] ${method} failed:`, JSON.stringify(json));
     }
     return json;
@@ -105,6 +122,50 @@ async function callTelegram(
     console.error(`[TelegramBot] Network error calling ${method}:`, err);
     return null;
   }
+}
+
+// ──────────────────────────────────────────────────────────────
+// URL validation + Debug logging
+// ──────────────────────────────────────────────────────────────
+
+function validateAppUrl(url: string): boolean {
+  if (!url || !url.startsWith("https://")) return false;
+  try { new URL(url); return true; } catch { return false; }
+}
+
+function buildProfileUrl(authToken: string): string {
+  const base = getAppUrl();
+  const url = `${base}/barber-uz?authToken=${encodeURIComponent(authToken)}`;
+  return validateAppUrl(url) ? url : "";
+}
+
+type LogAction =
+  | "reg_start" | "reg_contact" | "reg_verified"
+  | "login_start" | "login_success" | "login_cancelled"
+  | "login_token_expired"
+  | "barber_invite_start" | "barber_invite_verified"
+  | "booking_start" | "booking_confirmed"
+  | "barber_notified" | "barber_no_telegram"
+  | "notification_already_sent"
+  | "cancel_confirm_prompt" | "booking_cancelled"
+  | "cancel_client_notified"
+  | "reminder_sent";
+
+function log(
+  action: LogAction,
+  ctx: Partial<{
+    chatId: number;
+    telegramUserId: string;
+    barberId: string;
+    bookingId: string;
+    sessionId: string;
+    userId: string;
+    url: string;
+    phone: string;
+    error: string;
+  }>,
+) {
+  console.log(`[Bot:${action}]`, JSON.stringify(ctx));
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -129,15 +190,25 @@ async function sendContactRequest(chatId: number, userName: string) {
 async function sendVerificationSuccess(chatId: number, userId: string, token: string) {
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Raqam tasdiqlandi! \u2705 Quyidagi tugmani bosib ilovaga kiring:",
+    text: "Raqamingiz tasdiqlandi! \u2705\nProfilingizga o\u02BBtish uchun quyidagi linkni bosing:",
     reply_markup: { remove_keyboard: true },
   });
+  const profileUrl = buildProfileUrl(token);
+  if (!profileUrl) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Xatolik yuz berdi. Iltimos, ilovaga qo\u02BBlda kiring.",
+    });
+    log("reg_verified", { chatId, userId, error: "invalid_url" });
+    return;
+  }
+  log("reg_verified", { chatId, userId, url: profileUrl });
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text: "Profilingizga o\u02BBtish uchun tugmani bosing:",
     reply_markup: {
       inline_keyboard: [
-        [{ text: "\uD83C\uDF10 Ilovaga kirish", url: `${getAppUrl()}/verify-telegram?uid=${userId}&token=${token}` }],
+        [{ text: "\uD83C\uDF10 Ilovaga kirish", url: profileUrl }],
       ],
     },
   });
@@ -303,6 +374,12 @@ function parseBarberPayload(payload: string): { userId: string } | null {
   return { userId: match[1]!.toLowerCase() };
 }
 
+function parseLoginPayload(payload: string): { token: string } | null {
+  const match = payload.match(/^login_([a-zA-Z0-9_-]{8,128})$/);
+  if (!match) return null;
+  return { token: match[1]! };
+}
+
 // ──────────────────────────────────────────────────────────────
 // Main update handler
 // ──────────────────────────────────────────────────────────────
@@ -341,6 +418,13 @@ export async function handleTelegramUpdate(update: unknown) {
     const authParsed = parseAuthPayload(payload);
     if (authParsed) {
       await handleAuthStart(chatId, authParsed.code, authParsed.lang);
+      return;
+    }
+
+    // Secure login deep-link
+    const loginParsed = parseLoginPayload(payload);
+    if (loginParsed) {
+      await handleLoginStart(chatId, loginParsed.token, from);
       return;
     }
 
@@ -484,6 +568,59 @@ async function handleBarberContact(
   await sendBarberMemberSuccess(chatId, userId, name, shopName);
 }
 
+async function handleLoginStart(
+  chatId: number,
+  token: string,
+  from: Record<string, unknown> | undefined,
+) {
+  const firstName = (from?.first_name as string) || "Foydalanuvchi";
+  log("login_start", { chatId, telegramUserId: String(from?.id || chatId) });
+
+  const userId = consumeLoginToken(token);
+  if (!userId) {
+    log("login_token_expired", { chatId });
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Xatolik yuz berdi. Iltimos, ilovaga qo\u02BBlda kiring.",
+    });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Foydalanuvchi topilmadi. Iltimos, qayta urinib ko\u02BBring.",
+    });
+    return;
+  }
+
+  // Backend generates auth token (not bot)
+  const authToken = generateToken(user.id);
+  const profileUrl = buildProfileUrl(authToken);
+
+  if (!profileUrl) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Xatolik yuz berdi. Iltimos, ilovaga qo\u02BBlda kiring.",
+    });
+    log("login_success", { chatId, userId, error: "invalid_url" });
+    return;
+  }
+
+  log("login_success", { chatId, userId, url: profileUrl });
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: `Assalomu alaykum, <b>${firstName}</b>! \uD83D\uDC4B\n\nSahifangizga kirish tasdiqlandi! \u2705\nProfilingizga o\u02BBtish uchun quyidagi tugmani bosing:`,
+    parse_mode: "HTML",
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "\uD83C\uDF10 Sahifaga qaytish", url: profileUrl }],
+      ],
+    },
+  });
+}
+
 async function handleAuthStart(chatId: number, code: string, lang: string) {
   console.log(`[TelegramBot] Auth start: chatId=${chatId} code=${code} lang=${lang}`);
 
@@ -561,11 +698,41 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
 
   if (callbackData.startsWith("book_confirm_")) {
     const sessionId = callbackData.slice("book_confirm_".length);
-    const firstName = (from.first_name as string) || "Mijoz";
-    const tgUserId  = String(from.id);
+    const firstName  = (from.first_name as string) || "Mijoz";
+    const tgUserId   = String(from.id);
     const tgUsername = (from.username as string) || null;
-    console.log(`[TelegramBot] Book confirm: sessionId=${sessionId} tgUser=${tgUserId}`);
+    log("booking_confirmed", { chatId, telegramUserId: tgUserId, sessionId });
     await confirmBookingSession(chatId, sessionId, tgUserId, firstName, tgUsername);
+    return;
+  }
+
+  // ── Barber: cancel booking (first click — show confirmation) ────────────
+  if (callbackData.startsWith("cancel_booking_")) {
+    const sessionId = callbackData.slice("cancel_booking_".length);
+    log("cancel_confirm_prompt", { chatId, sessionId, telegramUserId: String(from.id) });
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Bronni bekor qilasizmi?",
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "\u2705 Bekor qilish", callback_data: `confirm_cancel_${sessionId}` },
+          { text: "\u21A9\uFE0F Orqaga",  callback_data: `abort_cancel_${sessionId}` },
+        ]],
+      },
+    });
+    return;
+  }
+
+  // ── Barber: confirmed cancel ─────────────────────────────────────────────
+  if (callbackData.startsWith("confirm_cancel_")) {
+    const sessionId = callbackData.slice("confirm_cancel_".length);
+    await handleConfirmCancel(chatId, sessionId);
+    return;
+  }
+
+  // ── Barber: aborted cancel ───────────────────────────────────────────────
+  if (callbackData.startsWith("abort_cancel_")) {
+    await callTelegram("sendMessage", { chat_id: chatId, text: "Bekor qilish to\u02BBxtatildi." });
     return;
   }
 }
@@ -663,6 +830,145 @@ async function handleRegContact(
       text: "Xatolik yuz berdi. Iltimos, qayta harakat qiling.",
     });
   }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Cancel flow handler
+// ──────────────────────────────────────────────────────────────
+
+async function handleConfirmCancel(chatId: number, sessionId: string) {
+  const [session] = await db
+    .select()
+    .from(bookingSessionsTable)
+    .where(eq(bookingSessionsTable.sessionId, sessionId))
+    .limit(1);
+
+  if (!session) {
+    await callTelegram("sendMessage", { chat_id: chatId, text: "Bron topilmadi." });
+    return;
+  }
+
+  let data: BookingData;
+  try { data = JSON.parse(session.bookingData) as BookingData; } catch {
+    await callTelegram("sendMessage", { chat_id: chatId, text: "Xatolik yuz berdi." });
+    return;
+  }
+
+  await db
+    .update(bookingSessionsTable)
+    .set({ status: "cancelled" })
+    .where(eq(bookingSessionsTable.sessionId, sessionId));
+
+  log("booking_cancelled", {
+    sessionId,
+    barberId: session.barberId,
+    telegramUserId: session.clientTelegramId || undefined,
+  });
+
+  await callTelegram("sendMessage", { chat_id: chatId, text: "Bron bekor qilindi \u274C" });
+
+  if (!session.clientTelegramId || session.cancelNotificationSent) return;
+
+  const clientFirstName = session.clientName?.split(" ")[0] || "Mijoz";
+  const serviceParam = data.services[0]
+    ? `&serviceId=${encodeURIComponent(data.services[0].name)}`
+    : "";
+  const reBookUrl = `${getAppUrl()}/barber-uz?barberId=${encodeURIComponent(session.barberId)}${serviceParam}`;
+
+  if (!validateAppUrl(reBookUrl)) {
+    await callTelegram("sendMessage", {
+      chat_id: Number(session.clientTelegramId),
+      text: `Uzr, <b>${clientFirstName}</b>! \uD83D\uDE4F\n\nSizning ${formatDateLabel(data.date)}, <b>${data.time}</b> dagi navbatingiz bekor qilindi.\n\nXatolik yuz berdi. Iltimos, ilovaga qo\u02BBlda kiring.`,
+      parse_mode: "HTML",
+    });
+  } else {
+    await callTelegram("sendMessage", {
+      chat_id: Number(session.clientTelegramId),
+      text: `Uzr, <b>${clientFirstName}</b>! \uD83D\uDE4F\n\nSizning ${formatDateLabel(data.date)}, <b>${data.time}</b> dagi navbatingiz bekor qilindi.\n\nQulay boshqa vaqtni tanlash uchun quyidagi tugmani bosing:`,
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [[{ text: "\uD83D\uDCC5 Qayta bron qilish", url: reBookUrl }]],
+      },
+    });
+  }
+
+  await db
+    .update(bookingSessionsTable)
+    .set({ cancelNotificationSent: true })
+    .where(eq(bookingSessionsTable.sessionId, sessionId));
+
+  log("cancel_client_notified", { sessionId, telegramUserId: session.clientTelegramId });
+}
+
+// ──────────────────────────────────────────────────────────────
+// Barber notification (exported — called when session confirmed)
+// ──────────────────────────────────────────────────────────────
+
+export async function sendBarberBookingNotification(
+  barberId: string,
+  sessionId: string,
+  data: BookingData,
+  clientName: string,
+  clientPhone: string | null,
+) {
+  const [barber] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, barberId))
+    .limit(1);
+
+  if (!barber?.telegramId) {
+    log("barber_no_telegram", { barberId, sessionId });
+    return;
+  }
+
+  const [session] = await db
+    .select()
+    .from(bookingSessionsTable)
+    .where(eq(bookingSessionsTable.sessionId, sessionId))
+    .limit(1);
+
+  if (session?.notificationSent) {
+    log("notification_already_sent", { barberId, sessionId });
+    return;
+  }
+
+  const serviceNames = data.services.map(s => s.name).join(", ");
+  const phoneLine = clientPhone ? `\uD83D\uDCDE ${clientPhone}\n` : "";
+  const text =
+    `\uD83D\uDD14 <b>Yangi bron!</b>\n\n` +
+    `\uD83D\uDC64 ${clientName}\n` +
+    `${phoneLine}` +
+    `\u23F0 ${formatDateLabel(data.date)}, ${data.time}\n` +
+    `\u2702\uFE0F ${serviceNames}\n` +
+    `\uD83D\uDCB0 ${data.totalPrice.toLocaleString()} so\u02BCm`;
+
+  const buttons: { text: string; callback_data?: string; url?: string }[][] = [];
+  const row: { text: string; callback_data?: string; url?: string }[] = [];
+  if (clientPhone) {
+    const telUrl = `tel:${clientPhone.replace(/[\s\-()]/g, "")}`;
+    row.push({ text: "\uD83D\uDCDE Qo\u02BBng\u02BBiroq", url: telUrl });
+  }
+  row.push({ text: "\u274C Bekor qilish", callback_data: `cancel_booking_${sessionId}` });
+  buttons.push(row);
+
+  await callTelegram("sendMessage", {
+    chat_id: Number(barber.telegramId),
+    text,
+    parse_mode: "HTML",
+    reply_markup: { inline_keyboard: buttons },
+  });
+
+  await db
+    .update(bookingSessionsTable)
+    .set({ notificationSent: true })
+    .where(eq(bookingSessionsTable.sessionId, sessionId));
+
+  log("barber_notified", {
+    barberId,
+    sessionId,
+    telegramUserId: barber.telegramId,
+  });
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -784,7 +1090,7 @@ async function confirmBookingSession(
     })
     .where(eq(bookingSessionsTable.sessionId, sessionId));
 
-  console.log(`[TelegramBot] Booking confirmed: session=${sessionId} tgUser=${tgUserId}`);
+  log("booking_confirmed", { sessionId, telegramUserId: tgUserId, barberId: session.barberId });
 
   const barberLine = data.isTeam && data.teamBarberName
     ? `\n🧑‍🦱 Usta: <b>${data.teamBarberName}</b>` : "";
@@ -797,16 +1103,33 @@ async function confirmBookingSession(
   const appUrl = getAppUrl();
   const returnUrl = `${appUrl}/barber-uz?session_confirmed=${sessionId}&tg_id=${tgUserId}`;
 
+  const replyMarkup = validateAppUrl(returnUrl)
+    ? { inline_keyboard: [[{ text: "🌐 Ilovaga qaytish", url: returnUrl }]] }
+    : { inline_keyboard: [] };
+
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text: confirmText,
     parse_mode: "HTML",
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "🌐 Ilovaga qaytish", url: returnUrl }],
-      ],
-    },
+    reply_markup: replyMarkup,
   });
+
+  // Notify barber (fire-and-forget, non-blocking)
+  const [fresh] = await db
+    .select()
+    .from(bookingSessionsTable)
+    .where(eq(bookingSessionsTable.sessionId, sessionId))
+    .limit(1);
+
+  if (fresh && !fresh.notificationSent) {
+    sendBarberBookingNotification(
+      session.barberId,
+      sessionId,
+      data,
+      firstName,
+      fresh.clientPhone || null,
+    ).catch(err => console.error("[Bot] barber notification failed:", err));
+  }
 }
 
 async function handleBookingStart(

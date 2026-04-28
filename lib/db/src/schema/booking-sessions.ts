@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, index } from "drizzle-orm/pg-core";
 
 export const bookingSessionsTable = pgTable(
   "booking_sessions",
@@ -10,8 +10,11 @@ export const bookingSessionsTable = pgTable(
     clientName:             text("client_name"),
     clientTelegramUsername: text("client_telegram_username"),
     bookingId:              text("booking_id"),
+    clientPhone:            text("client_phone"),
+    notificationSent:       boolean("notification_sent").notNull().default(false),
+    cancelNotificationSent: boolean("cancel_notification_sent").notNull().default(false),
     status: text("status", {
-      enum: ["pending", "confirmed", "expired"],
+      enum: ["pending", "confirmed", "expired", "cancelled"],
     }).notNull().default("pending"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

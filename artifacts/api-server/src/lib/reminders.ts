@@ -1,15 +1,14 @@
 /**
  * Reminder system for confirmed bookings.
  *
- * Runs every 60 seconds and sends Telegram reminders to customers:
- *  - 1 hour before appointment
- *  - 10 minutes before appointment (optional)
+ * Runs every 60 seconds and sends Telegram reminders to the BARBER:
+ *  - 30 minutes before appointment (barber is notified about upcoming client)
  *
  * Reminder state is tracked in-memory using a Set of `sessionId:window` keys
  * to avoid duplicate sends across runs.
  */
 
-import { db, bookingSessionsTable } from "@workspace/db";
+import { db, bookingSessionsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -72,19 +71,21 @@ function parseBookingDateTime(data: BookingData): Date | null {
   }
 }
 
-function buildReminderText(firstName: string, data: BookingData, minutesBefore: number): string {
-  const barberLine = data.isTeam && data.teamBarberName
-    ? `\n🧑‍🦱 Usta: <b>${data.teamBarberName}</b>`
-    : "";
-  const mapLine = data.mapLink
-    ? `\n📍 <a href="${data.mapLink}">Manzilni ko'rish</a>`
-    : data.barberAddress
-    ? `\n📍 ${data.barberAddress}`
-    : "";
-
-  return minutesBefore === 60
-    ? `⏰ <b>Eslatma!</b>\n\n${firstName}, sizning navbatingiz <b>1 soatdan so'ng</b>:${barberLine}\n🕒 Vaqt: <b>${data.time}</b>${mapLine}`
-    : `⏰ <b>Eslatma!</b>\n\n${firstName}, sizning navbatingiz <b>10 daqiqadan so'ng</b>:${barberLine}\n🕒 Vaqt: <b>${data.time}</b>${mapLine}\n\n⚡ Iltimos, belgilangan vaqtga ulgurib keling!`;
+function buildBarberReminderText(
+  clientName: string,
+  clientPhone: string | null,
+  data: BookingData,
+): string {
+  const serviceNames = data.services.map(s => s.name).join(", ");
+  const phoneLine = clientPhone ? `\n\uD83D\uDCDE ${clientPhone}` : "";
+  return (
+    `\u23F0 <b>Eslatma!</b>\n\n` +
+    `30 daqiqadan keyin mijozingiz bor:\n\n` +
+    `\uD83D\uDC64 ${clientName}` +
+    `${phoneLine}\n` +
+    `\uD83D\uDD52 ${data.time} (Bugun)\n` +
+    `\u2702\uFE0F ${serviceNames}`
+  );
 }
 
 async function checkAndSendReminders(): Promise<void> {
@@ -99,8 +100,25 @@ async function checkAndSendReminders(): Promise<void> {
 
     const nowMs = Date.now();
 
+    // Collect unique barberIds to batch-lookup telegramIds
+    const barberIds = [...new Set(sessions.map(s => s.barberId))];
+    const barberMap = new Map<string, string | null>();
+    for (const barberId of barberIds) {
+      try {
+        const [barber] = await db
+          .select({ telegramId: usersTable.telegramId })
+          .from(usersTable)
+          .where(eq(usersTable.id, barberId))
+          .limit(1);
+        barberMap.set(barberId, barber?.telegramId ?? null);
+      } catch {
+        barberMap.set(barberId, null);
+      }
+    }
+
     for (const session of sessions) {
-      if (!session.clientTelegramId) continue;
+      const barberTelegramId = barberMap.get(session.barberId);
+      if (!barberTelegramId) continue;
 
       let data: BookingData;
       try {
@@ -114,18 +132,15 @@ async function checkAndSendReminders(): Promise<void> {
 
       const diffMinutes = (appointmentDt.getTime() - nowMs) / 60000;
 
-      const firstName = session.clientName?.split(" ")[0] || "Mijoz";
+      const key = `${session.sessionId}:30`;
+      if (sentReminders.has(key)) continue;
 
-      for (const window of [60, 10] as const) {
-        const key = `${session.sessionId}:${window}`;
-        if (sentReminders.has(key)) continue;
-
-        if (diffMinutes <= window && diffMinutes > window - 5) {
-          const text = buildReminderText(firstName, data, window);
-          await sendTelegramMessage(session.clientTelegramId, text);
-          sentReminders.add(key);
-          console.log(`[Reminders] Sent ${window}min reminder to ${session.clientTelegramId} (session ${session.sessionId})`);
-        }
+      if (diffMinutes <= 30 && diffMinutes > 25) {
+        const clientName = session.clientName?.split(" ")[0] || "Mijoz";
+        const text = buildBarberReminderText(clientName, session.clientPhone || null, data);
+        await sendTelegramMessage(barberTelegramId, text);
+        sentReminders.add(key);
+        console.log(`[Bot:reminder_sent] ${JSON.stringify({ sessionId: session.sessionId, barberId: session.barberId, telegramId: barberTelegramId })}`);
       }
     }
   } catch (err) {

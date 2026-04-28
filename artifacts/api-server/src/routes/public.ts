@@ -10,6 +10,7 @@ import { Router } from "express";
 import { db, bookingSessionsTable, usersTable } from "@workspace/db";
 import { eq, and, lt } from "drizzle-orm";
 import { randomBytes } from "crypto";
+import { sendBarberBookingNotification } from "../lib/telegram-bot";
 
 const router = Router();
 
@@ -81,6 +82,7 @@ router.post("/sessions", async (req, res) => {
       date,
       time,
       tgCustomer,
+      clientPhone,
     } = req.body;
 
     if (!barberId || !date || !time || !services?.length) {
@@ -105,7 +107,13 @@ router.post("/sessions", async (req, res) => {
       time,
     };
 
+    const safeClientPhone = (typeof clientPhone === "string" && clientPhone.trim())
+      ? clientPhone.trim()
+      : null;
+
     if (tgCustomer?.tgId) {
+      const clientFirstName = (tgCustomer.name as string || "Mijoz").split(" ")[0];
+
       await db.insert(bookingSessionsTable).values({
         sessionId,
         barberId,
@@ -113,6 +121,7 @@ router.post("/sessions", async (req, res) => {
         clientTelegramId: String(tgCustomer.tgId),
         clientName: tgCustomer.name || "Mijoz",
         clientTelegramUsername: tgCustomer.username || null,
+        clientPhone: safeClientPhone,
         status: "confirmed",
         expiresAt,
       });
@@ -122,6 +131,16 @@ router.post("/sessions", async (req, res) => {
         status: "confirmed",
         deepLink: null,
       });
+
+      // Fire barber notification async — don't block response
+      sendBarberBookingNotification(
+        barberId,
+        sessionId,
+        bookingData as Parameters<typeof sendBarberBookingNotification>[2],
+        clientFirstName,
+        safeClientPhone,
+      ).catch(err => console.error("[PublicAPI] barber notify failed:", err));
+
       return;
     }
 
@@ -129,6 +148,7 @@ router.post("/sessions", async (req, res) => {
       sessionId,
       barberId,
       bookingData: JSON.stringify(bookingData),
+      clientPhone: safeClientPhone,
       status: "pending",
       expiresAt,
     });

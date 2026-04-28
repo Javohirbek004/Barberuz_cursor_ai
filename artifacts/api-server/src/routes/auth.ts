@@ -1,8 +1,9 @@
 import { Router } from "express";
+import { randomBytes } from "crypto";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { hashPassword, legacyHash, generateToken, authenticate, getUser } from "../lib/auth";
-import { getTelegramLoginResult } from "../lib/telegram-bot";
+import { getTelegramLoginResult, storeLoginToken } from "../lib/telegram-bot";
 
 const router = Router();
 
@@ -170,6 +171,57 @@ router.get("/telegram-login-status/:code", async (req, res) => {
   } catch (err) {
     console.error("Telegram login status error:", err);
     res.status(500).json({ ready: false, error: "server_error" });
+  }
+});
+
+/**
+ * POST /api/auth/telegram-token
+ * Backend generates a short-lived auth token for a given telegram_user_id.
+ * Used by the bot to get a fresh authToken after verifying identity.
+ */
+router.post("/telegram-token", async (req, res) => {
+  try {
+    const { telegram_user_id } = req.body;
+    if (!telegram_user_id) {
+      res.status(400).json({ error: "validation", message: "telegram_user_id required" });
+      return;
+    }
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.telegramId, String(telegram_user_id)))
+      .limit(1);
+    if (!user) {
+      res.status(404).json({ error: "not_found", message: "No user linked to this Telegram ID" });
+      return;
+    }
+    const authToken = generateToken(user.id);
+    const expiresIn = 10 * 60; // 10 minutes in seconds
+    console.log(`[Auth] telegram-token issued: userId=${user.id} tgId=${telegram_user_id}`);
+    res.json({ authToken, expiresIn });
+  } catch (err) {
+    console.error("[Auth] telegram-token error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+/**
+ * POST /api/auth/generate-login-link  (requires auth)
+ * Generates a secure deep-link token for Telegram login.
+ * Frontend calls this to get a one-time login URL.
+ */
+router.post("/generate-login-link", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME || "Barberuz_yordamchi_bot";
+    const secureToken = randomBytes(16).toString("hex");
+    storeLoginToken(secureToken, user.id, 5 * 60 * 1000); // 5 minutes
+    const deepLink = `https://t.me/${botUsername}?start=login_${secureToken}`;
+    console.log(`[Auth] login-link generated: userId=${user.id} token=${secureToken.slice(0, 8)}...`);
+    res.json({ deepLink, expiresIn: 300 });
+  } catch (err) {
+    console.error("[Auth] generate-login-link error:", err);
+    res.status(500).json({ error: "server_error" });
   }
 });
 
