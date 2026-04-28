@@ -65,6 +65,17 @@ export default function Login() {
     loginMutation.mutate({ data: { username, password } });
   };
 
+  // ── Handle ?authToken= from bot deep-link (direct login) ───
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authToken = params.get("authToken");
+    if (authToken) {
+      localStorage.setItem("barber_token", authToken);
+      window.history.replaceState({}, "", window.location.pathname);
+      navigate("/dashboard");
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Handle ?tg_code= from bot link (new browser context) ────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

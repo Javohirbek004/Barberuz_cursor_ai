@@ -70,6 +70,9 @@ const pendingLoginResults = new Map<string, LoginResult>();
 /** Secure login tokens: token → { userId, expiresAt } — single use, 5 min */
 const loginTokens = new Map<string, { userId: string; expiresAt: number }>();
 
+/** No-payload /start: chatId waiting for contact share to link account by phone */
+const pendingPhoneLogins = new Map<number, true>();
+
 /** Called by auth route to store a secure login token before sending deep link */
 export function storeLoginToken(token: string, userId: string, ttlMs = 5 * 60 * 1000) {
   loginTokens.set(token, { userId, expiresAt: Date.now() + ttlMs });
@@ -135,7 +138,8 @@ function validateAppUrl(url: string): boolean {
 
 function buildProfileUrl(authToken: string): string {
   const base = getAppUrl();
-  const url = `${base}/barber-uz?authToken=${encodeURIComponent(authToken)}`;
+  // Points to /login so the Login page can read ?authToken= and auto-sign in
+  const url = `${base}/barber-uz/login?authToken=${encodeURIComponent(authToken)}`;
   return validateAppUrl(url) ? url : "";
 }
 
@@ -259,8 +263,9 @@ async function sendAuthPhoneRequest(chatId: number, lang: string) {
   });
 }
 
-async function sendLoginSuccess(chatId: number, lang: string, code: string) {
+async function sendLoginSuccess(chatId: number, lang: string, _code: string, token: string) {
   const isUz = lang !== "ru";
+  const profileUrl = buildProfileUrl(token);
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text: isUz
@@ -268,12 +273,23 @@ async function sendLoginSuccess(chatId: number, lang: string, code: string) {
       : "Успешно! \u2705 Вернитесь в браузер \u2014 страница откроется автоматически.",
     reply_markup: { remove_keyboard: true },
   });
+
+  if (!profileUrl) {
+    log("login_success", { chatId, error: "invalid_url" });
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Xatolik yuz berdi. Iltimos, ilovaga qo\u02BBlda kiring.",
+    });
+    return;
+  }
+
+  log("login_success", { chatId, url: profileUrl });
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text: isUz ? "Yoki quyidagi tugmani bosing:" : "Или нажмите кнопку ниже:",
     reply_markup: {
       inline_keyboard: [
-        [{ text: isUz ? "\uD83C\uDF10 Ilovaga kirish" : "\uD83C\uDF10 Открыть приложение", url: `${getAppUrl()}/login?tg_code=${code}` }],
+        [{ text: isUz ? "\uD83C\uDF10 Ilovaga kirish" : "\uD83C\uDF10 Открыть приложение", url: profileUrl }],
       ],
     },
   });
@@ -442,8 +458,8 @@ export async function handleTelegramUpdate(update: unknown) {
       return;
     }
 
-    // Generic welcome
-    await sendGenericWelcome(chatId);
+    // No-payload /start: check if barber is already linked by Telegram ID
+    await handleNoPaylodStart(chatId, from);
     return;
   }
 
@@ -467,6 +483,12 @@ export async function handleTelegramUpdate(update: unknown) {
       return;
     }
 
+    // No-payload /start flow: look up by phone, link account
+    if (pendingPhoneLogins.has(chatId)) {
+      await handlePhoneLoginContact(chatId, phone, tgUserId, tgUsername);
+      return;
+    }
+
     // Otherwise it's the registration verification flow
     await handleRegContact(chatId, phone, tgUserId, tgUsername);
   }
@@ -475,6 +497,122 @@ export async function handleTelegramUpdate(update: unknown) {
 // ──────────────────────────────────────────────────────────────
 // Sub-handlers
 // ──────────────────────────────────────────────────────────────
+
+async function handleNoPaylodStart(
+  chatId: number,
+  from: Record<string, unknown> | undefined,
+) {
+  const firstName = (from?.first_name as string) || "Barber";
+  log("reg_start", { chatId, telegramUserId: String(from?.id || chatId) });
+
+  // Check if already linked
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.telegramId, String(chatId)))
+    .limit(1);
+
+  if (user) {
+    const loginToken = generateToken(user.id);
+    const profileUrl = buildProfileUrl(loginToken);
+    log("reg_verified", { chatId, userId: user.id, url: profileUrl || "invalid" });
+    if (profileUrl) {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: `Xush kelibsiz, <b>${firstName}</b>! \uD83D\uDC4B\nProfilingizga o\u02BBtish uchun quyidagi tugmani bosing:`,
+        parse_mode: "HTML",
+        reply_markup: {
+          inline_keyboard: [[{ text: "\uD83C\uDF10 Ilovaga kirish", url: profileUrl }]],
+        },
+      });
+    } else {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "Xush kelibsiz! Iltimos, ilovaga qo\u02BBlda kiring.",
+      });
+    }
+    return;
+  }
+
+  // Not linked — ask for phone
+  pendingPhoneLogins.set(chatId, true);
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text:
+      `Assalomu alaykum, <b>${firstName}</b>! \uD83D\uDC4B\n\n` +
+      `Men sizning shaxsiy yordamchingizman.\n\n` +
+      `Endi mijozlaringiz yozilsa sizga darhol xabar beraman.\n\n` +
+      `\uD83D\uDCF2 Ilovadan to\u02BBliq foydalanish uchun raqamingizni tasdiqlang:`,
+    parse_mode: "HTML",
+    reply_markup: {
+      keyboard: [[{ text: "\uD83D\uDCF1 Raqamni yuborish", request_contact: true }]],
+      resize_keyboard: true,
+      one_time_keyboard: true,
+    },
+  });
+}
+
+async function handlePhoneLoginContact(
+  chatId: number,
+  phone: string | null,
+  tgUserId: string,
+  tgUsername: string | null,
+) {
+  pendingPhoneLogins.delete(chatId);
+
+  if (!phone) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Telefon raqam olinmadi. Iltimos, qayta urinib ko\u02BBring.",
+      reply_markup: { remove_keyboard: true },
+    });
+    return;
+  }
+
+  log("reg_contact", { chatId, telegramUserId: tgUserId, phone });
+
+  // Normalise: strip leading +
+  const normPhone  = phone.replace(/\s+/g, "").replace(/^\+/, "");
+  const withPlus   = `+${normPhone}`;
+
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.phone, phone))
+    .limit(1);
+
+  const [userAlt] = !user
+    ? await db.select().from(usersTable).where(eq(usersTable.phone, withPlus)).limit(1)
+    : [];
+
+  const foundUser = user || userAlt;
+
+  if (!foundUser) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text:
+        "Bu raqam bilan hisob topilmadi. \uD83D\uDE4F\n\n" +
+        "Iltimos, ilovadan ro\u02BByxatdan o\u02BBting:",
+      reply_markup: {
+        remove_keyboard: true,
+        inline_keyboard: [[{ text: "\uD83D\uDD17 Ro\u02BByxatdan o\u02BBtish", url: `${getAppUrl()}/barber-uz/register` }]],
+      },
+    });
+    return;
+  }
+
+  await db.update(usersTable).set({
+    telegramVerified: true,
+    telegramId: tgUserId,
+    telegramUsername: tgUsername,
+    phone,
+    updatedAt: new Date(),
+  }).where(eq(usersTable.id, foundUser.id));
+
+  log("reg_verified", { chatId, userId: foundUser.id, telegramUserId: tgUserId });
+  const loginToken = generateToken(foundUser.id);
+  await sendVerificationSuccess(chatId, foundUser.id, loginToken);
+}
 
 async function handleRegStart(chatId: number, userId: string, _lang: string) {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -485,13 +623,23 @@ async function handleRegStart(chatId: number, userId: string, _lang: string) {
   }
 
   if (user.telegramVerified) {
-    await callTelegram("sendMessage", {
-      chat_id: chatId,
-      text: "Siz allaqachon tasdiqlangansiz! \u2705",
-      reply_markup: {
-        inline_keyboard: [[{ text: "\uD83C\uDF10 Ilovaga kirish", url: `${getAppUrl()}/login` }]],
-      },
-    });
+    const loginToken = generateToken(user.id);
+    const profileUrl = buildProfileUrl(loginToken);
+    log("reg_start", { chatId, userId, url: profileUrl || "invalid" });
+    if (profileUrl) {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "Siz allaqachon tasdiqlangansiz! \u2705\nProfilingizga o\u02BBtish uchun quyidagi tugmani bosing:",
+        reply_markup: {
+          inline_keyboard: [[{ text: "\uD83C\uDF10 Ilovaga kirish", url: profileUrl }]],
+        },
+      });
+    } else {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "Siz allaqachon tasdiqlangansiz! \u2705 Iltimos, ilovaga qo\u02BBlda kiring.",
+      });
+    }
     return;
   }
 
@@ -517,13 +665,23 @@ async function handleBarberStart(chatId: number, userId: string) {
   }
 
   if (user.telegramVerified) {
-    await callTelegram("sendMessage", {
-      chat_id: chatId,
-      text: "✅ Siz allaqachon ulanganmiz!\n\nEndi barcha bronlar sizga shu yerga keladi 🔔",
-      reply_markup: {
-        inline_keyboard: [[{ text: "Ilovaga qaytish", url: `${getAppUrl()}/barber-uz/dashboard` }]],
-      },
-    });
+    const loginToken = generateToken(user.id);
+    const profileUrl = buildProfileUrl(loginToken);
+    log("barber_invite_start", { chatId, userId, url: profileUrl || "invalid" });
+    if (profileUrl) {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "\u2705 Siz allaqachon ulanganmiz!\n\nEndi barcha bronlar sizga shu yerga keladi \uD83D\uDD14",
+        reply_markup: {
+          inline_keyboard: [[{ text: "Ilovaga qaytish", url: profileUrl }]],
+        },
+      });
+    } else {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "\u2705 Siz allaqachon ulanganmiz! Iltimos, ilovaga qo\u02BBlda kiring.",
+      });
+    }
     return;
   }
 
@@ -682,7 +840,7 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
     pendingAuthLogins.delete(chatId);
 
     console.log(`[TelegramBot] Auth confirmed: userId=${user.id} code=${code}`);
-    await sendLoginSuccess(chatId, pending.lang, code);
+    await sendLoginSuccess(chatId, pending.lang, code, token);
     return;
   }
 
@@ -790,7 +948,7 @@ async function handleAuthPhoneContact(
   pendingAuthLogins.delete(chatId);
 
   console.log(`[TelegramBot] Auth by phone: userId=${foundUser.id} code=${pending.code}`);
-  await sendLoginSuccess(chatId, pending.lang, pending.code);
+  await sendLoginSuccess(chatId, pending.lang, pending.code, token);
 }
 
 async function handleRegContact(
