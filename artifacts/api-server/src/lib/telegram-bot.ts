@@ -459,7 +459,7 @@ export async function handleTelegramUpdate(update: unknown) {
     }
 
     // No-payload /start: check if barber is already linked by Telegram ID
-    await handleNoPaylodStart(chatId, from);
+    await handleNoPayloadStart(chatId, from);
     return;
   }
 
@@ -498,7 +498,7 @@ export async function handleTelegramUpdate(update: unknown) {
 // Sub-handlers
 // ──────────────────────────────────────────────────────────────
 
-async function handleNoPaylodStart(
+async function handleNoPayloadStart(
   chatId: number,
   from: Record<string, unknown> | undefined,
 ) {
@@ -571,21 +571,21 @@ async function handlePhoneLoginContact(
 
   log("reg_contact", { chatId, telegramUserId: tgUserId, phone });
 
-  // Normalise: strip leading +
-  const normPhone  = phone.replace(/\s+/g, "").replace(/^\+/, "");
-  const withPlus   = `+${normPhone}`;
+  // Build all phone variants to maximise match rate regardless of storage format
+  const noSpaces   = phone.replace(/\s+/g, "");
+  const noPlus     = noSpaces.replace(/^\+/, "");
+  const withPlus   = `+${noPlus}`;
+  const phonesToTry = [...new Set([phone, noSpaces, noPlus, withPlus])];
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.phone, phone))
-    .limit(1);
-
-  const [userAlt] = !user
-    ? await db.select().from(usersTable).where(eq(usersTable.phone, withPlus)).limit(1)
-    : [];
-
-  const foundUser = user || userAlt;
+  let foundUser: typeof usersTable.$inferSelect | undefined;
+  for (const variant of phonesToTry) {
+    const [match] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.phone, variant))
+      .limit(1);
+    if (match) { foundUser = match; break; }
+  }
 
   if (!foundUser) {
     await callTelegram("sendMessage", {
