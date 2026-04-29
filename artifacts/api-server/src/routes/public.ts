@@ -26,8 +26,8 @@ function getAppUrl(): string {
   if (process.env.NODE_ENV === "development") {
     if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
-  const domains = process.env.REPLIT_DOMAINS?.split(",");
-  if (domains?.length) return `https://${domains[0]!.trim()}`;
+  const firstDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+  if (firstDomain) return `https://${firstDomain}`;
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   return "https://barberuz.replit.app";
 }

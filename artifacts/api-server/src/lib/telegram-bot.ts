@@ -48,8 +48,8 @@ function getAppUrl(): string {
   }
   // In production, Replit automatically sets REPLIT_DOMAINS to the real deployment domain.
   // This is more reliable than a manually configured APP_URL that may be stale or wrong.
-  const domains = process.env.REPLIT_DOMAINS?.split(",");
-  if (domains?.length) return `https://${domains[0]!.trim()}`;
+  const firstDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+  if (firstDomain) return `https://${firstDomain}`;
   // APP_URL as a manual override fallback (e.g. custom domain).
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   return "https://barberuz.replit.app";
