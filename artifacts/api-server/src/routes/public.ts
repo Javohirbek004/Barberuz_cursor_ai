@@ -23,9 +23,11 @@ function getBotUsername(): string {
 }
 
 function getAppUrl(): string {
-  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
-  return "https://barber.uz";
+  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  const domains = process.env.REPLIT_DOMAINS?.split(",");
+  if (domains?.length) return `https://${domains[0]!.trim()}`;
+  return "https://barberuz.replit.app";
 }
 
 async function expireOldSessions() {

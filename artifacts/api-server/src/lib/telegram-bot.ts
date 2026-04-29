@@ -32,22 +32,21 @@ function getToken(): string {
 
 /**
  * Returns the base URL for the frontend app.
- * Priority: REPLIT_DEV_DOMAIN (always current in Replit dev)
- *           → REPLIT_DOMAINS first entry (set in production deployments)
- *           → APP_URL (manual production override)
- *           → barber.uz (hardcoded fallback)
+ * Priority: APP_URL (set only in production env → always correct production URL)
+ *           → REPLIT_DEV_DOMAIN (live dev domain, wins in dev where APP_URL is absent)
+ *           → REPLIT_DOMAINS first entry (additional Replit-provided fallback)
+ *           → barberuz.replit.app (hardcoded last resort)
  *
- * IMPORTANT: APP_URL can become stale when the Replit workspace domain rotates.
- * REPLIT_DEV_DOMAIN is injected fresh each run, so it always wins in dev.
- * REPLIT_DOMAINS is set by Replit in production deployments — same logic as
- * webhook registration in index.ts.
+ * APP_URL is stored in the production environment only (not shared/dev), so it
+ * only activates in deployed production — dev naturally falls through to
+ * REPLIT_DEV_DOMAIN which is always the live dev workspace URL.
  */
 function getAppUrl(): string {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   const domains = process.env.REPLIT_DOMAINS?.split(",");
   if (domains?.length) return `https://${domains[0]!.trim()}`;
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
-  return "https://barber.uz";
+  return "https://barberuz.replit.app";
 }
 
 // ──────────────────────────────────────────────────────────────
