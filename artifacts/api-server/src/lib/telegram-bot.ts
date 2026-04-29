@@ -149,7 +149,7 @@ function validateAppUrl(url: string): boolean {
 function buildProfileUrl(authToken: string): string {
   const base = getAppUrl();
   // Points to /login so the Login page can read ?authToken= and auto-sign in
-  const url = `${base}/barber-uz/login?authToken=${encodeURIComponent(authToken)}`;
+  const url = `${base}/login?authToken=${encodeURIComponent(authToken)}`;
   return validateAppUrl(url) ? url : "";
 }
 
@@ -162,7 +162,7 @@ function buildProfileUrl(authToken: string): string {
 function buildLoginUrl(userId: string): string {
   const base = getAppUrl();
   const code = randomBytes(8).toString("hex"); // 16-char hex code
-  const url = `${base}/barber-uz/login?tg_code=${code}`;
+  const url = `${base}/login?tg_code=${code}`;
   if (!validateAppUrl(url)) return "";
   // Only store in pendingLoginResults after confirming the URL is valid
   const token = generateToken(userId);
@@ -302,7 +302,7 @@ async function sendLoginSuccess(
   firstName: string,
 ) {
   const base = getAppUrl();
-  const loginUrl = `${base}/barber-uz/login?tg_code=${code}`;
+  const loginUrl = `${base}/login?tg_code=${code}`;
   const profileUrl = validateAppUrl(loginUrl) ? loginUrl : "";
   if (!profileUrl) {
     log("login_success", { chatId, error: "invalid_url" });
@@ -384,7 +384,7 @@ async function sendBarberMemberContactRequest(
 }
 
 async function sendBarberMemberSuccess(chatId: number, userId: string, name: string, shopName: string) {
-  const autoLoginUrl = `${getAppUrl()}/barber-uz/barber-setup/${userId}?auto=1&n=${encodeURIComponent(name)}&s=${encodeURIComponent(shopName)}`;
+  const autoLoginUrl = `${getAppUrl()}/barber-setup/${userId}?auto=1&n=${encodeURIComponent(name)}&s=${encodeURIComponent(shopName)}`;
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text: "✅ Muvaffaqiyatli ulandingiz!\n\nEndi barcha bronlar sizga shu yerga keladi 🔔",
@@ -661,7 +661,7 @@ async function handlePhoneLoginContact(
         "Iltimos, ilovadan ro\u02BByxatdan o\u02BBting:",
       reply_markup: {
         remove_keyboard: true,
-        inline_keyboard: [[{ text: "\uD83D\uDD17 Ro\u02BByxatdan o\u02BBtish", url: `${getAppUrl()}/barber-uz/register` }]],
+        inline_keyboard: [[{ text: "\uD83D\uDD17 Ro\u02BByxatdan o\u02BBtish", url: `${getAppUrl()}/register` }]],
       },
     });
     return;
@@ -1092,7 +1092,7 @@ async function handleConfirmCancel(chatId: number, sessionId: string) {
   const serviceParam = data.services[0]
     ? `&serviceId=${encodeURIComponent(data.services[0].name)}`
     : "";
-  const reBookUrl = `${getAppUrl()}/barber-uz?barberId=${encodeURIComponent(session.barberId)}${serviceParam}`;
+  const reBookUrl = `${getAppUrl()}?barberId=${encodeURIComponent(session.barberId)}${serviceParam}`;
 
   if (!validateAppUrl(reBookUrl)) {
     await callTelegram("sendMessage", {
@@ -1320,7 +1320,7 @@ async function confirmBookingSession(
   const confirmText = `${firstName}, sizning navbatingiz tasdiqlandi ✅${barberLine}\n🕒 Vaqt: <b>${formatDateLabel(data.date)}, ${data.time}</b>${mapLine}\n\n💈 Qayta bron qilish:\n${data.barberPageLink}\n\n⏰ Iltimos, belgilangan vaqtdan 5-10 daqiqa oldin keling.`;
 
   const appUrl = getAppUrl();
-  const returnUrl = `${appUrl}/barber-uz?session_confirmed=${sessionId}&tg_id=${tgUserId}`;
+  const returnUrl = `${appUrl}?session_confirmed=${sessionId}&tg_id=${tgUserId}`;
 
   const replyMarkup = validateAppUrl(returnUrl)
     ? { inline_keyboard: [[{ text: "🌐 Ilovaga qaytish", url: returnUrl }]] }

@@ -101,7 +101,7 @@ router.post("/sessions", async (req, res) => {
       barberName:     barberName || "Barber",
       barberAddress:  barberAddress || "",
       mapLink:        mapLink || "",
-      barberPageLink: barberPageLink || `${getAppUrl()}/barber-uz`,
+      barberPageLink: barberPageLink || `${getAppUrl()}`,
       isTeam:         !!isTeam,
       teamBarberName: teamBarberName || null,
       services:       services || [],
