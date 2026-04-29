@@ -646,26 +646,6 @@ async function handleRegStart(chatId: number, userId: string, _lang: string) {
     return;
   }
 
-  // Send + pin welcome message for first-time solo barbers
-  const pinMsgResp = await callTelegram("sendMessage", {
-    chat_id: chatId,
-    text:
-      "Xush kelibsiz! \uD83D\uDC88\n\n" +
-      "Bu bot orqali siz:\n" +
-      "\u2022 Yangi mijozlar haqida xabar olasiz\n" +
-      "\u2022 Bronlarni boshqarasiz\n" +
-      "\u2022 Eslatmalarni olasiz\n\n" +
-      "\uD83D\uDC47 Boshlash uchun /start ni bosing",
-  }) as Record<string, unknown>;
-  const pinMsgResult = pinMsgResp?.result as Record<string, unknown> | undefined;
-  if (pinMsgResult?.message_id) {
-    await callTelegram("pinChatMessage", {
-      chat_id: chatId,
-      message_id: pinMsgResult.message_id,
-      disable_notification: true,
-    });
-  }
-
   pendingVerifications.set(chatId, userId);
   console.log(`[TelegramBot] Reg: pending chatId=${chatId} → userId=${userId}`);
   await sendContactRequest(chatId, user.name);
