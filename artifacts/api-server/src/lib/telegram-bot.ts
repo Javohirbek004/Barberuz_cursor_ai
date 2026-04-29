@@ -850,6 +850,7 @@ async function handleAuthStart(chatId: number, code: string, lang: string) {
 
   if (user) {
     // Found — skip confirmation, immediately log in
+    pendingAuthLogins.delete(chatId); // clear any stale pending state
     const token = generateToken(user.id);
     pendingLoginResults.set(code, {
       token,
