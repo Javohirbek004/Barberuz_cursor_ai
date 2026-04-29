@@ -851,9 +851,15 @@ async function handleAuthStart(chatId: number, code: string, lang: string) {
     .limit(1);
 
   if (user) {
-    // Found — send confirmation inline keyboard
-    pendingAuthLogins.set(chatId, { code, lang, step: "confirm" });
-    await sendAuthConfirmation(chatId, user.name, lang, code);
+    // Found — skip confirmation, immediately log in
+    const token = generateToken(user.id);
+    pendingLoginResults.set(code, {
+      token,
+      userId: user.id,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+    console.log(`[TelegramBot] Auth instant: userId=${user.id} code=${code}`);
+    await sendLoginSuccess(chatId, lang, code, token, user.name);
     return;
   }
 
