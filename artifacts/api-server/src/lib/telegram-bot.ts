@@ -32,25 +32,26 @@ function getToken(): string {
 
 /**
  * Returns the base URL for the frontend app.
- * Priority: APP_URL (set only in production env → always correct production URL)
- *           → REPLIT_DEV_DOMAIN (live dev domain, wins in dev where APP_URL is absent)
- *           → REPLIT_DOMAINS first entry (additional Replit-provided fallback)
+ * Priority: REPLIT_DEV_DOMAIN (dev only, when NODE_ENV=development)
+ *           → REPLIT_DOMAINS first entry (Replit auto-sets this to the real prod domain)
+ *           → APP_URL (manual override / custom domain fallback)
  *           → barberuz.replit.app (hardcoded last resort)
  *
- * APP_URL is stored in the production environment only (not shared/dev), so it
- * only activates in deployed production — dev naturally falls through to
- * REPLIT_DEV_DOMAIN which is always the live dev workspace URL.
+ * REPLIT_DOMAINS is the most reliable source in production because Replit sets it
+ * automatically to the actual deployment URL, unlike APP_URL which is manually set
+ * and can easily be stale or wrong.
  */
 function getAppUrl(): string {
-  // APP_URL is set in the production environment only. NODE_ENV guard adds
-  // defense-in-depth: if APP_URL ever leaks into dev config, the explicit
-  // NODE_ENV=development set by the dev start script prevents it from winning.
-  if (process.env.APP_URL && process.env.NODE_ENV !== "development") {
-    return process.env.APP_URL.replace(/\/$/, "");
+  // In development, REPLIT_DEV_DOMAIN is the live dev workspace URL (sisko.replit.dev).
+  if (process.env.NODE_ENV === "development") {
+    if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
-  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  // In production, Replit automatically sets REPLIT_DOMAINS to the real deployment domain.
+  // This is more reliable than a manually configured APP_URL that may be stale or wrong.
   const domains = process.env.REPLIT_DOMAINS?.split(",");
   if (domains?.length) return `https://${domains[0]!.trim()}`;
+  // APP_URL as a manual override fallback (e.g. custom domain).
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   return "https://barberuz.replit.app";
 }
 
