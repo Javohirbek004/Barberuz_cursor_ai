@@ -33,14 +33,19 @@ function getToken(): string {
 /**
  * Returns the base URL for the frontend app.
  * Priority: REPLIT_DEV_DOMAIN (always current in Replit dev)
- *           → APP_URL (production override)
- *           → barber.uz (hardcoded production fallback)
+ *           → REPLIT_DOMAINS first entry (set in production deployments)
+ *           → APP_URL (manual production override)
+ *           → barber.uz (hardcoded fallback)
  *
  * IMPORTANT: APP_URL can become stale when the Replit workspace domain rotates.
  * REPLIT_DEV_DOMAIN is injected fresh each run, so it always wins in dev.
+ * REPLIT_DOMAINS is set by Replit in production deployments — same logic as
+ * webhook registration in index.ts.
  */
 function getAppUrl(): string {
   if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  const domains = process.env.REPLIT_DOMAINS?.split(",");
+  if (domains?.length) return `https://${domains[0]!.trim()}`;
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   return "https://barber.uz";
 }
@@ -494,6 +499,37 @@ export async function handleTelegramUpdate(update: unknown) {
 
     // Otherwise it's the registration verification flow
     await handleRegContact(chatId, phone, tgUserId, tgUsername);
+    return;
+  }
+
+  // ── Unexpected text during pending states ────────────────────
+  // Telegram always shows a text input alongside the keyboard — users may
+  // accidentally type instead of pressing the contact button. Re-prompt them.
+  if (text && !text.startsWith("/")) {
+    if (pendingVerifications.has(chatId)) {
+      const userId = pendingVerifications.get(chatId)!;
+      const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      const name = user?.name || "Barber";
+      await sendContactRequest(chatId, name);
+      return;
+    }
+    if (pendingPhoneLogins.has(chatId)) {
+      const firstName = (from?.first_name as string) || "Barber";
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text:
+          `Assalomu alaykum, ${firstName}! \uD83D\uDC4B\n` +
+          `Men sizning shaxsiy yordamchingizman.\n\n` +
+          `Endi mijozlaringiz yozilsa sizga darhol xabar beraman.\n\n` +
+          `\uD83D\uDCF2 Ilovadan to\u02BBliq foydalanish uchun raqamingizni tasdiqlang:`,
+        reply_markup: {
+          keyboard: [[{ text: "\uD83D\uDCF1 Raqamni yuborish", request_contact: true }]],
+          resize_keyboard: true,
+          one_time_keyboard: true,
+        },
+      });
+      return;
+    }
   }
 }
 
