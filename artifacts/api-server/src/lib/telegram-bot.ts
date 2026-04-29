@@ -160,16 +160,18 @@ function buildProfileUrl(authToken: string): string {
  * and auto-logs in — no token exposed in the URL.
  */
 function buildLoginUrl(userId: string): string {
+  const base = getAppUrl();
   const code = randomBytes(8).toString("hex"); // 16-char hex code
+  const url = `${base}/barber-uz/login?tg_code=${code}`;
+  if (!validateAppUrl(url)) return "";
+  // Only store in pendingLoginResults after confirming the URL is valid
   const token = generateToken(userId);
   pendingLoginResults.set(code, {
     token,
     userId,
     expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
   });
-  const base = getAppUrl();
-  const url = `${base}/barber-uz/login?tg_code=${code}`;
-  return validateAppUrl(url) ? url : "";
+  return url;
 }
 
 type LogAction =
