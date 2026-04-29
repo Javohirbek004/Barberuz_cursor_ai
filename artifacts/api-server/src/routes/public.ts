@@ -23,7 +23,9 @@ function getBotUsername(): string {
 }
 
 function getAppUrl(): string {
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  if (process.env.APP_URL && process.env.NODE_ENV !== "development") {
+    return process.env.APP_URL.replace(/\/$/, "");
+  }
   if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   const domains = process.env.REPLIT_DOMAINS?.split(",");
   if (domains?.length) return `https://${domains[0]!.trim()}`;

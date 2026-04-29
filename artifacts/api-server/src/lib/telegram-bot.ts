@@ -42,7 +42,12 @@ function getToken(): string {
  * REPLIT_DEV_DOMAIN which is always the live dev workspace URL.
  */
 function getAppUrl(): string {
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  // APP_URL is set in the production environment only. NODE_ENV guard adds
+  // defense-in-depth: if APP_URL ever leaks into dev config, the explicit
+  // NODE_ENV=development set by the dev start script prevents it from winning.
+  if (process.env.APP_URL && process.env.NODE_ENV !== "development") {
+    return process.env.APP_URL.replace(/\/$/, "");
+  }
   if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   const domains = process.env.REPLIT_DOMAINS?.split(",");
   if (domains?.length) return `https://${domains[0]!.trim()}`;
