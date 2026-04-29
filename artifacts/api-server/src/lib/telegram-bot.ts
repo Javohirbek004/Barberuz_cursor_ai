@@ -180,11 +180,10 @@ async function sendContactRequest(chatId: number, userName: string) {
   return callTelegram("sendMessage", {
     chat_id: chatId,
     text:
-      `Assalomu alaykum, <b>${userName}</b>! \uD83D\uDC4B\n` +
+      `Assalomu alaykum, ${userName}! \uD83D\uDC4B\n` +
       `Men sizning shaxsiy yordamchingizman.\n\n` +
       `Endi mijozlaringiz yozilsa sizga darhol xabar beraman.\n\n` +
       `\uD83D\uDCF2 Ilovadan to\u02BBliq foydalanish uchun raqamingizni tasdiqlang:`,
-    parse_mode: "HTML",
     reply_markup: {
       keyboard: [
         [{ text: "\uD83D\uDCF1 Raqamni yuborish", request_contact: true }],
