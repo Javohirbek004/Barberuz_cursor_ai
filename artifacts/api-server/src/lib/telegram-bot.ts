@@ -153,6 +153,25 @@ function buildProfileUrl(authToken: string): string {
   return validateAppUrl(url) ? url : "";
 }
 
+/**
+ * Build a login URL using the tg_code polling mechanism.
+ * Generates a one-time code, stores the login result in pendingLoginResults,
+ * and returns a URL with ?tg_code=CODE. Login.tsx polls the API with this code
+ * and auto-logs in — no token exposed in the URL.
+ */
+function buildLoginUrl(userId: string): string {
+  const code = randomBytes(8).toString("hex"); // 16-char hex code
+  const token = generateToken(userId);
+  pendingLoginResults.set(code, {
+    token,
+    userId,
+    expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+  });
+  const base = getAppUrl();
+  const url = `${base}/barber-uz/login?tg_code=${code}`;
+  return validateAppUrl(url) ? url : "";
+}
+
 type LogAction =
   | "reg_start" | "reg_contact" | "reg_verified"
   | "login_start" | "login_success" | "login_cancelled"
@@ -204,8 +223,8 @@ async function sendContactRequest(chatId: number, userName: string) {
   });
 }
 
-async function sendVerificationSuccess(chatId: number, userId: string, token: string) {
-  const profileUrl = buildProfileUrl(token);
+async function sendVerificationSuccess(chatId: number, userId: string) {
+  const profileUrl = buildLoginUrl(userId);
   if (!profileUrl) {
     await callTelegram("sendMessage", {
       chat_id: chatId,
@@ -276,11 +295,13 @@ async function sendAuthPhoneRequest(chatId: number, lang: string) {
 async function sendLoginSuccess(
   chatId: number,
   _lang: string,
-  _code: string,
-  token: string,
+  code: string,
+  _token: string,
   firstName: string,
 ) {
-  const profileUrl = buildProfileUrl(token);
+  const base = getAppUrl();
+  const loginUrl = `${base}/barber-uz/login?tg_code=${code}`;
+  const profileUrl = validateAppUrl(loginUrl) ? loginUrl : "";
   if (!profileUrl) {
     log("login_success", { chatId, error: "invalid_url" });
     await callTelegram("sendMessage", {
@@ -557,8 +578,7 @@ async function handleNoPayloadStart(
     .limit(1);
 
   if (user) {
-    const loginToken = generateToken(user.id);
-    const profileUrl = buildProfileUrl(loginToken);
+    const profileUrl = buildLoginUrl(user.id);
     log("reg_verified", { chatId, userId: user.id, url: profileUrl || "invalid" });
     if (profileUrl) {
       await callTelegram("sendMessage", {
@@ -654,8 +674,7 @@ async function handlePhoneLoginContact(
   }).where(eq(usersTable.id, foundUser.id));
 
   log("reg_verified", { chatId, userId: foundUser.id, telegramUserId: tgUserId });
-  const loginToken = generateToken(foundUser.id);
-  await sendVerificationSuccess(chatId, foundUser.id, loginToken);
+  await sendVerificationSuccess(chatId, foundUser.id);
 }
 
 async function handleRegStart(chatId: number, userId: string, _lang: string) {
@@ -667,8 +686,7 @@ async function handleRegStart(chatId: number, userId: string, _lang: string) {
   }
 
   if (user.telegramVerified) {
-    const loginToken = generateToken(user.id);
-    const profileUrl = buildProfileUrl(loginToken);
+    const profileUrl = buildLoginUrl(user.id);
     log("reg_start", { chatId, userId, url: profileUrl || "invalid" });
     if (profileUrl) {
       await callTelegram("sendMessage", {
@@ -709,8 +727,7 @@ async function handleBarberStart(chatId: number, userId: string) {
   }
 
   if (user.telegramVerified) {
-    const loginToken = generateToken(user.id);
-    const profileUrl = buildProfileUrl(loginToken);
+    const profileUrl = buildLoginUrl(user.id);
     log("barber_invite_start", { chatId, userId, url: profileUrl || "invalid" });
     if (profileUrl) {
       await callTelegram("sendMessage", {
@@ -797,9 +814,7 @@ async function handleLoginStart(
     return;
   }
 
-  // Backend generates auth token (not bot)
-  const authToken = generateToken(user.id);
-  const profileUrl = buildProfileUrl(authToken);
+  const profileUrl = buildLoginUrl(user.id);
 
   if (!profileUrl) {
     await callTelegram("sendMessage", {
@@ -1024,8 +1039,7 @@ async function handleRegContact(
 
     pendingVerifications.delete(chatId);
     console.log(`[TelegramBot] Reg verified: userId=${userId} ✅`);
-    const loginToken = generateToken(userId);
-    await sendVerificationSuccess(chatId, userId, loginToken);
+    await sendVerificationSuccess(chatId, userId);
   } catch (err) {
     console.error("[TelegramBot] DB update failed:", err);
     await callTelegram("sendMessage", {
