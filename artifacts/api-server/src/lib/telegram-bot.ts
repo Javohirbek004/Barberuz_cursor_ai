@@ -13,12 +13,10 @@
  *
  * Login flow:
  *  1. /start auth_{code}_{lang} → look up by telegramId
- *     a) Found  → send inline Yes/No confirmation
+ *     a) Found  → instantly generate token, store in pendingLoginResults, send success
  *     b) Not found → ask phone to match by phone in DB
- *  2. callback_query auth_yes_{code} → confirm → generate token → store in pendingLoginResults
- *     callback_query auth_no_{code}  → cancel
- *  3. Contact received (phone lookup) → match by phone → update telegramId → login
- *  4. Frontend polls /api/auth/telegram-login-status/{code} → gets token → redirects
+ *  2. Contact received (phone lookup) → match by phone → update telegramId → login
+ *  3. Frontend polls /api/auth/telegram-login-status/{code} → gets token → redirects
  */
 
 import { randomBytes } from "crypto";
