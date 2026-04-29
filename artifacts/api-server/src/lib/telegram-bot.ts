@@ -179,7 +179,11 @@ function log(
 async function sendContactRequest(chatId: number, userName: string) {
   return callTelegram("sendMessage", {
     chat_id: chatId,
-    text: `Assalomu alaykum, <b>${userName}</b>! Ilovani to\u02BBliq foydalanish uchun telefon raqamingizni tasdiqlang.`,
+    text:
+      `Assalomu alaykum, <b>${userName}</b>! \uD83D\uDC4B\n` +
+      `Men sizning shaxsiy yordamchingizman.\n\n` +
+      `Endi mijozlaringiz yozilsa sizga darhol xabar beraman.\n\n` +
+      `\uD83D\uDCF2 Ilovadan to\u02BBliq foydalanish uchun raqamingizni tasdiqlang:`,
     parse_mode: "HTML",
     reply_markup: {
       keyboard: [
@@ -192,16 +196,12 @@ async function sendContactRequest(chatId: number, userName: string) {
 }
 
 async function sendVerificationSuccess(chatId: number, userId: string, token: string) {
-  await callTelegram("sendMessage", {
-    chat_id: chatId,
-    text: "Raqamingiz tasdiqlandi! \u2705\nProfilingizga o\u02BBtish uchun quyidagi linkni bosing:",
-    reply_markup: { remove_keyboard: true },
-  });
   const profileUrl = buildProfileUrl(token);
   if (!profileUrl) {
     await callTelegram("sendMessage", {
       chat_id: chatId,
       text: "Xatolik yuz berdi. Iltimos, ilovaga qo\u02BBlda kiring.",
+      reply_markup: { remove_keyboard: true },
     });
     log("reg_verified", { chatId, userId, error: "invalid_url" });
     return;
@@ -209,8 +209,9 @@ async function sendVerificationSuccess(chatId: number, userId: string, token: st
   log("reg_verified", { chatId, userId, url: profileUrl });
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Profilingizga o\u02BBtish uchun tugmani bosing:",
+    text: "Raqamingiz tasdiqlandi! \u2705\nProfilingizga o\u02BBtish uchun quyidagi linkni bosing:",
     reply_markup: {
+      remove_keyboard: true,
       inline_keyboard: [
         [{ text: "\uD83C\uDF10 Ilovaga kirish", url: profileUrl }],
       ],
@@ -263,22 +264,20 @@ async function sendAuthPhoneRequest(chatId: number, lang: string) {
   });
 }
 
-async function sendLoginSuccess(chatId: number, lang: string, _code: string, token: string) {
-  const isUz = lang !== "ru";
+async function sendLoginSuccess(
+  chatId: number,
+  _lang: string,
+  _code: string,
+  token: string,
+  firstName: string,
+) {
   const profileUrl = buildProfileUrl(token);
-  await callTelegram("sendMessage", {
-    chat_id: chatId,
-    text: isUz
-      ? "Muvaffaqiyatli! \u2705 Brauzeringizga qayting \u2014 sahifa avtomatik ochiladi."
-      : "Успешно! \u2705 Вернитесь в браузер \u2014 страница откроется автоматически.",
-    reply_markup: { remove_keyboard: true },
-  });
-
   if (!profileUrl) {
     log("login_success", { chatId, error: "invalid_url" });
     await callTelegram("sendMessage", {
       chat_id: chatId,
       text: "Xatolik yuz berdi. Iltimos, ilovaga qo\u02BBlda kiring.",
+      reply_markup: { remove_keyboard: true },
     });
     return;
   }
@@ -286,10 +285,15 @@ async function sendLoginSuccess(chatId: number, lang: string, _code: string, tok
   log("login_success", { chatId, url: profileUrl });
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: isUz ? "Yoki quyidagi tugmani bosing:" : "Или нажмите кнопку ниже:",
+    text:
+      `Assalomu alaykum, <b>${firstName}</b>! \uD83D\uDC4B\n\n` +
+      `Sahifangizga kirish tasdiqlandi! \u2705\n` +
+      `Profilingizga o\u02BBtish uchun quyidagi tugmani bosing:`,
+    parse_mode: "HTML",
     reply_markup: {
+      remove_keyboard: true,
       inline_keyboard: [
-        [{ text: isUz ? "\uD83C\uDF10 Ilovaga kirish" : "\uD83C\uDF10 Открыть приложение", url: profileUrl }],
+        [{ text: "\uD83C\uDF10 Sahifaga qaytish", url: profileUrl }],
       ],
     },
   });
@@ -643,6 +647,26 @@ async function handleRegStart(chatId: number, userId: string, _lang: string) {
     return;
   }
 
+  // Send + pin welcome message for first-time solo barbers
+  const pinMsgResp = await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text:
+      "Xush kelibsiz! \uD83D\uDC88\n\n" +
+      "Bu bot orqali siz:\n" +
+      "\u2022 Yangi mijozlar haqida xabar olasiz\n" +
+      "\u2022 Bronlarni boshqarasiz\n" +
+      "\u2022 Eslatmalarni olasiz\n\n" +
+      "\uD83D\uDC47 Boshlash uchun /start ni bosing",
+  }) as Record<string, unknown>;
+  const pinMsgResult = pinMsgResp?.result as Record<string, unknown> | undefined;
+  if (pinMsgResult?.message_id) {
+    await callTelegram("pinChatMessage", {
+      chat_id: chatId,
+      message_id: pinMsgResult.message_id,
+      disable_notification: true,
+    });
+  }
+
   pendingVerifications.set(chatId, userId);
   console.log(`[TelegramBot] Reg: pending chatId=${chatId} → userId=${userId}`);
   await sendContactRequest(chatId, user.name);
@@ -839,8 +863,9 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
     });
     pendingAuthLogins.delete(chatId);
 
+    const firstName = (from.first_name as string) || user.name;
     console.log(`[TelegramBot] Auth confirmed: userId=${user.id} code=${code}`);
-    await sendLoginSuccess(chatId, pending.lang, code, token);
+    await sendLoginSuccess(chatId, pending.lang, code, token, firstName);
     return;
   }
 
@@ -948,7 +973,7 @@ async function handleAuthPhoneContact(
   pendingAuthLogins.delete(chatId);
 
   console.log(`[TelegramBot] Auth by phone: userId=${foundUser.id} code=${pending.code}`);
-  await sendLoginSuccess(chatId, pending.lang, pending.code, token);
+  await sendLoginSuccess(chatId, pending.lang, pending.code, token, foundUser.name);
 }
 
 async function handleRegContact(
