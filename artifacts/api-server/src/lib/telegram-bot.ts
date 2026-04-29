@@ -467,7 +467,7 @@ export async function handleTelegramUpdate(update: unknown) {
     // Login/auth deep-link
     const authParsed = parseAuthPayload(payload);
     if (authParsed) {
-      await handleAuthStart(chatId, authParsed.code, authParsed.lang);
+      await handleAuthStart(chatId, authParsed.code, authParsed.lang, from);
       return;
     }
 
@@ -838,7 +838,7 @@ async function handleLoginStart(
   });
 }
 
-async function handleAuthStart(chatId: number, code: string, lang: string) {
+async function handleAuthStart(chatId: number, code: string, lang: string, from?: Record<string, unknown>) {
   console.log(`[TelegramBot] Auth start: chatId=${chatId} code=${code} lang=${lang}`);
 
   // Look up by Telegram ID
@@ -857,8 +857,9 @@ async function handleAuthStart(chatId: number, code: string, lang: string) {
       userId: user.id,
       expiresAt: Date.now() + 10 * 60 * 1000,
     });
+    const firstName = (from?.first_name as string) || user.name;
     console.log(`[TelegramBot] Auth instant: userId=${user.id} code=${code}`);
-    await sendLoginSuccess(chatId, lang, code, token, user.name);
+    await sendLoginSuccess(chatId, lang, code, token, firstName);
     return;
   }
 
