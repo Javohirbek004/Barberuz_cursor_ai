@@ -12,10 +12,10 @@
  *  4. Frontend polls /api/auth/telegram-status/:userId → redirects
  *
  * Login flow:
- *  1. /start auth_{code}_{lang} → look up by telegramId
- *     a) Found  → instantly generate token, store in pendingLoginResults, send success
- *     b) Not found → ask phone to match by phone in DB
- *  2. Contact received (phone lookup) → match by phone → update telegramId → login
+ *  1. /start auth_{code}_{lang} → always ask for phone number
+ *  2. Contact received → match by phone in DB
+ *     a) Found  → store token in pendingLoginResults → send "Sahifangiz topildi" + button
+ *     b) Not found → send "ro'yxatdan o'tmagan" + registration link
  *  3. Frontend polls /api/auth/telegram-login-status/{code} → gets token → redirects
  */
 
@@ -277,9 +277,9 @@ async function sendAuthConfirmation(chatId: number, userName: string, lang: stri
 async function sendAuthPhoneRequest(chatId: number, lang: string) {
   const isUz = lang !== "ru";
   const text = isUz
-    ? "Hisobingizni topish uchun telefon raqamingizni yuboring:"
-    : "Для поиска вашего аккаунта отправьте номер телефона:";
-  const btnText = isUz ? "\uD83D\uDCF1 Raqamni yuborish" : "\uD83D\uDCF1 Отправить номер";
+    ? "Assalomu alaykum! \uD83D\uDC4B\n\nSahifangizga kirish uchun raqamingizni tasdiqlang:"
+    : "Здравствуйте! \uD83D\uDC4B\n\nПодтвердите ваш номер для входа в профиль:";
+  const btnText = isUz ? "\uD83D\uDCF2 Raqamni yuborish" : "\uD83D\uDCF2 Отправить номер";
 
   return callTelegram("sendMessage", {
     chat_id: chatId,
@@ -343,12 +343,12 @@ async function sendNotRegistered(chatId: number, lang: string) {
   return callTelegram("sendMessage", {
     chat_id: chatId,
     text: isUz
-      ? "Bu raqam bilan hisob topilmadi. Iltimos, ilovadan ro\u02BByxatdan o\u02BBting:"
-      : "Аккаунт с этим номером не найден. Пожалуйста, зарегистрируйтесь в приложении:",
+      ? "Siz hali ro\u02BByxatdan o\u02BBtmagansiz.\n\nAvval ilovada ro\u02BByxatdan o\u02BBting."
+      : "Вы ещё не зарегистрированы.\n\nСначала зарегистрируйтесь в приложении.",
     reply_markup: {
       remove_keyboard: true,
       inline_keyboard: [
-        [{ text: isUz ? "\uD83D\uDD17 Ro\u02BByxatdan o\u02BBtish" : "\uD83D\uDD17 Зарегистрироваться", url: `${getAppUrl()}/register` }],
+        [{ text: isUz ? "\uD83C\uDF10 Ro\u02BByxatdan o\u02BBtish" : "\uD83C\uDF10 Зарегистрироваться", url: `${getAppUrl()}/register` }],
       ],
     },
   });
@@ -838,32 +838,10 @@ async function handleLoginStart(
   });
 }
 
-async function handleAuthStart(chatId: number, code: string, lang: string, from?: Record<string, unknown>) {
+async function handleAuthStart(chatId: number, code: string, lang: string, _from?: Record<string, unknown>) {
   console.log(`[TelegramBot] Auth start: chatId=${chatId} code=${code} lang=${lang}`);
-
-  // Look up by Telegram ID
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.telegramId, String(chatId)))
-    .limit(1);
-
-  if (user) {
-    // Found — skip confirmation, immediately log in
-    pendingAuthLogins.delete(chatId); // clear any stale pending state
-    const token = generateToken(user.id);
-    pendingLoginResults.set(code, {
-      token,
-      userId: user.id,
-      expiresAt: Date.now() + 10 * 60 * 1000,
-    });
-    const firstName = (from?.first_name as string) || user.name;
-    console.log(`[TelegramBot] Auth instant: userId=${user.id} code=${code}`);
-    await sendLoginSuccess(chatId, lang, code, token, firstName);
-    return;
-  }
-
-  // Not found by telegramId — try to match by phone
+  // Always verify by phone — skipping telegramId fast-path so every login is phone-confirmed
+  pendingAuthLogins.delete(chatId); // clear any stale pending state
   pendingAuthLogins.set(chatId, { code, lang, step: "phone" });
   await sendAuthPhoneRequest(chatId, lang);
 }
@@ -1016,7 +994,20 @@ async function handleAuthPhoneContact(
   pendingAuthLogins.delete(chatId);
 
   console.log(`[TelegramBot] Auth by phone: userId=${foundUser.id} code=${pending.code}`);
-  await sendLoginSuccess(chatId, pending.lang, pending.code, token, foundUser.name);
+  const isUz = pending.lang !== "ru";
+  const loginUrl = `${getAppUrl()}/login?tg_code=${pending.code}`;
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: isUz
+      ? "Sahifangiz topildi \u2705\n\nProfilingizga o\u02BBtish uchun quyidagi tugmani bosing:"
+      : "Ваш профиль найден \u2705\n\nНажмите кнопку ниже, чтобы перейти в профиль:",
+    reply_markup: {
+      remove_keyboard: true,
+      inline_keyboard: [
+        [{ text: isUz ? "\uD83C\uDF10 Sahifaga qaytish" : "\uD83C\uDF10 Перейти в профиль", url: loginUrl }],
+      ],
+    },
+  });
 }
 
 async function handleRegContact(
