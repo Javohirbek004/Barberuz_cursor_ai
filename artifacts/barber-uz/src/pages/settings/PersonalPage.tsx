@@ -18,7 +18,7 @@ import {
 type Tab = "asosiy" | "xizmatlar" | "qr";
 type ServiceCategory = string;
 
-interface ProfileData {
+export interface ProfileData {
   name: string;
   bio: string;
   speciality: string[];
@@ -36,7 +36,7 @@ interface ProfileData {
   coverImage: string;
 }
 
-interface ServiceItem {
+export interface ServiceItem {
   id: string;
   category: ServiceCategory;
   name: string;
@@ -1251,7 +1251,7 @@ function BookingModal({
 // CUSTOMER VIEW — full premium preview mode
 // ──────────────────────────────────────────────────────────────────────────────
 
-function CustomerView({
+export function CustomerView({
   profile,
   services,
   isTeam,

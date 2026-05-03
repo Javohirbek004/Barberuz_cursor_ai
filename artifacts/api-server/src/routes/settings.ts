@@ -109,7 +109,7 @@ router.patch("/slug", authenticate, async (req, res) => {
       return;
     }
 
-    // Uniqueness check
+    // Uniqueness check: active usernames
     const [existing] = await db
       .select({ id: usersTable.id })
       .from(usersTable)
@@ -117,6 +117,21 @@ router.patch("/slug", authenticate, async (req, res) => {
       .limit(1);
 
     if (existing && existing.id !== user.id) {
+      res.status(409).json({ error: "taken", message: "This slug is already taken" });
+      return;
+    }
+
+    // Reservation check: protect old slugs so their QR codes / redirects stay valid.
+    // If any OTHER user has used this slug in the past (it's in slug_redirects as an
+    // old_slug for a different user), we must reject it — otherwise their old QRs
+    // would silently start resolving to the wrong barber.
+    const [reserved] = await db
+      .select({ userId: slugRedirectsTable.userId })
+      .from(slugRedirectsTable)
+      .where(eq(slugRedirectsTable.oldSlug, clean))
+      .limit(1);
+
+    if (reserved && reserved.userId !== user.id) {
       res.status(409).json({ error: "taken", message: "This slug is already taken" });
       return;
     }
