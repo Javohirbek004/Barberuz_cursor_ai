@@ -217,6 +217,7 @@ function LinkBottomSheet({
 }) {
   const qrRef = useRef<HTMLDivElement>(null);
   const fullLink = barberLink(barber.slug);
+  const displayLink = `${window.location.host}/${barber.slug}`;
 
   function handleShare() {
     const text = `Menga yozilish uchun:\n${fullLink}`;
@@ -269,7 +270,7 @@ function LinkBottomSheet({
           <Avatar barber={barber} size="sm" />
           <div className="flex-1 min-w-0">
             <div className="font-bold text-foreground text-sm">{barber.name}</div>
-            <div className="text-xs text-muted-foreground">{link}</div>
+            <div className="text-xs text-muted-foreground">{displayLink}</div>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors">
             <X className="w-4 h-4" />
@@ -278,7 +279,7 @@ function LinkBottomSheet({
 
         {/* Link box */}
         <div className="bg-background/60 border border-white/8 rounded-2xl px-3 py-2.5 mb-4">
-          <p className="text-xs text-muted-foreground font-mono break-all">{link}</p>
+          <p className="text-xs text-muted-foreground font-mono break-all">{displayLink}</p>
         </div>
 
         {/* Link actions: Copy + Share */}
@@ -668,6 +669,7 @@ function BarberForm({
 
 function SuccessScreen({ barber, onDone }: { barber: Barber; onDone: () => void }) {
   const fullLink = barberLink(barber.slug);
+  const displayLink = `${window.location.host}/${barber.slug}`;
 
   function handleShare() {
     if (navigator.share) {
@@ -695,7 +697,7 @@ function SuccessScreen({ barber, onDone }: { barber: Barber; onDone: () => void 
 
       <div className="w-full bg-card border border-white/8 rounded-2xl px-4 py-3 mb-5 text-left">
         <p className="text-xs text-muted-foreground mb-1">Usta linki</p>
-        <p className="text-sm font-mono font-semibold text-primary break-all">{link}</p>
+        <p className="text-sm font-mono font-semibold text-primary break-all">{displayLink}</p>
       </div>
 
       <div className="flex gap-3 w-full mb-8">
