@@ -48,7 +48,7 @@ function formatPhone(raw: string): string {
 }
 
 function barberLink(slug: string): string {
-  return `barber.uz/${slug}`;
+  return `${window.location.origin}/${slug}`;
 }
 
 // ── Daraja badge ───────────────────────────────────────────────────────────────
@@ -216,8 +216,7 @@ function LinkBottomSheet({
   onDelete: () => void;
 }) {
   const qrRef = useRef<HTMLDivElement>(null);
-  const link = barberLink(barber.slug);
-  const fullLink = `https://${link}`;
+  const fullLink = barberLink(barber.slug);
 
   function handleShare() {
     const text = `Menga yozilish uchun:\n${fullLink}`;
@@ -668,8 +667,7 @@ function BarberForm({
 // ── Success screen ────────────────────────────────────────────────────────────
 
 function SuccessScreen({ barber, onDone }: { barber: Barber; onDone: () => void }) {
-  const link = barberLink(barber.slug);
-  const fullLink = `https://${link}`;
+  const fullLink = barberLink(barber.slug);
 
   function handleShare() {
     if (navigator.share) {
