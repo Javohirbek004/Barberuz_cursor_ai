@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { APP_ORIGIN, APP_HOST } from "@/lib/config";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
@@ -683,7 +684,7 @@ function SlugEditModal({
               </button>
             </div>
 
-            <p className="text-xs text-muted-foreground mb-2">{window.location.host}/</p>
+            <p className="text-xs text-muted-foreground mb-2">{APP_HOST}/</p>
             <input
               autoFocus
               value={draft}
@@ -726,7 +727,7 @@ function SlugEditModal({
               Linkni o'zgartirmoqchimisiz? Bu mijozlar uchun havolani o'zgartiradi.
             </p>
             <div className="bg-background/60 border border-white/8 rounded-xl px-3 py-2.5 mb-5 font-mono text-sm text-primary">
-              {window.location.host}/{draft}
+              {APP_HOST}/{draft}
             </div>
             {error && (
               <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2 mb-3">{error}</p>
@@ -758,7 +759,7 @@ function QRLinkTab({ username }: { username: string }) {
   const [copied, setCopied] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const qrRef = useRef<HTMLDivElement>(null);
-  const pageUrl = `${window.location.origin}/${slug}`;
+  const pageUrl = `${APP_ORIGIN}/${slug}`;
 
   function handleCopy() {
     navigator.clipboard.writeText(pageUrl).then(() => {
@@ -802,7 +803,7 @@ function QRLinkTab({ username }: { username: string }) {
       <div className="bg-card border border-white/6 rounded-2xl p-4">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Sahifa manzili</p>
         <div className="flex items-center gap-2 bg-background/60 border border-white/8 rounded-xl px-3 py-2.5 mb-3">
-          <span className="text-xs text-muted-foreground shrink-0">{window.location.host}/</span>
+          <span className="text-xs text-muted-foreground shrink-0">{APP_HOST}/</span>
           <span className="flex-1 text-sm text-primary font-mono truncate">{slug}</span>
           <button
             onClick={() => setModalOpen(true)}
@@ -951,8 +952,7 @@ function BookingModal({
   }
 
   function getBarberPageLink() {
-    const base = window.location.origin;
-    return `${base}/barber-uz`;
+    return `${APP_ORIGIN}/barber-uz`;
   }
 
   async function handleBookingSubmit() {

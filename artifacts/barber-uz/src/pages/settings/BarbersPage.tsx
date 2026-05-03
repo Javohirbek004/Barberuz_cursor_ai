@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { APP_ORIGIN, APP_HOST } from "@/lib/config";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
@@ -48,7 +49,7 @@ function formatPhone(raw: string): string {
 }
 
 function barberLink(slug: string): string {
-  return `${window.location.origin}/${slug}`;
+  return `${APP_ORIGIN}/${slug}`;
 }
 
 // ── Daraja badge ───────────────────────────────────────────────────────────────
@@ -217,7 +218,7 @@ function LinkBottomSheet({
 }) {
   const qrRef = useRef<HTMLDivElement>(null);
   const fullLink = barberLink(barber.slug);
-  const displayLink = `${window.location.host}/${barber.slug}`;
+  const displayLink = `${APP_HOST}/${barber.slug}`;
 
   function handleShare() {
     const text = `Menga yozilish uchun:\n${fullLink}`;
@@ -669,7 +670,7 @@ function BarberForm({
 
 function SuccessScreen({ barber, onDone }: { barber: Barber; onDone: () => void }) {
   const fullLink = barberLink(barber.slug);
-  const displayLink = `${window.location.host}/${barber.slug}`;
+  const displayLink = `${APP_HOST}/${barber.slug}`;
 
   function handleShare() {
     if (navigator.share) {
