@@ -2,8 +2,9 @@ import { useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
-import { ChevronLeft, ChevronRight, Plus, Copy, Check, Share2, Trash2, Camera, X, Scissors } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Copy, Check, Share2, Trash2, Camera, X, Scissors, Download } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import QRCode from "react-qr-code";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -47,7 +48,7 @@ function formatPhone(raw: string): string {
 }
 
 function barberLink(slug: string): string {
-  return `barber.uz/usta/${slug}`;
+  return `barber.uz/${slug}`;
 }
 
 // ── Daraja badge ───────────────────────────────────────────────────────────────
@@ -214,15 +215,37 @@ function LinkBottomSheet({
   onClose: () => void;
   onDelete: () => void;
 }) {
+  const qrRef = useRef<HTMLDivElement>(null);
   const link = barberLink(barber.slug);
   const fullLink = `https://${link}`;
 
   function handleShare() {
+    const text = `Menga yozilish uchun:\n${fullLink}`;
     if (navigator.share) {
-      navigator.share({ title: `${barber.name} — Barber`, url: fullLink }).catch(() => {});
+      navigator.share({ title: `${barber.name} — Barber`, text, url: fullLink }).catch(() => {});
     } else {
-      navigator.clipboard.writeText(fullLink);
+      navigator.clipboard.writeText(text);
     }
+  }
+
+  function handleDownload() {
+    const svg = qrRef.current?.querySelector("svg");
+    if (!svg) return;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const img = new Image();
+    const svgBlob = new Blob([new XMLSerializer().serializeToString(svg)], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+    img.onload = () => {
+      canvas.width = 500; canvas.height = 500;
+      if (ctx) { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 500, 500); ctx.drawImage(img, 25, 25, 450, 450); }
+      URL.revokeObjectURL(url);
+      const a = document.createElement("a");
+      a.download = `barber-qr-${barber.slug}.png`;
+      a.href = canvas.toDataURL("image/png");
+      a.click();
+    };
+    img.src = url;
   }
 
   return (
@@ -239,7 +262,7 @@ function LinkBottomSheet({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 60 }}
         transition={{ type: "spring", stiffness: 320, damping: 28 }}
-        className="relative w-full max-w-sm bg-card border border-white/10 rounded-3xl p-5 shadow-2xl max-h-[80vh] overflow-y-auto"
+        className="relative w-full max-w-sm bg-card border border-white/10 rounded-3xl p-5 shadow-2xl max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -259,14 +282,29 @@ function LinkBottomSheet({
           <p className="text-xs text-muted-foreground font-mono break-all">{link}</p>
         </div>
 
-        {/* Actions */}
-        <div className="flex gap-2 mb-4">
+        {/* Link actions: Copy + Share */}
+        <div className="flex gap-2 mb-5">
           <CopyBtn text={fullLink} />
           <button
             onClick={handleShare}
             className="flex-1 h-11 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 bg-white/8 border border-white/10 hover:bg-white/12 transition-all text-foreground"
           >
             <Share2 className="w-4 h-4" /> Ulashish
+          </button>
+        </div>
+
+        {/* QR code block */}
+        <div className="bg-background/40 border border-white/6 rounded-2xl p-4 flex flex-col items-center mb-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">QR kod</p>
+          <div ref={qrRef} className="bg-white p-3 rounded-xl shadow-lg shadow-black/30 mb-3">
+            <QRCode value={fullLink} size={140} fgColor="#000000" bgColor="#ffffff" level="M" />
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">📷 Mijozlar skaner qilib bron qilishi mumkin</p>
+          <button
+            onClick={handleDownload}
+            className="h-9 px-4 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-white/8 bg-white/5 text-muted-foreground hover:text-foreground transition-all"
+          >
+            <Download className="w-3.5 h-3.5" /> Yuklab olish
           </button>
         </div>
 

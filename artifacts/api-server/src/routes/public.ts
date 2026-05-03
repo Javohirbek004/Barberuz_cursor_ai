@@ -7,8 +7,8 @@
  */
 
 import { Router } from "express";
-import { db, bookingSessionsTable, usersTable } from "@workspace/db";
-import { eq, and, lt } from "drizzle-orm";
+import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable } from "@workspace/db";
+import { eq, and, lt, isNull } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendBarberBookingNotification } from "../lib/telegram-bot";
 
@@ -196,6 +196,97 @@ router.get("/sessions/:sessionId", async (req, res) => {
     });
   } catch (err) {
     console.error("[PublicAPI] GET /sessions/:id error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+/**
+ * GET /api/public/barber/:slug
+ * Look up a barber by their public slug (username).
+ * If not found directly, check slug_redirects for old slugs.
+ * Returns barber profile + services for the public booking page.
+ */
+router.get("/barber/:slug", async (req, res) => {
+  try {
+    const { slug } = req.params;
+
+    // Direct match first
+    let [barber] = await db
+      .select()
+      .from(usersTable)
+      .where(and(eq(usersTable.username, slug), isNull(usersTable.deletedAt)))
+      .limit(1);
+
+    let redirectTo: string | null = null;
+
+    if (!barber) {
+      // Check redirect table for old slug
+      const [redirect] = await db
+        .select()
+        .from(slugRedirectsTable)
+        .where(eq(slugRedirectsTable.oldSlug, slug))
+        .limit(1);
+
+      if (redirect) {
+        const [found] = await db
+          .select()
+          .from(usersTable)
+          .where(and(eq(usersTable.id, redirect.userId), isNull(usersTable.deletedAt)))
+          .limit(1);
+
+        if (found) {
+          barber = found;
+          redirectTo = found.username;
+        }
+      }
+    }
+
+    if (!barber) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+
+    // If this was an old slug, tell the client to update the URL
+    if (redirectTo) {
+      res.json({ redirectTo });
+      return;
+    }
+
+    // Fetch active services
+    const services = await db
+      .select()
+      .from(servicesTable)
+      .where(and(eq(servicesTable.barberId, barber.id), eq(servicesTable.isActive, true), isNull(servicesTable.deletedAt)))
+      .orderBy(servicesTable.createdAt);
+
+    res.json({
+      id: barber.id,
+      name: barber.name,
+      brandName: barber.brandName,
+      bio: barber.bio,
+      avatarUrl: barber.avatarUrl,
+      phone: barber.phone,
+      specializations: barber.specializations,
+      mode: barber.mode,
+      lang: barber.lang,
+      workingHoursStart: barber.workingHoursStart,
+      workingHoursEnd: barber.workingHoursEnd,
+      scheduleJson: barber.scheduleJson,
+      lunchBreakEnabled: barber.lunchBreakEnabled,
+      lunchBreakStart: barber.lunchBreakStart,
+      lunchBreakEnd: barber.lunchBreakEnd,
+      telegramUsername: barber.telegramUsername,
+      username: barber.username,
+      services: services.map(s => ({
+        id: s.id,
+        name: s.name,
+        nameRu: s.nameRu,
+        duration: s.duration,
+        price: Number(s.price),
+      })),
+    });
+  } catch (err) {
+    console.error("[PublicAPI] GET /barber/:slug error:", err);
     res.status(500).json({ error: "server_error" });
   }
 });

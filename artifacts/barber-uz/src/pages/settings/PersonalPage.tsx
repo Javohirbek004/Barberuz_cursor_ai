@@ -585,19 +585,186 @@ function XizmatlarTab({
 // QR & LINK TAB
 // ──────────────────────────────────────────────────────────────────────────────
 
+type SlugModalStep = "edit" | "confirm";
+
+function SlugEditModal({
+  currentSlug,
+  onClose,
+  onSaved,
+}: {
+  currentSlug: string;
+  onClose: () => void;
+  onSaved: (newSlug: string) => void;
+}) {
+  const [step, setStep] = useState<SlugModalStep>("edit");
+  const [draft, setDraft] = useState(currentSlug);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function cleanSlug(raw: string) {
+    return raw
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  function handleInputChange(val: string) {
+    setDraft(cleanSlug(val));
+    setError("");
+  }
+
+  function validate() {
+    if (draft.length < 3 || draft.length > 30) {
+      setError("Uzunlik: 3 dan 30 ta belgigacha");
+      return false;
+    }
+    if (!/^[a-z0-9-]+$/.test(draft)) {
+      setError("Faqat kichik harf, raqam va '-' ishlatish mumkin");
+      return false;
+    }
+    return true;
+  }
+
+  async function handleSave() {
+    if (!validate()) return;
+    setSaving(true);
+    setError("");
+    try {
+      const token = localStorage.getItem("barber_token");
+      const res = await fetch("/api/settings/slug", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ slug: draft }),
+      });
+      const data = await res.json();
+      if (res.status === 429) {
+        setError("Linkni hozir o'zgartira olmaysiz. Keyinroq urinib ko'ring.");
+        setStep("edit");
+      } else if (res.status === 409) {
+        setError("Bu slug allaqachon band. Boshqa nom tanlang.");
+        setStep("edit");
+      } else if (!res.ok) {
+        setError(data?.message || "Xatolik yuz berdi");
+        setStep("edit");
+      } else {
+        onSaved(data.username ?? draft);
+      }
+    } catch {
+      setError("Tarmoq xatosi. Qayta urinib ko'ring.");
+      setStep("edit");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-sm bg-card border border-white/10 rounded-3xl p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+
+        {step === "edit" && (
+          <>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-display font-bold text-foreground">Sahifa linkini tahrirlash</h2>
+              <button onClick={onClose} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground mb-2">barber.uz/</p>
+            <input
+              autoFocus
+              value={draft}
+              onChange={e => handleInputChange(e.target.value)}
+              placeholder="slug"
+              className="w-full bg-background/60 border border-white/12 rounded-xl px-3 py-2.5 text-sm text-primary font-mono outline-none focus:border-primary/50 transition-colors mb-1"
+            />
+            <p className="text-xs text-muted-foreground mb-3">Faqat kichik harf, raqam va '-' ishlatish mumkin</p>
+
+            {error && (
+              <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2 mb-3">{error}</p>
+            )}
+
+            <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl px-4 py-3 mb-5">
+              <p className="text-xs text-amber-400 font-semibold mb-1">⚠️ Diqqat:</p>
+              <p className="text-xs text-amber-400/80 leading-relaxed">
+                Linkni o'zgartirsangiz, eski QR kodlar eski manzilga olib boradi, lekin tizim avtomatik yangi sahifaga yo'naltiradi. Tez-tez o'zgartirish tavsiya etilmaydi.
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={onClose} className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-white/6 border border-white/10 text-muted-foreground hover:text-foreground transition-all">
+                Bekor qilish
+              </button>
+              <button
+                onClick={() => { if (validate()) setStep("confirm"); }}
+                disabled={draft === currentSlug || draft.length < 3}
+                className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-primary text-black hover:bg-primary/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Saqlash
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "confirm" && (
+          <>
+            <h2 className="text-base font-display font-bold text-foreground mb-2">Tasdiqlash</h2>
+            <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
+              Linkni o'zgartirmoqchimisiz? Bu mijozlar uchun havolani o'zgartiradi.
+            </p>
+            <div className="bg-background/60 border border-white/8 rounded-xl px-3 py-2.5 mb-5 font-mono text-sm text-primary">
+              barber.uz/{draft}
+            </div>
+            {error && (
+              <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2 mb-3">{error}</p>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => setStep("edit")} className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-white/6 border border-white/10 text-muted-foreground hover:text-foreground transition-all">
+                Bekor qilish
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-primary text-black hover:bg-primary/90 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {saving
+                  ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Saqlanmoqda</>
+                  : "Ha, o'zgartirish"
+                }
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function QRLinkTab({ username }: { username: string }) {
-  const [copied, setCopied] = useState(false);
   const [slug, setSlug] = useState(username);
-  const [editingSlug, setEditingSlug] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const qrRef = useRef<HTMLDivElement>(null);
   const pageUrl = `https://barber.uz/${slug}`;
 
   function handleCopy() {
-    navigator.clipboard.writeText(pageUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+    navigator.clipboard.writeText(pageUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   }
+
   function handleShare() {
-    if (navigator.share) { navigator.share({ title: slug, url: pageUrl }).catch(() => {}); } else { handleCopy(); }
+    const text = `Menga yozilish uchun:\n${pageUrl}`;
+    if (navigator.share) {
+      navigator.share({ title: slug, text, url: pageUrl }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(text);
+    }
   }
+
   function handleDownload() {
     const svg = qrRef.current?.querySelector("svg");
     if (!svg) return;
@@ -610,50 +777,63 @@ function QRLinkTab({ username }: { username: string }) {
       canvas.width = 500; canvas.height = 500;
       if (ctx) { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 500, 500); ctx.drawImage(img, 25, 25, 450, 450); }
       URL.revokeObjectURL(url);
-      const a = document.createElement("a"); a.download = `${slug}-qr.png`; a.href = canvas.toDataURL("image/png"); a.click();
+      const a = document.createElement("a");
+      a.download = `barber-qr-${slug}.png`;
+      a.href = canvas.toDataURL("image/png");
+      a.click();
     };
     img.src = url;
   }
 
   return (
     <div className="space-y-5 pb-10">
+      {/* ── Link block ─────────────────────────────────────────────────────── */}
       <div className="bg-card border border-white/6 rounded-2xl p-4">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Sahifa manzili</p>
         <div className="flex items-center gap-2 bg-background/60 border border-white/8 rounded-xl px-3 py-2.5 mb-3">
           <span className="text-xs text-muted-foreground shrink-0">barber.uz/</span>
-          {editingSlug
-            ? <input autoFocus value={slug} onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-                onBlur={() => setEditingSlug(false)} onKeyDown={e => e.key === "Enter" && setEditingSlug(false)}
-                className="flex-1 bg-transparent text-sm text-primary font-mono outline-none" />
-            : <span className="flex-1 text-sm text-primary font-mono">{slug}</span>
-          }
-          <button onClick={() => setEditingSlug(true)} className="text-muted-foreground hover:text-foreground transition-colors shrink-0"><Pencil className="w-3.5 h-3.5" /></button>
+          <span className="flex-1 text-sm text-primary font-mono truncate">{slug}</span>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            title="Linkni tahrirlash"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { label: copied ? "Nusxalandi" : "Nusxalash", icon: copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />, onClick: handleCopy, active: copied },
-            { label: "Yuklab olish", icon: <Download className="w-3.5 h-3.5" />, onClick: handleDownload },
-            { label: "Ulashish", icon: <Share2 className="w-3.5 h-3.5" />, onClick: handleShare },
-          ].map(b => (
-            <button key={b.label} onClick={b.onClick}
-              className={`h-10 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all ${b.active ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-400" : "bg-white/5 border-white/8 text-muted-foreground hover:text-foreground"}`}>
-              {b.icon} {b.label}
-            </button>
-          ))}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={handleCopy}
+            className={`h-10 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all ${copied ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-400" : "bg-white/5 border-white/8 text-muted-foreground hover:text-foreground"}`}
+          >
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? "Nusxalandi" : "Nusxalash"}
+          </button>
+          <button
+            onClick={handleShare}
+            className="h-10 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-white/8 bg-white/5 text-muted-foreground hover:text-foreground transition-all"
+          >
+            <Share2 className="w-3.5 h-3.5" /> Ulashish
+          </button>
         </div>
       </div>
 
+      {/* ── QR block ───────────────────────────────────────────────────────── */}
       <div className="bg-card border border-white/6 rounded-2xl p-5 flex flex-col items-center">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">QR kod</p>
-        <div ref={qrRef} className="bg-white p-4 rounded-2xl shadow-xl shadow-black/30 mb-4">
+        <div ref={qrRef} className="bg-white p-4 rounded-2xl shadow-xl shadow-black/30 mb-3">
           <QRCode value={pageUrl} size={180} fgColor="#000000" bgColor="#ffffff" level="M" />
         </div>
-        <a href={pageUrl} target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-xs text-primary hover:underline">
-          <ExternalLink className="w-3.5 h-3.5" /> {pageUrl}
-        </a>
+        <p className="text-xs text-muted-foreground mb-4">📷 Mijozlar skaner qilib bron qilishi mumkin</p>
+        <button
+          onClick={handleDownload}
+          className="h-10 px-5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-white/8 bg-white/5 text-muted-foreground hover:text-foreground transition-all"
+        >
+          <Download className="w-3.5 h-3.5" /> Yuklab olish
+        </button>
       </div>
 
+      {/* ── Stats (placeholder) ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-card border border-white/6 rounded-2xl p-4 text-center">
           <p className="text-3xl font-bold font-display text-primary mb-1">24</p>
@@ -664,6 +844,17 @@ function QRLinkTab({ username }: { username: string }) {
           <p className="text-xs text-muted-foreground">Bronlar (bu oy)</p>
         </div>
       </div>
+
+      {/* ── Slug edit modal ────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {modalOpen && (
+          <SlugEditModal
+            currentSlug={slug}
+            onClose={() => setModalOpen(false)}
+            onSaved={newSlug => { setSlug(newSlug); setModalOpen(false); }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

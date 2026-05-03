@@ -1,9 +1,11 @@
 import { Router } from "express";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, slugRedirectsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { authenticate, getUser, hashPassword } from "../lib/auth";
 
 const router = Router();
+
+const SLUG_REGEX = /^[a-z0-9-]{3,30}$/;
 
 function formatProfile(user: typeof usersTable.$inferSelect) {
   return {
@@ -25,6 +27,8 @@ function formatProfile(user: typeof usersTable.$inferSelect) {
     lunchBreakEnabled: user.lunchBreakEnabled,
     lunchBreakStart: user.lunchBreakStart,
     lunchBreakEnd: user.lunchBreakEnd,
+    slugChangedAt: user.slugChangedAt,
+    slugChangeCount: user.slugChangeCount,
   };
 }
 
@@ -64,6 +68,81 @@ router.put("/profile", authenticate, async (req, res) => {
       .returning();
     res.json(formatProfile(updated));
   } catch (err) {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+/**
+ * PATCH /api/settings/slug
+ * Update the barber's public URL slug (username).
+ * Rate-limited: max 1 change per 24 hours.
+ */
+router.patch("/slug", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const { slug } = req.body as { slug?: string };
+
+    if (!slug || typeof slug !== "string") {
+      res.status(400).json({ error: "validation", message: "slug is required" });
+      return;
+    }
+
+    const clean = slug.trim().toLowerCase();
+
+    if (!SLUG_REGEX.test(clean)) {
+      res.status(400).json({ error: "validation", message: "Slug must be 3–30 chars, only lowercase letters, digits and hyphens" });
+      return;
+    }
+
+    // Rate limit: max 1 change per 24 h
+    if (user.slugChangedAt) {
+      const hoursSince = (Date.now() - new Date(user.slugChangedAt).getTime()) / (1000 * 60 * 60);
+      if (hoursSince < 24) {
+        res.status(429).json({ error: "rate_limited", message: "Max 1 slug change per 24 hours" });
+        return;
+      }
+    }
+
+    // No-op if same
+    if (clean === user.username) {
+      res.json({ username: user.username });
+      return;
+    }
+
+    // Uniqueness check
+    const [existing] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.username, clean))
+      .limit(1);
+
+    if (existing && existing.id !== user.id) {
+      res.status(409).json({ error: "taken", message: "This slug is already taken" });
+      return;
+    }
+
+    const oldSlug = user.username;
+
+    // Persist old slug as redirect and update username
+    await db.insert(slugRedirectsTable).values({
+      oldSlug,
+      userId: user.id,
+    });
+
+    const [updated] = await db
+      .update(usersTable)
+      .set({
+        username: clean,
+        slugChangedAt: new Date(),
+        slugChangeCount: (user.slugChangeCount ?? 0) + 1,
+        updatedAt: new Date(),
+      })
+      .where(eq(usersTable.id, user.id))
+      .returning();
+
+    res.json({ username: updated.username, slugChangedAt: updated.slugChangedAt });
+  } catch (err) {
+    console.error("[settings] PATCH /slug error:", err);
     res.status(500).json({ error: "server_error" });
   }
 });

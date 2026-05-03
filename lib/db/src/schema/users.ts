@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, uuid, index } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, uuid, index, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -30,6 +30,8 @@ export const usersTable = pgTable(
     notifCancellation: boolean("notif_cancellation").notNull().default(true),
     notifReminders: boolean("notif_reminders").notNull().default(true),
     notifReminderMinutes: text("notif_reminder_minutes").notNull().default("30"),
+    slugChangedAt: timestamp("slug_changed_at", { withTimezone: true }),
+    slugChangeCount: integer("slug_change_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
