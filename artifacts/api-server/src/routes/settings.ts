@@ -94,6 +94,12 @@ router.patch("/slug", authenticate, async (req, res) => {
       return;
     }
 
+    // No-op if same — check before rate limit so resubmitting current slug always succeeds
+    if (clean === user.username) {
+      res.json({ username: user.username });
+      return;
+    }
+
     // Rate limit: max 1 change per 24 h
     if (user.slugChangedAt) {
       const hoursSince = (Date.now() - new Date(user.slugChangedAt).getTime()) / (1000 * 60 * 60);
@@ -101,12 +107,6 @@ router.patch("/slug", authenticate, async (req, res) => {
         res.status(429).json({ error: "rate_limited", message: "Max 1 slug change per 24 hours" });
         return;
       }
-    }
-
-    // No-op if same
-    if (clean === user.username) {
-      res.json({ username: user.username });
-      return;
     }
 
     // Uniqueness check: active usernames
@@ -138,22 +138,23 @@ router.patch("/slug", authenticate, async (req, res) => {
 
     const oldSlug = user.username;
 
-    // Persist old slug as redirect and update username
-    await db.insert(slugRedirectsTable).values({
-      oldSlug,
-      userId: user.id,
+    // Atomically insert redirect + update username so partial failure is impossible
+    const [updated] = await db.transaction(async (tx) => {
+      await tx.insert(slugRedirectsTable).values({
+        oldSlug,
+        userId: user.id,
+      });
+      return tx
+        .update(usersTable)
+        .set({
+          username: clean,
+          slugChangedAt: new Date(),
+          slugChangeCount: (user.slugChangeCount ?? 0) + 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(usersTable.id, user.id))
+        .returning();
     });
-
-    const [updated] = await db
-      .update(usersTable)
-      .set({
-        username: clean,
-        slugChangedAt: new Date(),
-        slugChangeCount: (user.slugChangeCount ?? 0) + 1,
-        updatedAt: new Date(),
-      })
-      .where(eq(usersTable.id, user.id))
-      .returning();
 
     res.json({ username: updated.username, slugChangedAt: updated.slugChangedAt });
   } catch (err) {

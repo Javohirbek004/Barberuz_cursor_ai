@@ -648,7 +648,18 @@ function SlugEditModal({
         setError(data?.message || "Xatolik yuz berdi");
         setStep("edit");
       } else {
-        onSaved(data.username ?? draft);
+        const newSlug = data.username ?? draft;
+        // Patch localStorage so same-session navigation shows the updated slug
+        // without waiting for the next /api/auth/me refetch
+        try {
+          const raw = localStorage.getItem("barber_user");
+          if (raw) {
+            const cached = JSON.parse(raw);
+            cached.username = newSlug;
+            localStorage.setItem("barber_user", JSON.stringify(cached));
+          }
+        } catch { /* non-critical */ }
+        onSaved(newSlug);
       }
     } catch {
       setError("Tarmoq xatosi. Qayta urinib ko'ring.");
