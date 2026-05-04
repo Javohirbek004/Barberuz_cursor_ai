@@ -3,7 +3,7 @@ import { APP_ORIGIN, APP_HOST } from "@/lib/config";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
-import { ChevronLeft, ChevronRight, Plus, Copy, Check, Share2, Trash2, Camera, X, Scissors, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Copy, Check, Share2, Trash2, Camera, X, Scissors, Download, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import QRCode from "react-qr-code";
 
@@ -279,9 +279,15 @@ function LinkBottomSheet({
         </div>
 
         {/* Link box */}
-        <div className="bg-background/60 border border-white/8 rounded-2xl px-3 py-2.5 mb-4">
-          <p className="text-xs text-muted-foreground font-mono break-all">{displayLink}</p>
-        </div>
+        <a
+          href={fullLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 bg-background/60 border border-white/8 rounded-2xl px-3 py-2.5 mb-4 hover:border-white/20 transition-colors group"
+        >
+          <p className="text-xs text-muted-foreground font-mono break-all flex-1">{displayLink}</p>
+          <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0 opacity-60 group-hover:opacity-100" />
+        </a>
 
         {/* Link actions: Copy + Share */}
         <div className="flex gap-2 mb-5">

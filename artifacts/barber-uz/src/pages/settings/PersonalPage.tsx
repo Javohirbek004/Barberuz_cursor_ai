@@ -803,8 +803,16 @@ function QRLinkTab({ username }: { username: string }) {
       <div className="bg-card border border-white/6 rounded-2xl p-4">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Sahifa manzili</p>
         <div className="flex items-center gap-2 bg-background/60 border border-white/8 rounded-xl px-3 py-2.5 mb-3">
-          <span className="text-xs text-muted-foreground shrink-0">{APP_HOST}/</span>
-          <span className="flex-1 text-sm text-primary font-mono truncate">{slug}</span>
+          <a
+            href={pageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 flex items-center gap-1 min-w-0 hover:opacity-80 transition-opacity"
+          >
+            <span className="text-xs text-muted-foreground shrink-0">{APP_HOST}/</span>
+            <span className="text-sm text-primary font-mono truncate">{slug}</span>
+            <ExternalLink className="w-3 h-3 text-muted-foreground shrink-0" />
+          </a>
           <button
             onClick={() => setModalOpen(true)}
             className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
