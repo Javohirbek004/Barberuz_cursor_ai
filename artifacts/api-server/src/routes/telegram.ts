@@ -36,7 +36,7 @@ router.get("/setup", async (req, res) => {
   // Build webhook URL from request headers or env
   const host = req.headers["x-forwarded-host"] || req.hostname;
   const proto = req.headers["x-forwarded-proto"] || "https";
-  const baseUrl = process.env.REPLIT_DEV_DOMAIN
+  const baseUrl = (process.env.NODE_ENV === "development" && process.env.REPLIT_DEV_DOMAIN)
     ? `https://${process.env.REPLIT_DEV_DOMAIN}`
     : `${proto}://${host}`;
 

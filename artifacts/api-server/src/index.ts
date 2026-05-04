@@ -29,7 +29,9 @@ app.listen(port, async () => {
 
   // Delay webhook registration slightly to avoid rate-limit on rapid restarts
   setTimeout(async () => {
-    const domain = process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS?.split(",")[0];
+    const domain = (process.env.NODE_ENV === "development" && process.env.REPLIT_DEV_DOMAIN)
+      ? process.env.REPLIT_DEV_DOMAIN
+      : process.env.REPLIT_DOMAINS?.split(",")[0];
     if (domain) {
       const webhookUrl = `https://${domain}/api/telegram/webhook`;
       await registerWebhook(webhookUrl);
