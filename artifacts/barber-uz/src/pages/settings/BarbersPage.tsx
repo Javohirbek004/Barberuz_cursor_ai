@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { APP_ORIGIN, APP_HOST } from "@/lib/config";
+import { APP_ORIGIN, APP_DISPLAY_HOST } from "@/lib/config";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
@@ -221,7 +221,7 @@ function LinkBottomSheet({
 }) {
   const qrRef = useRef<HTMLDivElement>(null);
   const fullLink = barberLink(barber.username);
-  const displayLink = `${APP_HOST}/${barber.username}`;
+  const displayLink = `${APP_DISPLAY_HOST}/${barber.username}`;
 
   function handleShare() {
     const text = `Menga yozilish uchun:\n${fullLink}`;
@@ -679,7 +679,7 @@ function BarberForm({
 
 function SuccessScreen({ barber, onDone }: { barber: Barber; onDone: () => void }) {
   const fullLink = barberLink(barber.username);
-  const displayLink = `${APP_HOST}/${barber.username}`;
+  const displayLink = `${APP_DISPLAY_HOST}/${barber.username}`;
 
   function handleShare() {
     if (navigator.share) {

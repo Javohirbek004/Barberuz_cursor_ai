@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { APP_ORIGIN, APP_HOST } from "@/lib/config";
+import { APP_ORIGIN, APP_DISPLAY_HOST } from "@/lib/config";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
@@ -684,7 +684,7 @@ function SlugEditModal({
               </button>
             </div>
 
-            <p className="text-xs text-muted-foreground mb-2">{APP_HOST}/</p>
+            <p className="text-xs text-muted-foreground mb-2">{APP_DISPLAY_HOST}/</p>
             <input
               autoFocus
               value={draft}
@@ -727,7 +727,7 @@ function SlugEditModal({
               Linkni o'zgartirmoqchimisiz? Bu mijozlar uchun havolani o'zgartiradi.
             </p>
             <div className="bg-background/60 border border-white/8 rounded-xl px-3 py-2.5 mb-5 font-mono text-sm text-primary">
-              {APP_HOST}/{draft}
+              {APP_DISPLAY_HOST}/{draft}
             </div>
             {error && (
               <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2 mb-3">{error}</p>
@@ -807,7 +807,7 @@ function QRLinkTab({ userSlug }: { userSlug: string }) {
             rel="noopener noreferrer"
             className="flex-1 flex items-center gap-1 min-w-0 hover:opacity-80 transition-opacity"
           >
-            <span className="text-xs text-muted-foreground shrink-0">{APP_HOST}/</span>
+            <span className="text-xs text-muted-foreground shrink-0">{APP_DISPLAY_HOST}/</span>
             <span className="text-sm text-primary font-mono truncate">{userSlug}</span>
             <ExternalLink className="w-3 h-3 text-muted-foreground shrink-0" />
           </a>
