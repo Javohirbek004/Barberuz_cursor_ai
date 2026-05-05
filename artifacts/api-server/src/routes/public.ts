@@ -201,6 +201,64 @@ router.get("/sessions/:sessionId", async (req, res) => {
 });
 
 /**
+ * GET /api/public/barber/id/:barberId
+ * Fetch barber by their permanent UUID — used by /b/:id links.
+ * Must be registered BEFORE /barber/:slug so "id" isn't treated as a slug.
+ */
+router.get("/barber/id/:barberId", async (req, res) => {
+  try {
+    const { barberId } = req.params;
+
+    const [barber] = await db
+      .select()
+      .from(usersTable)
+      .where(and(eq(usersTable.id, barberId), isNull(usersTable.deletedAt)))
+      .limit(1);
+
+    if (!barber) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+
+    const services = await db
+      .select()
+      .from(servicesTable)
+      .where(and(eq(servicesTable.barberId, barber.id), eq(servicesTable.isActive, true), isNull(servicesTable.deletedAt)))
+      .orderBy(servicesTable.createdAt);
+
+    res.json({
+      id: barber.id,
+      name: barber.name,
+      brandName: barber.brandName,
+      bio: barber.bio,
+      avatarUrl: barber.avatarUrl,
+      phone: barber.phone,
+      specializations: barber.specializations,
+      mode: barber.mode,
+      lang: barber.lang,
+      workingHoursStart: barber.workingHoursStart,
+      workingHoursEnd: barber.workingHoursEnd,
+      scheduleJson: barber.scheduleJson,
+      lunchBreakEnabled: barber.lunchBreakEnabled,
+      lunchBreakStart: barber.lunchBreakStart,
+      lunchBreakEnd: barber.lunchBreakEnd,
+      telegramUsername: barber.telegramUsername,
+      username: barber.username,
+      services: services.map(s => ({
+        id: s.id,
+        name: s.name,
+        nameRu: s.nameRu,
+        duration: s.duration,
+        price: Number(s.price),
+      })),
+    });
+  } catch (err) {
+    console.error("[PublicAPI] GET /barber/id/:id error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+/**
  * GET /api/public/barber/:slug
  * Look up a barber by their public slug (username).
  * If not found directly, check slug_redirects for old slugs.

@@ -48,8 +48,8 @@ function formatPhone(raw: string): string {
   return `+998 `;
 }
 
-function barberLink(slug: string): string {
-  return `${APP_ORIGIN}/${slug}`;
+function barberLink(barberId: string): string {
+  return `${APP_ORIGIN}/b/${barberId}`;
 }
 
 // ── Daraja badge ───────────────────────────────────────────────────────────────
@@ -217,8 +217,8 @@ function LinkBottomSheet({
   onDelete: () => void;
 }) {
   const qrRef = useRef<HTMLDivElement>(null);
-  const fullLink = barberLink(barber.slug);
-  const displayLink = `${APP_HOST}/${barber.slug}`;
+  const fullLink = barberLink(barber.id);
+  const displayLink = `${APP_HOST}/b/${barber.id}`;
 
   function handleShare() {
     const text = `Menga yozilish uchun:\n${fullLink}`;
@@ -242,7 +242,7 @@ function LinkBottomSheet({
       if (ctx) { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 500, 500); ctx.drawImage(img, 25, 25, 450, 450); }
       URL.revokeObjectURL(url);
       const a = document.createElement("a");
-      a.download = `barber-qr-${barber.slug}.png`;
+      a.download = `barber-qr-${barber.id}.png`;
       a.href = canvas.toDataURL("image/png");
       a.click();
     };
@@ -675,8 +675,8 @@ function BarberForm({
 // ── Success screen ────────────────────────────────────────────────────────────
 
 function SuccessScreen({ barber, onDone }: { barber: Barber; onDone: () => void }) {
-  const fullLink = barberLink(barber.slug);
-  const displayLink = `${APP_HOST}/${barber.slug}`;
+  const fullLink = barberLink(barber.id);
+  const displayLink = `${APP_HOST}/b/${barber.id}`;
 
   function handleShare() {
     if (navigator.share) {

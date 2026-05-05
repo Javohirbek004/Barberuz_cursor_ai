@@ -27,6 +27,7 @@ import LanguageSettings from "@/pages/settings/LanguageSettings";
 import ThemeSettings from "@/pages/settings/ThemeSettings";
 import BarberSetup from "@/pages/BarberSetup";
 import BarberPublicPage from "@/pages/BarberPublicPage";
+import BarberByIdPage from "@/pages/BarberByIdPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -71,6 +72,9 @@ function AppRoutes() {
       <Route path="/settings/language" component={LanguageSettings} />
       <Route path="/settings/theme" component={ThemeSettings} />
       <Route path="/barber-setup/:token" component={BarberSetup} />
+
+      {/* Permanent ID-based public barber page */}
+      <Route path="/b/:id" component={BarberByIdPage} />
 
       {/* Public barber booking page — must be last before NotFound */}
       <Route path="/:slug" component={BarberPublicPage} />

@@ -754,12 +754,10 @@ function SlugEditModal({
   );
 }
 
-function QRLinkTab({ username }: { username: string }) {
-  const [slug, setSlug] = useState(username);
+function QRLinkTab({ userId }: { userId: string }) {
   const [copied, setCopied] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
   const qrRef = useRef<HTMLDivElement>(null);
-  const pageUrl = `${APP_ORIGIN}/${slug}`;
+  const pageUrl = `${APP_ORIGIN}/b/${userId}`;
 
   function handleCopy() {
     navigator.clipboard.writeText(pageUrl).then(() => {
@@ -771,7 +769,7 @@ function QRLinkTab({ username }: { username: string }) {
   function handleShare() {
     const text = `Menga yozilish uchun:\n${pageUrl}`;
     if (navigator.share) {
-      navigator.share({ title: slug, text, url: pageUrl }).catch(() => {});
+      navigator.share({ title: "Barber sahifasi", text, url: pageUrl }).catch(() => {});
     } else {
       navigator.clipboard.writeText(text);
     }
@@ -790,7 +788,7 @@ function QRLinkTab({ username }: { username: string }) {
       if (ctx) { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 500, 500); ctx.drawImage(img, 25, 25, 450, 450); }
       URL.revokeObjectURL(url);
       const a = document.createElement("a");
-      a.download = `barber-qr-${slug}.png`;
+      a.download = `barber-qr-${userId}.png`;
       a.href = canvas.toDataURL("image/png");
       a.click();
     };
@@ -809,17 +807,10 @@ function QRLinkTab({ username }: { username: string }) {
             rel="noopener noreferrer"
             className="flex-1 flex items-center gap-1 min-w-0 hover:opacity-80 transition-opacity"
           >
-            <span className="text-xs text-muted-foreground shrink-0">{APP_HOST}/</span>
-            <span className="text-sm text-primary font-mono truncate">{slug}</span>
+            <span className="text-xs text-muted-foreground shrink-0">{APP_HOST}/b/</span>
+            <span className="text-sm text-primary font-mono truncate">{userId}</span>
             <ExternalLink className="w-3 h-3 text-muted-foreground shrink-0" />
           </a>
-          <button
-            onClick={() => setModalOpen(true)}
-            className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-            title="Linkni tahrirlash"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -864,17 +855,6 @@ function QRLinkTab({ username }: { username: string }) {
           <p className="text-xs text-muted-foreground">Bronlar (bu oy)</p>
         </div>
       </div>
-
-      {/* ── Slug edit modal ────────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {modalOpen && (
-          <SlugEditModal
-            currentSlug={slug}
-            onClose={() => setModalOpen(false)}
-            onSaved={newSlug => { setSlug(newSlug); setModalOpen(false); }}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }
@@ -1697,7 +1677,7 @@ export default function PersonalPage() {
             )}
             {tab === "qr" && (
               <motion.div key="qr" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
-                <QRLinkTab username={username} />
+                <QRLinkTab userId={user?.id || ""} />
               </motion.div>
             )}
           </AnimatePresence>
