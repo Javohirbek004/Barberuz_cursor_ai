@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
-import NotFound from "@/pages/not-found";
 import { CustomerView, ProfileData, ServiceItem } from "@/pages/settings/PersonalPage";
 
 // ── Raw API shape ─────────────────────────────────────────────────────────────
@@ -108,7 +107,17 @@ export default function BarberPublicPage() {
     );
   }
 
-  if (status === "not_found") return <NotFound />;
+  if (status === "not_found") {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 px-4 text-center">
+        <p className="text-5xl mb-2">🔍</p>
+        <h1 className="text-xl font-bold text-foreground">Barber topilmadi</h1>
+        <p className="text-sm text-muted-foreground max-w-xs">
+          Bu sahifa mavjud emas yoki olib tashlangan bo'lishi mumkin.
+        </p>
+      </div>
+    );
+  }
 
   if (status === "error") {
     return (
