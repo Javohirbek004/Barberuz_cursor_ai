@@ -31,23 +31,27 @@ function getToken(): string {
 /**
  * Returns the base URL for the frontend app.
  * Priority: REPLIT_DEV_DOMAIN (dev only, when NODE_ENV=development)
- *           → REPLIT_DOMAINS first entry (Replit auto-sets this to the real prod domain)
+ *           → REPLIT_DOMAINS preferred entry (non-sisko first, e.g. barberuz.replit.app)
  *           → APP_URL (manual override / custom domain fallback)
  *           → barberuz.replit.app (hardcoded last resort)
  *
- * REPLIT_DOMAINS is the most reliable source in production because Replit sets it
- * automatically to the actual deployment URL, unlike APP_URL which is manually set
- * and can easily be stale or wrong.
+ * IMPORTANT: REPLIT_DOMAINS may contain both a sisko.replit.dev entry AND the
+ * clean domain. We always prefer the clean domain so that bot links sent to
+ * users (login URLs, booking links) point to the correct production app.
  */
 function getAppUrl(): string {
   // In development, REPLIT_DEV_DOMAIN is the live dev workspace URL (sisko.replit.dev).
   if (process.env.NODE_ENV === "development") {
     if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
-  // In production, Replit automatically sets REPLIT_DOMAINS to the real deployment domain.
-  // This is more reliable than a manually configured APP_URL that may be stale or wrong.
-  const firstDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
-  if (firstDomain) return `https://${firstDomain}`;
+  // In production, prefer the clean domain over sisko.replit.dev entries.
+  const domains = (process.env.REPLIT_DOMAINS || "")
+    .split(",")
+    .map(d => d.trim())
+    .filter(Boolean);
+  const preferred = domains.find(d => !d.includes("sisko.replit.dev"));
+  if (preferred) return `https://${preferred}`;
+  if (domains[0]) return `https://${domains[0]}`;
   // APP_URL as a manual override fallback (e.g. custom domain).
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   return "https://barberuz.replit.app";
