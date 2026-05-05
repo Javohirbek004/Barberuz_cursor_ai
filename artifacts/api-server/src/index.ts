@@ -25,15 +25,16 @@ function pickProdDomain(): string {
     .map(d => d.trim())
     .filter(Boolean);
 
+  // 1. Prefer a clean domain (not sisko.replit.dev) from REPLIT_DOMAINS
   const preferred = domains.find(d => !d.includes("sisko.replit.dev"));
   if (preferred) return preferred;
 
-  if (domains[0]) return domains[0];
-
+  // 2. Use APP_URL hostname (manual override, e.g. custom domain)
   if (process.env.APP_URL) {
     try { return new URL(process.env.APP_URL).hostname; } catch { /* ignore */ }
   }
 
+  // 3. Hardcoded known-good production domain
   return "barberuz.replit.app";
 }
 
