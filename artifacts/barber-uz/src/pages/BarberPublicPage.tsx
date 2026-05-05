@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Send, Instagram } from "lucide-react";
+import { Clock, Send } from "lucide-react";
 
 // ── API shape ─────────────────────────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ function formatDur(n: number) {
   if (n < 60) return `${n} min`;
   const h = Math.floor(n / 60);
   const m = n % 60;
-  return m > 0 ? `${h}s ${m}m` : `${h} soat`;
+  return m > 0 ? `${h} soat ${m} min` : `${h} soat`;
 }
 
 function formatPrice(n: number) {
