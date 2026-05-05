@@ -1594,7 +1594,6 @@ export function CustomerView({
 export default function PersonalPage() {
   const { user } = useAuth();
   const isTeam = user?.mode === "team";
-  const username = user?.username || "barber";
 
   const [tab, setTab] = useState<Tab>("asosiy");
   const [preview, setPreview] = useState(false);
