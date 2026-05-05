@@ -220,38 +220,8 @@ router.get("/barber/id/:barberId", async (req, res) => {
       return;
     }
 
-    const services = await db
-      .select()
-      .from(servicesTable)
-      .where(and(eq(servicesTable.barberId, barber.id), eq(servicesTable.isActive, true), isNull(servicesTable.deletedAt)))
-      .orderBy(servicesTable.createdAt);
-
-    res.json({
-      id: barber.id,
-      name: barber.name,
-      brandName: barber.brandName,
-      bio: barber.bio,
-      avatarUrl: barber.avatarUrl,
-      phone: barber.phone,
-      specializations: barber.specializations,
-      mode: barber.mode,
-      lang: barber.lang,
-      workingHoursStart: barber.workingHoursStart,
-      workingHoursEnd: barber.workingHoursEnd,
-      scheduleJson: barber.scheduleJson,
-      lunchBreakEnabled: barber.lunchBreakEnabled,
-      lunchBreakStart: barber.lunchBreakStart,
-      lunchBreakEnd: barber.lunchBreakEnd,
-      telegramUsername: barber.telegramUsername,
-      username: barber.username,
-      services: services.map(s => ({
-        id: s.id,
-        name: s.name,
-        nameRu: s.nameRu,
-        duration: s.duration,
-        price: Number(s.price),
-      })),
-    });
+    // Return redirect shape — BarberByIdPage will navigate to /{username}
+    res.json({ redirectTo: barber.username });
   } catch (err) {
     console.error("[PublicAPI] GET /barber/id/:id error:", err);
     res.status(500).json({ error: "server_error" });

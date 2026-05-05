@@ -754,10 +754,10 @@ function SlugEditModal({
   );
 }
 
-function QRLinkTab({ userId }: { userId: string }) {
+function QRLinkTab({ userSlug }: { userSlug: string }) {
   const [copied, setCopied] = useState(false);
   const qrRef = useRef<HTMLDivElement>(null);
-  const pageUrl = `${APP_ORIGIN}/b/${userId}`;
+  const pageUrl = `${APP_ORIGIN}/${userSlug}`;
 
   function handleCopy() {
     navigator.clipboard.writeText(pageUrl).then(() => {
@@ -788,7 +788,7 @@ function QRLinkTab({ userId }: { userId: string }) {
       if (ctx) { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 500, 500); ctx.drawImage(img, 25, 25, 450, 450); }
       URL.revokeObjectURL(url);
       const a = document.createElement("a");
-      a.download = `barber-qr-${userId}.png`;
+      a.download = `barber-qr-${userSlug}.png`;
       a.href = canvas.toDataURL("image/png");
       a.click();
     };
@@ -807,8 +807,8 @@ function QRLinkTab({ userId }: { userId: string }) {
             rel="noopener noreferrer"
             className="flex-1 flex items-center gap-1 min-w-0 hover:opacity-80 transition-opacity"
           >
-            <span className="text-xs text-muted-foreground shrink-0">{APP_HOST}/b/</span>
-            <span className="text-sm text-primary font-mono truncate">{userId}</span>
+            <span className="text-xs text-muted-foreground shrink-0">{APP_HOST}/</span>
+            <span className="text-sm text-primary font-mono truncate">{userSlug}</span>
             <ExternalLink className="w-3 h-3 text-muted-foreground shrink-0" />
           </a>
         </div>
@@ -1676,7 +1676,7 @@ export default function PersonalPage() {
             )}
             {tab === "qr" && (
               <motion.div key="qr" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
-                <QRLinkTab userId={user?.id || ""} />
+                <QRLinkTab userSlug={user?.username || ""} />
               </motion.div>
             )}
           </AnimatePresence>

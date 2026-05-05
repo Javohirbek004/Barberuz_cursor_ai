@@ -1,71 +1,14 @@
 import { useState, useEffect } from "react";
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import NotFound from "@/pages/not-found";
-import { CustomerView, ProfileData, ServiceItem } from "@/pages/settings/PersonalPage";
 
-interface BarberData {
-  id: string;
-  name: string;
-  brandName: string | null;
-  bio: string | null;
-  avatarUrl: string | null;
-  phone: string | null;
-  specializations: string | null;
-  mode: string;
-  lang: string;
-  workingHoursStart: string | null;
-  workingHoursEnd: string | null;
-  scheduleJson: string | null;
-  lunchBreakEnabled: boolean;
-  lunchBreakStart: string | null;
-  lunchBreakEnd: string | null;
-  telegramUsername: string | null;
-  username: string;
-  services: Array<{ id: string; name: string; nameRu: string | null; duration: number; price: number }>;
-}
-
-function mapToProfileData(b: BarberData): ProfileData {
-  const specs = b.specializations
-    ? b.specializations.split(",").map(s => s.trim()).filter(Boolean)
-    : [];
-  return {
-    name: b.brandName || b.name,
-    bio: b.bio || "",
-    speciality: specs,
-    phone: b.phone || "",
-    address: "",
-    mapLink: "",
-    workDays: "Dush — Shan",
-    workStart: b.workingHoursStart || "09:00",
-    workEnd: b.workingHoursEnd || "20:00",
-    lunchStart: b.lunchBreakStart || "13:00",
-    lunchEnd: b.lunchBreakEnd || "14:00",
-    telegram: b.telegramUsername ? `@${b.telegramUsername}` : "",
-    instagram: "",
-    profileImage: b.avatarUrl || "",
-    coverImage: "",
-  };
-}
-
-function mapToServiceItems(raw: BarberData["services"]): ServiceItem[] {
-  return raw.map(s => ({
-    id: s.id,
-    category: "soch",
-    name: s.name,
-    duration: s.duration,
-    price: s.price,
-    description: "",
-  }));
-}
-
-type Status = "loading" | "loaded" | "not_found" | "error";
+type Status = "redirecting" | "not_found" | "error";
 
 export default function BarberByIdPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
-
-  const [status, setStatus] = useState<Status>("loading");
-  const [barber, setBarber] = useState<BarberData | null>(null);
+  const [, navigate] = useLocation();
+  const [status, setStatus] = useState<Status>("redirecting");
 
   useEffect(() => {
     if (!id) { setStatus("not_found"); return; }
@@ -79,8 +22,12 @@ export default function BarberByIdPage() {
         if (!r.ok) { setStatus("error"); return; }
         const data = await r.json();
         if (cancelled) return;
-        setBarber(data as BarberData);
-        setStatus("loaded");
+        const slug: string | undefined = data.redirectTo;
+        if (slug) {
+          navigate(`/${slug}`, { replace: true });
+        } else {
+          setStatus("not_found");
+        }
       })
       .catch(() => {
         if (!cancelled) setStatus("error");
@@ -88,14 +35,6 @@ export default function BarberByIdPage() {
 
     return () => { cancelled = true; };
   }, [id]);
-
-  if (status === "loading") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
 
   if (status === "not_found") return <NotFound />;
 
@@ -114,18 +53,9 @@ export default function BarberByIdPage() {
     );
   }
 
-  if (!barber) return null;
-
-  const profile = mapToProfileData(barber);
-  const services = mapToServiceItems(barber.services);
-  const isTeam = barber.mode === "team";
-
   return (
-    <CustomerView
-      profile={profile}
-      services={services}
-      isTeam={isTeam}
-      barberId={barber.id}
-    />
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
   );
 }

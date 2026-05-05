@@ -16,6 +16,7 @@ interface Barber {
   id: string;
   name: string;
   slug: string;
+  username: string;
   speciality: string[];
   bio: string;
   phone: string;
@@ -48,8 +49,8 @@ function formatPhone(raw: string): string {
   return `+998 `;
 }
 
-function barberLink(barberId: string): string {
-  return `${APP_ORIGIN}/b/${barberId}`;
+function barberLink(slug: string): string {
+  return `${APP_ORIGIN}/${slug}`;
 }
 
 // ── Daraja badge ───────────────────────────────────────────────────────────────
@@ -155,6 +156,7 @@ const INITIAL_BARBERS: Barber[] = [
     id: "1",
     name: "Sardor",
     slug: "sardor",
+    username: "sardor_1234",
     speciality: ["Fade", "Soqol"],
     bio: "Zamonaviy barber. 5 yillik tajriba. Har bir mijozga individual yondashuv.",
     phone: "+998 (90) 123-45-67",
@@ -165,6 +167,7 @@ const INITIAL_BARBERS: Barber[] = [
     id: "2",
     name: "Jamshid",
     slug: "jamshid",
+    username: "jamshid_5678",
     speciality: ["Haircut"],
     bio: "",
     phone: "",
@@ -217,8 +220,8 @@ function LinkBottomSheet({
   onDelete: () => void;
 }) {
   const qrRef = useRef<HTMLDivElement>(null);
-  const fullLink = barberLink(barber.id);
-  const displayLink = `${APP_HOST}/b/${barber.id}`;
+  const fullLink = barberLink(barber.username);
+  const displayLink = `${APP_HOST}/${barber.username}`;
 
   function handleShare() {
     const text = `Menga yozilish uchun:\n${fullLink}`;
@@ -242,7 +245,7 @@ function LinkBottomSheet({
       if (ctx) { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 500, 500); ctx.drawImage(img, 25, 25, 450, 450); }
       URL.revokeObjectURL(url);
       const a = document.createElement("a");
-      a.download = `barber-qr-${barber.id}.png`;
+      a.download = `barber-qr-${barber.username}.png`;
       a.href = canvas.toDataURL("image/png");
       a.click();
     };
@@ -675,8 +678,8 @@ function BarberForm({
 // ── Success screen ────────────────────────────────────────────────────────────
 
 function SuccessScreen({ barber, onDone }: { barber: Barber; onDone: () => void }) {
-  const fullLink = barberLink(barber.id);
-  const displayLink = `${APP_HOST}/b/${barber.id}`;
+  const fullLink = barberLink(barber.username);
+  const displayLink = `${APP_HOST}/${barber.username}`;
 
   function handleShare() {
     if (navigator.share) {
@@ -753,6 +756,7 @@ export default function BarbersPage() {
       id: Date.now().toString(),
       name: form.name.trim(),
       slug,
+      username: slug,
       speciality,
       bio: form.bio,
       phone: form.phone,
