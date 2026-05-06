@@ -1076,7 +1076,13 @@ function loadTgCustomer(): TgCustomer | null {
 }
 function saveTgCustomer(c: TgCustomer) { localStorage.setItem("tg_customer", JSON.stringify(c)); }
 
-async function createBookingSession(payload: Record<string, unknown>): Promise<{ sessionId: string; deepLink: string | null; status: string }> {
+async function createBookingSession(payload: {
+  barberId: string; barberName: string; barberAddress: string;
+  mapLink: string; barberPageLink: string; isTeam: boolean;
+  teamBarberName: string | null; services: { name: string; price: number; duration: number }[];
+  totalPrice: number; totalDuration: number; date: string; time: string;
+  tgCustomer?: TgCustomer; clientPhone?: string;
+}): Promise<{ sessionId: string; deepLink: string | null; status: string }> {
   const res = await fetch("/api/public/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   if (!res.ok) throw new Error("Session creation failed");
   return res.json();
@@ -1115,14 +1121,18 @@ function BookingModal({ selectedServices, totalDuration, isTeam, barberId, profi
       const tgCustomer = loadTgCustomer();
       const services = selectedServices.map(s => ({ name: s.name, price: s.price, duration: s.duration }));
       const totalPrice = selectedServices.reduce((a, s) => a + s.price, 0);
+
+      const trimmedPhone = clientPhone.trim();
       const result = await createBookingSession({
         barberId: barberId || "demo", barberName: profile.name,
         barberAddress: profile.address, mapLink: profile.mapLink,
         barberPageLink: `${APP_ORIGIN}/barber-uz`, isTeam, teamBarberName: getTeamBarberName(),
         services, totalPrice, totalDuration, date: dateOpt, time: selectedTime,
         tgCustomer: tgCustomer || undefined,
+        clientPhone: trimmedPhone.length > 5 ? trimmedPhone : undefined,
       });
       if (result.status === "confirmed") { setStep("done"); setSubmitting(false); return; }
+
       setSessionId(result.sessionId);
       if (result.deepLink) window.open(result.deepLink, "_blank");
       setStep("verifying"); setSubmitting(false);
