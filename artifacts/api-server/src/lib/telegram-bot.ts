@@ -464,7 +464,7 @@ export async function handleTelegramUpdate(update: unknown) {
     // Registration deep-link
     const regParsed = parseRegPayload(payload);
     if (regParsed) {
-      await handleRegStart(chatId, regParsed.userId, regParsed.lang);
+      await handleRegStart(chatId, regParsed.userId, regParsed.lang, from);
       return;
     }
 
@@ -681,11 +681,13 @@ async function handlePhoneLoginContact(
   await sendVerificationSuccess(chatId, foundUser.id);
 }
 
-async function handleRegStart(chatId: number, userId: string, _lang: string) {
+async function handleRegStart(chatId: number, userId: string, _lang: string, from?: Record<string, unknown>) {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
-    console.warn(`[TelegramBot] Reg: user not found userId=${userId}`);
-    await sendGenericWelcome(chatId);
+    // Stale deep-link (e.g. user deleted their account) — fall back to the
+    // no-payload /start flow: check by Telegram ID, or ask for phone number.
+    console.warn(`[TelegramBot] Reg: user not found userId=${userId}, falling back to no-payload flow`);
+    await handleNoPayloadStart(chatId, from);
     return;
   }
 
