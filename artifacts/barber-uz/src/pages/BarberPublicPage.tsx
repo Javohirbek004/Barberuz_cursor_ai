@@ -35,24 +35,19 @@ interface BarberData {
   }>;
 }
 
+const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const DAY_LABELS: Record<string, string> = {
+  mon: "Du", tue: "Se", wed: "Ch", thu: "Pa", fri: "Ju", sat: "Sh", sun: "Ya",
+};
+
 function formatDur(n: number) {
   if (n < 60) return `${n} min`;
-  const h = Math.floor(n / 60);
-  const m = n % 60;
-  return m > 0 ? `${h} soat ${m} min` : `${h} soat`;
+  const h = Math.floor(n / 60), m = n % 60;
+  return m > 0 ? `${h}s ${m}m` : `${h} soat`;
 }
 
 function formatPrice(n: number) {
   return n.toLocaleString("uz-UZ") + " so'm";
-}
-
-function catEmoji(name: string) {
-  const lc = name.toLowerCase();
-  if (lc.includes("soqol") || lc.includes("soqal")) return "🪒";
-  if (lc.includes("bolalar") || lc.includes("bola")) return "👦";
-  if (lc.includes("vip") || lc.includes("premium")) return "💎";
-  if (lc.includes("qosh")) return "✨";
-  return "✂️";
 }
 
 const COVER_GRADS = [
@@ -65,7 +60,7 @@ const COVER_GRADS = [
 function GalleryStrip({ images }: { images: string[] }) {
   if (!images.length) return null;
   return (
-    <div className="overflow-x-auto scrollbar-hide pt-1 pb-3">
+    <div className="overflow-x-auto scrollbar-hide pb-3">
       <div className="flex gap-2.5 px-4">
         {images.map((src, i) => (
           <div key={i} className="relative shrink-0">
@@ -92,21 +87,31 @@ function PublicView({ barber }: { barber: BarberData }) {
     ? barber.specializations.split(",").map(s => s.trim()).filter(Boolean)
     : [];
   const gradIdx = displayName.charCodeAt(0) % COVER_GRADS.length;
-
-  const telegramHandle = barber.telegramUsername
-    ? barber.telegramUsername.replace("@", "")
-    : null;
-
-  const instagramHandle = barber.instagram
-    ? barber.instagram.replace("@", "")
-    : null;
+  const telegramHandle = barber.telegramUsername?.replace("@", "") || null;
+  const instagramHandle = barber.instagram?.replace("@", "") || null;
 
   const galleryImages: string[] = (() => {
     try { return JSON.parse(barber.galleryImages || "[]"); } catch { return []; }
   })();
 
+  const workDays: string[] = (() => {
+    try { return JSON.parse(barber.scheduleJson || "{}").workDays || []; } catch { return []; }
+  })();
+
+  const workDaysLabel = workDays.length > 0
+    ? workDays.map(k => DAY_LABELS[k] || k).join(", ")
+    : null;
+
+  const hasInfo = !!(barber.bio || specs.length || barber.workingHoursStart || barber.address || telegramHandle || instagramHandle);
+
+  function bronUrl(serviceName?: string) {
+    if (!telegramHandle) return null;
+    const text = serviceName ? `Assalomu alaykum! "${serviceName}" xizmatiga yozilmoqchiman.` : "Assalomu alaykum! Yozilmoqchiman.";
+    return `https://t.me/${telegramHandle}?text=${encodeURIComponent(text)}`;
+  }
+
   return (
-    <div className="pb-28 -mx-4">
+    <div className="pb-16 -mx-4">
       {/* Hero */}
       <div className="relative">
         <div className="w-full h-48 relative overflow-hidden">
@@ -116,14 +121,7 @@ function PublicView({ barber }: { barber: BarberData }) {
             <img src={barber.avatarUrl} className="w-full h-full object-cover" alt="" />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
-              <div
-                className="absolute inset-0 opacity-20"
-                style={{
-                  backgroundImage:
-                    "repeating-linear-gradient(45deg,#ffffff08 0,#ffffff08 1px,transparent 0,transparent 50%)",
-                  backgroundSize: "20px 20px",
-                }}
-              />
+              <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(45deg,#ffffff08 0,#ffffff08 1px,transparent 0,transparent 50%)", backgroundSize: "20px 20px" }} />
               <div className={`absolute inset-0 bg-gradient-to-br ${COVER_GRADS[gradIdx]}`} />
             </div>
           )}
@@ -135,9 +133,7 @@ function PublicView({ barber }: { barber: BarberData }) {
             {barber.avatarUrl ? (
               <img src={barber.avatarUrl} className="w-full h-full object-cover" alt={displayName} />
             ) : (
-              <span className="text-3xl font-bold text-primary uppercase">
-                {displayName.charAt(0)}
-              </span>
+              <span className="text-3xl font-bold text-primary uppercase">{displayName.charAt(0)}</span>
             )}
           </div>
         </div>
@@ -146,15 +142,11 @@ function PublicView({ barber }: { barber: BarberData }) {
       {/* Name + bio */}
       <div className="px-4 pt-12 pb-3">
         <h1 className="text-2xl font-display font-bold text-foreground mb-1">{displayName}</h1>
-        {barber.bio && (
-          <p className="text-sm text-muted-foreground leading-relaxed">{barber.bio}</p>
-        )}
+        {barber.bio && <p className="text-sm text-muted-foreground leading-relaxed">{barber.bio}</p>}
       </div>
 
-      {/* Gallery strip — always visible, above tabs */}
-      {galleryImages.length > 1 && (
-        <GalleryStrip images={galleryImages} />
-      )}
+      {/* Gallery strip — always visible above tabs (1–5 images) */}
+      {galleryImages.length > 0 && <GalleryStrip images={galleryImages} />}
 
       {/* Tab bar */}
       <div className="px-4 mb-1 mt-1">
@@ -165,9 +157,7 @@ function PublicView({ barber }: { barber: BarberData }) {
               onClick={() => setTab(t)}
               whileTap={{ scale: 0.97 }}
               className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${
-                tab === t
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {t === "asosiy" ? "Asosiy" : "Xizmatlar"}
@@ -179,39 +169,33 @@ function PublicView({ barber }: { barber: BarberData }) {
       {/* Tab content */}
       <AnimatePresence mode="wait">
         {tab === "asosiy" && (
-          <motion.div
-            key="asosiy"
-            initial={{ opacity: 0, x: -12 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 12 }}
-            transition={{ duration: 0.18 }}
-          >
+          <motion.div key="asosiy" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.18 }}>
             <div className="px-4 pt-4 space-y-4">
-              {/* Speciality tags */}
+              {!hasInfo && (
+                <div className="text-center py-10 border border-dashed border-white/8 rounded-2xl">
+                  <p className="text-3xl mb-2">✂️</p>
+                  <p className="text-sm text-muted-foreground">Ma'lumotlar hali to'ldirilmagan</p>
+                </div>
+              )}
+
               {specs.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {specs.map((s, i) => (
-                    <span
-                      key={i}
-                      className="px-2.5 py-1 rounded-full bg-primary/12 border border-primary/20 text-xs text-primary font-medium"
-                    >
-                      {s}
-                    </span>
+                    <span key={i} className="px-2.5 py-1 rounded-full bg-primary/12 border border-primary/20 text-xs text-primary font-medium">{s}</span>
                   ))}
                 </div>
               )}
 
-              {/* Work hours */}
-              {(barber.workingHoursStart || barber.workingHoursEnd) && (
+              {(barber.workingHoursStart || workDaysLabel) && (
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
                   <Clock className="w-3.5 h-3.5 text-primary/70 shrink-0" />
                   <span>
+                    {workDaysLabel ? `${workDaysLabel} · ` : ""}
                     {barber.workingHoursStart || "09:00"}–{barber.workingHoursEnd || "20:00"}
                   </span>
                 </div>
               )}
 
-              {/* Address card */}
               {barber.address && (
                 <a
                   href={barber.mapLink || undefined}
@@ -224,34 +208,23 @@ function PublicView({ barber }: { barber: BarberData }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-foreground truncate">{barber.address}</p>
-                    {barber.mapLink && (
-                      <p className="text-xs text-primary mt-0.5">Xaritada ko'rish →</p>
-                    )}
+                    {barber.mapLink && <p className="text-xs text-primary mt-0.5">Xaritada ko'rish →</p>}
                   </div>
                 </a>
               )}
 
-              {/* Social links */}
               {(telegramHandle || instagramHandle) && (
                 <div className="space-y-2">
                   {telegramHandle && (
-                    <a
-                      href={`https://t.me/${telegramHandle}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#2AABEE]/8 border border-[#2AABEE]/20 text-[#2AABEE] text-sm font-medium hover:bg-[#2AABEE]/15 transition-colors"
-                    >
+                    <a href={`https://t.me/${telegramHandle}`} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#2AABEE]/8 border border-[#2AABEE]/20 text-[#2AABEE] text-sm font-medium hover:bg-[#2AABEE]/15 transition-colors">
                       <Send className="w-4 h-4 shrink-0" />
                       <span>@{telegramHandle}</span>
                     </a>
                   )}
                   {instagramHandle && (
-                    <a
-                      href={`https://instagram.com/${instagramHandle}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-pink-500/8 to-violet-500/8 border border-pink-500/15 text-pink-400 text-sm font-medium hover:from-pink-500/15 hover:to-violet-500/15 transition-colors"
-                    >
+                    <a href={`https://instagram.com/${instagramHandle}`} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-pink-500/8 to-violet-500/8 border border-pink-500/15 text-pink-400 text-sm font-medium hover:from-pink-500/15 hover:to-violet-500/15 transition-colors">
                       <Instagram className="w-4 h-4 shrink-0" />
                       <span>@{instagramHandle}</span>
                     </a>
@@ -259,15 +232,10 @@ function PublicView({ barber }: { barber: BarberData }) {
                 </div>
               )}
 
-              {/* Booking CTA */}
               <div className="pt-1 pb-2">
                 {telegramHandle ? (
-                  <a
-                    href={`https://t.me/${telegramHandle}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-sm text-center shadow-xl shadow-primary/25 hover:bg-primary/90 transition-all"
-                  >
+                  <a href={bronUrl() || ""} target="_blank" rel="noopener noreferrer"
+                    className="block w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-sm text-center shadow-xl shadow-primary/25 hover:bg-primary/90 transition-all">
                     💈 Bron qilish
                   </a>
                 ) : (
@@ -276,74 +244,54 @@ function PublicView({ barber }: { barber: BarberData }) {
                   </div>
                 )}
               </div>
-
-              {!barber.bio && specs.length === 0 && !telegramHandle && !barber.workingHoursStart && !barber.address && (
-                <p className="text-sm text-muted-foreground/60 text-center py-4">
-                  Ma'lumot kiritilmagan
-                </p>
-              )}
             </div>
           </motion.div>
         )}
 
         {tab === "xizmatlar" && (
-          <motion.div
-            key="xizmatlar"
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -12 }}
-            transition={{ duration: 0.18 }}
-          >
+          <motion.div key="xizmatlar" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.18 }}>
             <div className="px-4 pt-4">
               {barber.services.length === 0 ? (
-                <div className="text-center py-10">
+                <div className="text-center py-10 border border-dashed border-white/8 rounded-2xl">
                   <p className="text-3xl mb-2">✂️</p>
-                  <p className="text-sm text-muted-foreground">Xizmatlar hali qo'shilmagan</p>
+                  <p className="text-sm text-muted-foreground">Ma'lumotlar hali to'ldirilmagan</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {barber.services.map(s => (
-                    <div
-                      key={s.id}
-                      className="bg-card border border-white/6 rounded-2xl p-4 flex items-center gap-3"
-                    >
-                      <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 bg-white/5 border border-white/8">
-                        {catEmoji(s.name)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-foreground">{s.name}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          <span>{formatDur(s.duration)}</span>
-                          <span className="mx-1">·</span>
-                          <span className="text-foreground/80 font-medium">
-                            {formatPrice(s.price)}
+                  {barber.services.map(s => {
+                    const url = bronUrl(s.name);
+                    return (
+                      <div key={s.id} className="bg-card border border-white/6 rounded-2xl p-4 flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0 bg-white/5 border border-white/8">
+                          ✂️
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm text-foreground">{s.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {formatDur(s.duration)} · <span className="text-foreground/80 font-medium">{formatPrice(s.price)}</span>
+                          </p>
+                        </div>
+                        {url ? (
+                          <a href={url} target="_blank" rel="noopener noreferrer"
+                            className="shrink-0 h-9 px-3.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-semibold flex items-center hover:bg-primary/20 transition-colors">
+                            Bron
+                          </a>
+                        ) : (
+                          <span className="shrink-0 h-9 px-3.5 rounded-xl bg-white/5 border border-white/8 text-muted-foreground/40 text-xs font-semibold flex items-center cursor-not-allowed">
+                            Bron
                           </span>
-                        </p>
+                        )}
                       </div>
-                      {telegramHandle && (
-                        <a
-                          href={`https://t.me/${telegramHandle}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="shrink-0 h-9 px-3.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-semibold flex items-center hover:bg-primary/20 transition-colors"
-                        >
-                          Bron
-                        </a>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
               {barber.services.length > 0 && (
                 <div className="mt-5 pb-4">
                   {telegramHandle ? (
-                    <a
-                      href={`https://t.me/${telegramHandle}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-sm text-center shadow-xl shadow-primary/25 hover:bg-primary/90 transition-all"
-                    >
+                    <a href={bronUrl() || ""} target="_blank" rel="noopener noreferrer"
+                      className="block w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-sm text-center shadow-xl shadow-primary/25 hover:bg-primary/90 transition-all">
                       💈 Bron qilish
                     </a>
                   ) : (
@@ -367,7 +315,6 @@ export default function BarberPublicPage() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
   const [, navigate] = useLocation();
-
   const { user } = useAuth(false);
   const isOwner = !!user && user.username === slug;
 
@@ -376,9 +323,7 @@ export default function BarberPublicPage() {
 
   useEffect(() => {
     if (!slug) { setStatus("not_found"); return; }
-
     let cancelled = false;
-
     fetch(`/api/public/barber/${encodeURIComponent(slug)}`)
       .then(async r => {
         if (cancelled) return;
@@ -386,17 +331,11 @@ export default function BarberPublicPage() {
         if (!r.ok) { setStatus("error"); return; }
         const data = await r.json();
         if (cancelled) return;
-        if (data.redirectTo) {
-          navigate(`/${data.redirectTo}`, { replace: true });
-          return;
-        }
+        if (data.redirectTo) { navigate(`/${data.redirectTo}`, { replace: true }); return; }
         setBarber(data as BarberData);
         setStatus("loaded");
       })
-      .catch(() => {
-        if (!cancelled) setStatus("error");
-      });
-
+      .catch(() => { if (!cancelled) setStatus("error"); });
     return () => { cancelled = true; };
   }, [slug]);
 
@@ -413,9 +352,7 @@ export default function BarberPublicPage() {
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 px-4 text-center">
         <p className="text-5xl mb-2">🔍</p>
         <h1 className="text-xl font-bold text-foreground">Barber topilmadi</h1>
-        <p className="text-sm text-muted-foreground max-w-xs">
-          Bu sahifa mavjud emas yoki olib tashlangan bo'lishi mumkin.
-        </p>
+        <p className="text-sm text-muted-foreground max-w-xs">Bu sahifa mavjud emas yoki olib tashlangan bo'lishi mumkin.</p>
       </div>
     );
   }
@@ -425,10 +362,7 @@ export default function BarberPublicPage() {
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4 px-4 text-center">
         <p className="text-2xl">⚠️</p>
         <p className="text-foreground font-semibold">Sahifani yuklashda xatolik</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-4 py-2 rounded-xl bg-white/8 border border-white/12 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
+        <button onClick={() => window.location.reload()} className="px-4 py-2 rounded-xl bg-white/8 border border-white/12 text-sm text-muted-foreground hover:text-foreground transition-colors">
           Qayta urinish
         </button>
       </div>
@@ -441,17 +375,12 @@ export default function BarberPublicPage() {
     <div className="max-w-md mx-auto px-4">
       {isOwner && (
         <div className="sticky top-0 z-30 -mx-4 px-4 py-2.5 bg-primary/10 border-b border-primary/20 backdrop-blur-md flex items-center justify-between">
-          <p className="text-xs text-primary font-semibold">
-            ✏️ Bu sizning sahifangiz — mijozlar shunday ko'radi
-          </p>
+          <p className="text-xs text-primary font-semibold">✏️ Bu sizning sahifangiz — mijozlar shunday ko'radi</p>
           <Link href="/settings/page">
-            <span className="text-xs text-primary font-bold underline underline-offset-2 cursor-pointer">
-              Tahrirlash →
-            </span>
+            <span className="text-xs text-primary font-bold underline underline-offset-2 cursor-pointer">Tahrirlash →</span>
           </Link>
         </div>
       )}
-
       <PublicView barber={barber} />
     </div>
   );

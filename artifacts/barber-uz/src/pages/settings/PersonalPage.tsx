@@ -17,23 +17,22 @@ import {
 // ──────────────────────────────────────────────────────────────────────────────
 
 type Tab = "asosiy" | "xizmatlar" | "qr";
-type ServiceCategory = string;
 
 export interface ProfileData {
   name: string;
   brandName: string;
   bio: string;
   speciality: string[];
-  phone: string;
+  phone: string;        // read-only (from registration)
   address: string;
   mapLink: string;
-  workDays: string;
+  workDays: string[];   // ["mon","tue",...] — stored in scheduleJson
   workStart: string;
   workEnd: string;
   lunchEnabled: boolean;
   lunchStart: string;
   lunchEnd: string;
-  telegram: string;
+  telegram: string;     // read-only (from Telegram verification)
   instagram: string;
   avatarUrl: string;
   galleryImages: string[];
@@ -41,7 +40,7 @@ export interface ProfileData {
 
 export interface ServiceItem {
   id: string;
-  category: ServiceCategory;
+  category: string;
   name: string;
   duration: number;
   price: number;
@@ -60,8 +59,18 @@ interface BarberSlot {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Static data used by BookingModal (demo slots)
+// Constants
 // ──────────────────────────────────────────────────────────────────────────────
+
+const DAYS = [
+  { key: "mon", label: "Du" },
+  { key: "tue", label: "Se" },
+  { key: "wed", label: "Ch" },
+  { key: "thu", label: "Pa" },
+  { key: "fri", label: "Ju" },
+  { key: "sat", label: "Sh" },
+  { key: "sun", label: "Ya" },
+];
 
 const DEFAULT_CATS: { id: string; label: string }[] = [
   { id: "all", label: "Hammasi" },
@@ -83,30 +92,16 @@ const TEAM_BARBERS: BarberSlot[] = [
 ];
 
 const SOLO_BUSY = [
-  { start: "09:30", duration: 45 },
-  { start: "11:00", duration: 30 },
-  { start: "14:00", duration: 60 },
-  { start: "17:30", duration: 45 },
+  { start: "09:30", duration: 45 }, { start: "11:00", duration: 30 },
+  { start: "14:00", duration: 60 }, { start: "17:30", duration: 45 },
 ];
 
 const EMPTY_PROFILE: ProfileData = {
-  name: "",
-  brandName: "",
-  bio: "",
-  speciality: [],
-  phone: "",
-  address: "",
-  mapLink: "",
-  workDays: "",
-  workStart: "09:00",
-  workEnd: "20:00",
-  lunchEnabled: false,
-  lunchStart: "13:00",
-  lunchEnd: "14:00",
-  telegram: "",
-  instagram: "",
-  avatarUrl: "",
-  galleryImages: [],
+  name: "", brandName: "", bio: "", speciality: [],
+  phone: "", address: "", mapLink: "",
+  workDays: [], workStart: "09:00", workEnd: "20:00",
+  lunchEnabled: false, lunchStart: "13:00", lunchEnd: "14:00",
+  telegram: "", instagram: "", avatarUrl: "", galleryImages: [],
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -125,12 +120,8 @@ function formatDur(n: number) {
   const h = Math.floor(n / 60), m = n % 60;
   return m > 0 ? `${h}s ${m}m` : `${h} soat`;
 }
-function formatPrice(n: number) {
-  return n.toLocaleString("uz-UZ") + " so'm";
-}
-function formatPriceShort(n: number) {
-  return n >= 1000 ? (n / 1000).toFixed(0) + "k" : String(n);
-}
+function formatPrice(n: number) { return n.toLocaleString("uz-UZ") + " so'm"; }
+function formatPriceShort(n: number) { return n >= 1000 ? (n / 1000).toFixed(0) + "k" : String(n); }
 
 function generateSlots(duration: number, busy: { start: string; duration: number }[]) {
   const START = 9 * 60, END = 20 * 60;
@@ -176,18 +167,13 @@ function catEmoji(cat: string) {
   return "💈";
 }
 
-function getToken() {
-  return localStorage.getItem("barber_token") || "";
-}
+function getToken() { return localStorage.getItem("barber_token") || ""; }
 
 async function apiGet(path: string) {
-  const res = await fetch(path, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
+  const res = await fetch(path, { headers: { Authorization: `Bearer ${getToken()}` } });
   if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
   return res.json();
 }
-
 async function apiPut(path: string, body: unknown) {
   const res = await fetch(path, {
     method: "PUT",
@@ -197,7 +183,6 @@ async function apiPut(path: string, body: unknown) {
   if (!res.ok) throw new Error(`PUT ${path} failed: ${res.status}`);
   return res.json();
 }
-
 async function apiPost(path: string, body: unknown) {
   const res = await fetch(path, {
     method: "POST",
@@ -207,7 +192,6 @@ async function apiPost(path: string, body: unknown) {
   if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
   return res.json();
 }
-
 async function apiDelete(path: string) {
   const res = await fetch(path, {
     method: "DELETE",
@@ -221,10 +205,9 @@ function apiToProfile(api: Record<string, unknown>): ProfileData {
   let galleryImages: string[] = [];
   try { galleryImages = JSON.parse((api.galleryImages as string) || "[]"); } catch {}
   let speciality: string[] = [];
-  try {
-    speciality = ((api.specializations as string) || "")
-      .split(",").map((s: string) => s.trim()).filter(Boolean);
-  } catch {}
+  try { speciality = ((api.specializations as string) || "").split(",").map((s: string) => s.trim()).filter(Boolean); } catch {}
+  let workDays: string[] = [];
+  try { workDays = JSON.parse((api.scheduleJson as string) || "{}").workDays || []; } catch {}
   return {
     name: (api.name as string) || "",
     brandName: (api.brandName as string) || "",
@@ -233,7 +216,7 @@ function apiToProfile(api: Record<string, unknown>): ProfileData {
     phone: (api.phone as string) || "",
     address: (api.address as string) || "",
     mapLink: (api.mapLink as string) || "",
-    workDays: "",
+    workDays,
     workStart: (api.workingHoursStart as string) || "09:00",
     workEnd: (api.workingHoursEnd as string) || "20:00",
     lunchEnabled: !!(api.lunchBreakEnabled),
@@ -257,6 +240,7 @@ function profileToApi(p: ProfileData) {
     lunchBreakEnabled: p.lunchEnabled,
     lunchBreakStart: p.lunchStart,
     lunchBreakEnd: p.lunchEnd,
+    scheduleJson: JSON.stringify({ workDays: p.workDays }),
     address: p.address,
     mapLink: p.mapLink,
     instagram: p.instagram,
@@ -273,12 +257,11 @@ function apiToService(s: Record<string, unknown>): ServiceItem {
     duration: s.duration as number,
     price: Number(s.price),
     description: "",
-    isActive: s.isActive,
-  } as ServiceItem & { isActive?: unknown };
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// GALLERY STRIP — edit mode
+// GALLERY STRIP EDIT — page-level, always visible above tabs
 // ──────────────────────────────────────────────────────────────────────────────
 
 function GalleryStripEdit({
@@ -300,11 +283,11 @@ function GalleryStripEdit({
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Galereya rasmlari
-        </label>
+    <div className="space-y-2 mb-4">
+      <div className="flex items-center justify-between px-0">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Galereya (1–5 rasm)
+        </span>
         <span className="text-xs text-muted-foreground/50">{images.length}/5</span>
       </div>
 
@@ -314,7 +297,7 @@ function GalleryStripEdit({
           className="w-full h-28 rounded-2xl border border-dashed border-white/15 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:border-white/30 hover:text-foreground transition-all"
         >
           <Camera className="w-5 h-5" />
-          <span className="text-xs">Rasm qo'shish (max 5 ta)</span>
+          <span className="text-xs">Rasm qo'shish</span>
           <span className="text-[10px] text-muted-foreground/40">Birinchi rasm muqova bo'ladi</span>
         </button>
       ) : (
@@ -350,61 +333,45 @@ function GalleryStripEdit({
           </div>
         </div>
       )}
-
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAdd} />
     </div>
   );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// COMPLETION BAR
+// COMPLETION BAR — page-level
 // ──────────────────────────────────────────────────────────────────────────────
 
-function CompletionBar({ profile }: { profile: ProfileData }) {
-  const checks = [
-    !!profile.name,
-    profile.bio.length >= 10,
-    profile.speciality.length >= 1,
-    !!profile.avatarUrl,
-    profile.galleryImages.length >= 1,
-    !!profile.address,
-    !!profile.workStart,
+function completionChecks(profile: ProfileData) {
+  return [
+    { label: "Ism",          done: !!profile.name },
+    { label: "Bio (10+)",    done: profile.bio.length >= 10 },
+    { label: "Mutaxassislik",done: profile.speciality.length >= 1 },
+    { label: "Galereya",     done: profile.galleryImages.length >= 1 },
+    { label: "Manzil",       done: !!profile.address },
+    { label: "Ish vaqti",    done: profile.workDays.length > 0 && !!profile.workStart },
+    { label: "Ijtimoiy",     done: !!(profile.telegram || profile.instagram) },
   ];
-  const done = checks.filter(Boolean).length;
-  const pct = Math.round((done / checks.length) * 100);
+}
 
+function CompletionBar({ profile }: { profile: ProfileData }) {
+  const checks = completionChecks(profile);
+  const done = checks.filter(c => c.done).length;
+  const pct = Math.round((done / checks.length) * 100);
   if (pct === 100) return null;
 
   return (
-    <div className="bg-card border border-white/6 rounded-2xl p-4 mb-5">
+    <div className="bg-card border border-white/6 rounded-2xl p-4 mb-4">
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs font-semibold text-foreground">Profil to'ldirilishi</p>
         <p className="text-xs font-bold text-primary">{pct}%</p>
       </div>
       <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-primary rounded-full transition-all duration-500"
-          style={{ width: `${pct}%` }}
-        />
+        <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
       </div>
       <div className="flex flex-wrap gap-1.5 mt-3">
-        {[
-          { label: "Ism", done: checks[0] },
-          { label: "Bio (10+ belgi)", done: checks[1] },
-          { label: "Mutaxassislik", done: checks[2] },
-          { label: "Avatar rasm", done: checks[3] },
-          { label: "Galereya", done: checks[4] },
-          { label: "Manzil", done: checks[5] },
-          { label: "Ish vaqti", done: checks[6] },
-        ].map((c, i) => (
-          <span
-            key={i}
-            className={`text-[10px] px-2 py-0.5 rounded-full border ${
-              c.done
-                ? "bg-emerald-500/12 border-emerald-500/20 text-emerald-400"
-                : "bg-white/4 border-white/8 text-muted-foreground/60"
-            }`}
-          >
+        {checks.map((c, i) => (
+          <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full border ${c.done ? "bg-emerald-500/12 border-emerald-500/20 text-emerald-400" : "bg-white/4 border-white/8 text-muted-foreground/60"}`}>
             {c.done ? "✓" : "○"} {c.label}
           </span>
         ))}
@@ -414,7 +381,7 @@ function CompletionBar({ profile }: { profile: ProfileData }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// ASOSIY TAB — edit mode
+// ASOSIY TAB — edit mode (no gallery/completion, those are page-level)
 // ──────────────────────────────────────────────────────────────────────────────
 
 function AsosiyTab({
@@ -443,6 +410,13 @@ function AsosiyTab({
     reader.readAsDataURL(file);
   }
 
+  function toggleDay(key: string) {
+    const next = profile.workDays.includes(key)
+      ? profile.workDays.filter(d => d !== key)
+      : [...profile.workDays, key];
+    set("workDays", next);
+  }
+
   function addTag() {
     const tag = newTag.trim();
     if (!tag || profile.speciality.length >= 6) return;
@@ -454,26 +428,14 @@ function AsosiyTab({
     onChange({ ...profile, speciality: profile.speciality.filter((_, idx) => idx !== i) });
   }
 
-  const field = (label: string, key: keyof ProfileData, placeholder?: string, readOnly?: boolean) => (
-    <div className="space-y-1.5">
-      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</label>
-      <input
-        value={profile[key] as string}
-        onChange={readOnly ? undefined : e => set(key as keyof ProfileData, e.target.value as ProfileData[keyof ProfileData])}
-        readOnly={readOnly}
-        placeholder={placeholder}
-        className={`w-full h-11 px-4 rounded-2xl bg-white/5 border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors ${readOnly ? "border-white/4 text-muted-foreground cursor-default" : "border-white/8"}`}
-      />
-    </div>
+  const warn = (label: string) => (
+    <p className="text-[11px] text-amber-500/80 flex items-center gap-1 mt-1">
+      <span>⚠️</span> {label}
+    </p>
   );
 
   return (
     <div className="space-y-6 pb-28">
-      <CompletionBar profile={profile} />
-
-      {/* Gallery */}
-      <GalleryStripEdit images={profile.galleryImages} onChange={imgs => set("galleryImages", imgs)} />
-
       {/* Avatar */}
       <div className="space-y-2">
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Avatar (profil rasmi)</label>
@@ -482,30 +444,21 @@ function AsosiyTab({
             className="w-16 h-16 rounded-2xl border border-white/12 bg-white/5 overflow-hidden cursor-pointer shrink-0 relative hover:border-white/25 transition-colors"
             onClick={() => imgRef.current?.click()}
           >
-            {profile.avatarUrl ? (
-              <img src={profile.avatarUrl} className="w-full h-full object-cover" alt="" />
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center gap-0.5 text-muted-foreground/40">
-                <Camera className="w-5 h-5" />
-              </div>
-            )}
+            {profile.avatarUrl
+              ? <img src={profile.avatarUrl} className="w-full h-full object-cover" alt="" />
+              : <div className="w-full h-full flex items-center justify-center text-muted-foreground/40"><Camera className="w-5 h-5" /></div>
+            }
             <div className="absolute bottom-0.5 right-0.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
               <Camera className="w-2.5 h-2.5 text-black" />
             </div>
           </div>
           <div>
-            <button
-              onClick={() => imgRef.current?.click()}
-              className="text-xs text-primary font-semibold hover:text-primary/80 transition-colors"
-            >
+            <button onClick={() => imgRef.current?.click()} className="text-xs text-primary font-semibold hover:text-primary/80 transition-colors">
               Rasm yuklash
             </button>
             <p className="text-xs text-muted-foreground/50 mt-0.5">Kvadrat rasm tavsiya etiladi</p>
             {profile.avatarUrl && (
-              <button
-                onClick={() => set("avatarUrl", "")}
-                className="text-xs text-destructive/70 hover:text-destructive transition-colors mt-0.5"
-              >
+              <button onClick={() => set("avatarUrl", "")} className="text-xs text-destructive/70 hover:text-destructive transition-colors mt-0.5 block">
                 O'chirish
               </button>
             )}
@@ -514,8 +467,28 @@ function AsosiyTab({
         <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
       </div>
 
-      {field("Ism / Nom *", "name", "Sardor Barber")}
-      {field("Brend nomi (ixtiyoriy)", "brandName", "Sardor Barbershop")}
+      {/* Name */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ism / Nom *</label>
+        <input
+          value={profile.name}
+          onChange={e => set("name", e.target.value)}
+          placeholder="Sardor Barber"
+          className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors"
+        />
+        {!profile.name && warn("To'ldirilmagan")}
+      </div>
+
+      {/* Brand name */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Brend nomi (ixtiyoriy)</label>
+        <input
+          value={profile.brandName}
+          onChange={e => set("brandName", e.target.value)}
+          placeholder="Sardor Barbershop"
+          className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors"
+        />
+      </div>
 
       {/* Bio */}
       <div className="space-y-1.5">
@@ -529,6 +502,7 @@ function AsosiyTab({
           className="w-full px-4 py-3 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors resize-none"
         />
         <p className="text-xs text-muted-foreground/40 text-right">{profile.bio.length} / 200</p>
+        {profile.bio.length < 10 && warn("Kamida 10 ta belgi kiriting")}
       </div>
 
       {/* Speciality tags */}
@@ -555,13 +529,30 @@ function AsosiyTab({
             <Plus className="w-4 h-4" />
           </button>
         </div>
+        {profile.speciality.length === 0 && warn("Hech bo'lmaganda bitta teg qo'shing")}
       </div>
 
-      {field("Telefon (faqat admin ko'radi)", "phone", "+998 90 123 45 67", true)}
+      {/* Phone — read-only */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Telefon (faqat admin ko'radi)</label>
+        <input
+          value={profile.phone}
+          readOnly
+          placeholder="+998 90 123 45 67"
+          className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/4 text-sm text-muted-foreground cursor-default focus:outline-none"
+        />
+      </div>
 
       {/* Address */}
       <div className="space-y-2">
-        {field("Manzil", "address", "Toshkent, Chilonzor, 14-uy")}
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Manzil</label>
+        <input
+          value={profile.address}
+          onChange={e => set("address", e.target.value)}
+          placeholder="Toshkent, Chilonzor, 14-uy"
+          className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors"
+        />
+        {!profile.address && warn("To'ldirilmagan")}
         <div className="flex gap-2">
           <input
             value={profile.mapLink}
@@ -581,23 +572,42 @@ function AsosiyTab({
       {/* Work schedule */}
       <div className="space-y-3">
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ish vaqti</label>
-        <div className="grid grid-cols-2 gap-2">
+
+        {/* 7-day checkboxes */}
+        <div>
+          <p className="text-xs text-muted-foreground mb-2">Ish kunlari</p>
+          <div className="flex gap-2 flex-wrap">
+            {DAYS.map(d => {
+              const active = profile.workDays.includes(d.key);
+              return (
+                <button
+                  key={d.key}
+                  onClick={() => toggleDay(d.key)}
+                  className={`w-10 h-10 rounded-xl text-xs font-bold border transition-all ${active ? "bg-primary/20 border-primary/40 text-primary" : "bg-white/5 border-white/8 text-muted-foreground hover:border-white/20 hover:text-foreground"}`}
+                >
+                  {d.label}
+                </button>
+              );
+            })}
+          </div>
+          {profile.workDays.length === 0 && warn("Hech bo'lmaganda bitta kun tanlang")}
+        </div>
+
+        {/* Hours */}
+        <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Ish kunlari</p>
-            <input value={profile.workDays} onChange={e => set("workDays", e.target.value)} placeholder="Dush — Shan"
-              className="w-full h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50" />
+            <p className="text-xs text-muted-foreground">Ish boshlanishi</p>
+            <input value={profile.workStart} onChange={e => set("workStart", e.target.value)} placeholder="09:00"
+              className="w-full h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm text-center focus:outline-none focus:border-primary/50" />
           </div>
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Soat</p>
-            <div className="flex items-center gap-1">
-              <input value={profile.workStart} onChange={e => set("workStart", e.target.value)} placeholder="09:00"
-                className="w-full h-10 px-2 rounded-xl bg-white/5 border border-white/8 text-sm text-center focus:outline-none focus:border-primary/50" />
-              <span className="text-muted-foreground text-xs shrink-0">—</span>
-              <input value={profile.workEnd} onChange={e => set("workEnd", e.target.value)} placeholder="20:00"
-                className="w-full h-10 px-2 rounded-xl bg-white/5 border border-white/8 text-sm text-center focus:outline-none focus:border-primary/50" />
-            </div>
+            <p className="text-xs text-muted-foreground">Ish tugashi</p>
+            <input value={profile.workEnd} onChange={e => set("workEnd", e.target.value)} placeholder="20:00"
+              className="w-full h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm text-center focus:outline-none focus:border-primary/50" />
           </div>
         </div>
+
+        {/* Lunch */}
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">Tushlik vaqti (ixtiyoriy)</p>
           <div className="flex items-center gap-2">
@@ -613,20 +623,33 @@ function AsosiyTab({
       {/* Social */}
       <div className="space-y-3">
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ijtimoiy tarmoqlar</label>
+
+        {/* Telegram — read-only */}
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-xl bg-[#2AABEE]/10 border border-[#2AABEE]/20 flex items-center justify-center shrink-0">
             <Send className="w-4 h-4 text-[#2AABEE]" />
           </div>
-          <input value={profile.telegram} readOnly placeholder="Telegram orqali bog'lanish orqali qo'shiladi"
-            className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/4 text-sm text-muted-foreground cursor-default focus:outline-none" />
+          <input
+            value={profile.telegram || "Telegram orqali kirish orqali qo'shiladi"}
+            readOnly
+            className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/4 text-sm text-muted-foreground cursor-default focus:outline-none"
+          />
         </div>
+
+        {/* Instagram */}
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500/20 to-violet-500/20 border border-pink-500/20 flex items-center justify-center shrink-0">
             <Instagram className="w-4 h-4 text-pink-400" />
           </div>
-          <input value={profile.instagram} onChange={e => set("instagram", e.target.value)} placeholder="@username"
-            className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50" />
+          <input
+            value={profile.instagram}
+            onChange={e => set("instagram", e.target.value)}
+            placeholder="@username"
+            className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50"
+          />
         </div>
+
+        {!profile.telegram && !profile.instagram && warn("Kamida bitta ijtimoiy tarmoq kerak")}
       </div>
 
       {/* Save button */}
@@ -635,17 +658,10 @@ function AsosiyTab({
         disabled={saving || !profile.name.trim()}
         className="w-full h-12 rounded-2xl bg-primary text-black font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:bg-primary/90"
       >
-        {saving ? (
-          <>
-            <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-            Saqlanmoqda...
-          </>
-        ) : (
-          <>
-            <Save className="w-4 h-4" />
-            Saqlash
-          </>
-        )}
+        {saving
+          ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Saqlanmoqda...</>
+          : <><Save className="w-4 h-4" /> Saqlash</>
+        }
       </button>
     </div>
   );
@@ -669,7 +685,7 @@ function ServiceForm({
   saving?: boolean;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
-  const [category, setCategory] = useState<string>(initial?.category ?? "soch");
+  const [category, setCategory] = useState(initial?.category ?? "soch");
   const [duration, setDuration] = useState(String(initial?.duration ?? 30));
   const [price, setPrice] = useState(String(initial?.price ?? ""));
   const [description, setDescription] = useState(initial?.description ?? "");
@@ -743,7 +759,7 @@ function ServiceForm({
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// XIZMATLAR TAB — edit mode with real API
+// XIZMATLAR TAB — real API CRUD
 // ──────────────────────────────────────────────────────────────────────────────
 
 function XizmatlarTab({
@@ -757,59 +773,37 @@ function XizmatlarTab({
   onReload: () => void;
   onAddCat: (c: string) => void;
 }) {
-  const [activeCat, setActiveCat] = useState<string>("all");
+  const [activeCat, setActiveCat] = useState("all");
   const [addingOrEditing, setAddingOrEditing] = useState<"new" | string | null>(null);
   const [newCat, setNewCat] = useState("");
   const [showNewCat, setShowNewCat] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const allCats = [
-    ...DEFAULT_CATS,
-    ...customCats.map(c => ({ id: c, label: c })),
-  ];
-
+  const allCats = [...DEFAULT_CATS, ...customCats.map(c => ({ id: c, label: c }))];
   const filtered = activeCat === "all" ? services : services.filter(s => s.category === activeCat);
 
   async function handleSave(item: Omit<ServiceItem, "id"> & { id?: string }) {
-    setSaving(true);
-    setError("");
+    setSaving(true); setError("");
     try {
-      const body = {
-        name: item.name,
-        nameRu: item.category,
-        duration: item.duration,
-        price: item.price,
-      };
-      if (item.id) {
-        await apiPut(`/api/services/${item.id}`, body);
-      } else {
-        await apiPost("/api/services", body);
-      }
+      const body = { name: item.name, nameRu: item.category, duration: item.duration, price: item.price };
+      if (item.id) { await apiPut(`/api/services/${item.id}`, body); }
+      else { await apiPost("/api/services", body); }
       setAddingOrEditing(null);
       onReload();
-    } catch {
-      setError("Xatolik yuz berdi. Qayta urinib ko'ring.");
-    } finally {
-      setSaving(false);
-    }
+    } catch { setError("Xatolik yuz berdi. Qayta urinib ko'ring."); }
+    finally { setSaving(false); }
   }
 
   async function handleDelete(id: string) {
-    try {
-      await apiDelete(`/api/services/${id}`);
-      onReload();
-    } catch {
-      setError("O'chirishda xatolik yuz berdi.");
-    }
+    try { await apiDelete(`/api/services/${id}`); onReload(); }
+    catch { setError("O'chirishda xatolik yuz berdi."); }
   }
 
   function handleAddCat() {
     const cat = newCat.trim();
     if (!cat || customCats.includes(cat)) { setShowNewCat(false); setNewCat(""); return; }
-    onAddCat(cat);
-    setShowNewCat(false);
-    setNewCat("");
+    onAddCat(cat); setShowNewCat(false); setNewCat("");
   }
 
   if (addingOrEditing !== null) {
@@ -826,7 +820,6 @@ function XizmatlarTab({
     <div className="pb-10">
       {error && <p className="text-xs text-destructive bg-destructive/10 rounded-xl px-3 py-2 mb-3">{error}</p>}
 
-      {/* Category filter */}
       <div className="flex gap-2 overflow-x-auto pb-3 mb-4 scrollbar-hide">
         {allCats.map(c => (
           <button key={c.id} onClick={() => setActiveCat(c.id)}
@@ -849,28 +842,19 @@ function XizmatlarTab({
         )}
       </div>
 
-      {/* Service list */}
       <div className="space-y-2.5 mb-4">
         <AnimatePresence>
           {filtered.map((s, i) => (
             <motion.div key={s.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ delay: i * 0.03 }}>
               <div className="bg-card border border-white/6 rounded-2xl p-4 flex items-center gap-3 hover:border-white/10 transition-colors">
-                <div className="w-11 h-11 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center text-xl shrink-0">
-                  {catEmoji(s.category)}
-                </div>
+                <div className="w-11 h-11 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center text-xl shrink-0">{catEmoji(s.category)}</div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm text-foreground truncate">{s.name}</p>
                   <p className="text-xs text-muted-foreground">{formatDur(s.duration)} · <span className="text-foreground/70">{formatPriceShort(s.price)} so'm</span></p>
                 </div>
                 <div className="flex gap-1.5 shrink-0">
-                  <button onClick={() => setAddingOrEditing(s.id)}
-                    className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors text-muted-foreground hover:text-foreground">
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => handleDelete(s.id)}
-                    className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <button onClick={() => setAddingOrEditing(s.id)} className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors text-muted-foreground hover:text-foreground"><Pencil className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => handleDelete(s.id)} className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
               </div>
             </motion.div>
@@ -899,161 +883,83 @@ function XizmatlarTab({
 
 type SlugModalStep = "edit" | "confirm";
 
-function SlugEditModal({
-  currentSlug,
-  onClose,
-  onSaved,
-}: {
-  currentSlug: string;
-  onClose: () => void;
-  onSaved: (newSlug: string) => void;
-}) {
+function SlugEditModal({ currentSlug, onClose, onSaved }: { currentSlug: string; onClose: () => void; onSaved: (s: string) => void; }) {
   const [step, setStep] = useState<SlugModalStep>("edit");
   const [draft, setDraft] = useState(currentSlug);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   function cleanSlug(raw: string) {
-    return raw
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-+|-+$/g, "");
-  }
-
-  function handleInputChange(val: string) {
-    setDraft(cleanSlug(val));
-    setError("");
+    return raw.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
   }
 
   function validate() {
-    if (draft.length < 3 || draft.length > 30) {
-      setError("Uzunlik: 3 dan 30 ta belgigacha");
-      return false;
-    }
-    if (!/^[a-z0-9-]+$/.test(draft)) {
-      setError("Faqat kichik harf, raqam va '-' ishlatish mumkin");
-      return false;
-    }
+    if (draft.length < 3 || draft.length > 30) { setError("Uzunlik: 3 dan 30 ta belgigacha"); return false; }
+    if (!/^[a-z0-9-]+$/.test(draft)) { setError("Faqat kichik harf, raqam va '-' ishlatish mumkin"); return false; }
     return true;
   }
 
   async function handleSave() {
     if (!validate()) return;
-    setSaving(true);
-    setError("");
+    setSaving(true); setError("");
     try {
-      const token = localStorage.getItem("barber_token");
       const res = await fetch("/api/settings/slug", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getToken()}` },
         body: JSON.stringify({ slug: draft }),
       });
       const data = await res.json();
-      if (res.status === 429) {
-        setError("Linkni hozir o'zgartira olmaysiz. Keyinroq urinib ko'ring.");
-        setStep("edit");
-      } else if (res.status === 409) {
-        setError("Bu slug allaqachon band. Boshqa nom tanlang.");
-        setStep("edit");
-      } else if (!res.ok) {
-        setError(data?.message || "Xatolik yuz berdi");
-        setStep("edit");
-      } else {
+      if (res.status === 429) { setError("Linkni hozir o'zgartira olmaysiz. Keyinroq urinib ko'ring."); setStep("edit"); }
+      else if (res.status === 409) { setError("Bu slug allaqachon band. Boshqa nom tanlang."); setStep("edit"); }
+      else if (!res.ok) { setError(data?.message || "Xatolik yuz berdi"); setStep("edit"); }
+      else {
         const newSlug = data.username ?? draft;
-        try {
-          const raw = localStorage.getItem("barber_user");
-          if (raw) {
-            const cached = JSON.parse(raw);
-            cached.username = newSlug;
-            localStorage.setItem("barber_user", JSON.stringify(cached));
-          }
-        } catch { }
+        try { const raw = localStorage.getItem("barber_user"); if (raw) { const c = JSON.parse(raw); c.username = newSlug; localStorage.setItem("barber_user", JSON.stringify(c)); } } catch {}
         onSaved(newSlug);
       }
-    } catch {
-      setError("Tarmoq xatosi. Qayta urinib ko'ring.");
-      setStep("edit");
-    } finally {
-      setSaving(false);
-    }
+    } catch { setError("Tarmoq xatosi. Qayta urinib ko'ring."); setStep("edit"); }
+    finally { setSaving(false); }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-sm bg-card border border-white/10 rounded-3xl p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
-
         {step === "edit" && (
           <>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-display font-bold text-foreground">Sahifa linkini tahrirlash</h2>
-              <button onClick={onClose} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
+              <button onClick={onClose} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10"><X className="w-4 h-4" /></button>
             </div>
-
             <p className="text-xs text-muted-foreground mb-2">{APP_DISPLAY_HOST}/</p>
-            <input
-              autoFocus
-              value={draft}
-              onChange={e => handleInputChange(e.target.value)}
-              placeholder="slug"
-              className="w-full bg-background/60 border border-white/12 rounded-xl px-3 py-2.5 text-sm text-primary font-mono outline-none focus:border-primary/50 transition-colors mb-1"
-            />
+            <input autoFocus value={draft} onChange={e => { setDraft(cleanSlug(e.target.value)); setError(""); }} placeholder="slug"
+              className="w-full bg-background/60 border border-white/12 rounded-xl px-3 py-2.5 text-sm text-primary font-mono outline-none focus:border-primary/50 mb-1" />
             <p className="text-xs text-muted-foreground mb-3">Faqat kichik harf, raqam va '-' ishlatish mumkin</p>
-
-            {error && (
-              <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2 mb-3">{error}</p>
-            )}
-
+            {error && <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2 mb-3">{error}</p>}
             <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl px-4 py-3 mb-5">
               <p className="text-xs text-amber-400 font-semibold mb-1">⚠️ Diqqat:</p>
-              <p className="text-xs text-amber-400/80 leading-relaxed">
-                Linkni o'zgartirsangiz, eski QR kodlar eski manzilga olib boradi, lekin tizim avtomatik yangi sahifaga yo'naltiradi.
-              </p>
+              <p className="text-xs text-amber-400/80 leading-relaxed">Linkni o'zgartirsangiz, eski QR kodlar eski manzilga olib boradi, lekin tizim avtomatik yangi sahifaga yo'naltiradi.</p>
             </div>
-
             <div className="flex gap-2">
-              <button onClick={onClose} className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-white/6 border border-white/10 text-muted-foreground hover:text-foreground transition-all">
-                Bekor qilish
-              </button>
-              <button
-                onClick={() => { if (validate()) setStep("confirm"); }}
-                disabled={draft === currentSlug || draft.length < 3}
-                className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-primary text-black hover:bg-primary/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
+              <button onClick={onClose} className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-white/6 border border-white/10 text-muted-foreground hover:text-foreground transition-all">Bekor qilish</button>
+              <button onClick={() => { if (validate()) setStep("confirm"); }} disabled={draft === currentSlug || draft.length < 3}
+                className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-primary text-black hover:bg-primary/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
                 Saqlash
               </button>
             </div>
           </>
         )}
-
         {step === "confirm" && (
           <>
             <h2 className="text-base font-display font-bold text-foreground mb-2">Tasdiqlash</h2>
-            <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
-              Linkni o'zgartirmoqchimisiz? Bu mijozlar uchun havolani o'zgartiradi.
-            </p>
-            <div className="bg-background/60 border border-white/8 rounded-xl px-3 py-2.5 mb-5 font-mono text-sm text-primary">
-              {APP_DISPLAY_HOST}/{draft}
-            </div>
-            {error && (
-              <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2 mb-3">{error}</p>
-            )}
+            <p className="text-sm text-muted-foreground mb-5 leading-relaxed">Linkni o'zgartirmoqchimisiz? Bu mijozlar uchun havolani o'zgartiradi.</p>
+            <div className="bg-background/60 border border-white/8 rounded-xl px-3 py-2.5 mb-5 font-mono text-sm text-primary">{APP_DISPLAY_HOST}/{draft}</div>
+            {error && <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2 mb-3">{error}</p>}
             <div className="flex gap-2">
-              <button onClick={() => setStep("edit")} className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-white/6 border border-white/10 text-muted-foreground hover:text-foreground transition-all">
-                Bekor qilish
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-primary text-black hover:bg-primary/90 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
-              >
-                {saving
-                  ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Saqlanmoqda</>
-                  : "Ha, o'zgartirish"
-                }
+              <button onClick={() => setStep("edit")} className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-white/6 border border-white/10 text-muted-foreground hover:text-foreground">Bekor qilish</button>
+              <button onClick={handleSave} disabled={saving}
+                className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-primary text-black hover:bg-primary/90 disabled:opacity-60 flex items-center justify-center gap-2">
+                {saving ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Saqlanmoqda</> : "Ha, o'zgartirish"}
               </button>
             </div>
           </>
@@ -1069,21 +975,13 @@ function QRLinkTab({ userSlug }: { userSlug: string }) {
   const pageUrl = `${APP_ORIGIN}/${userSlug}`;
 
   function handleCopy() {
-    navigator.clipboard.writeText(pageUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    navigator.clipboard.writeText(pageUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   }
-
   function handleShare() {
     const text = `Menga yozilish uchun:\n${pageUrl}`;
-    if (navigator.share) {
-      navigator.share({ title: "Barber sahifasi", text, url: pageUrl }).catch(() => {});
-    } else {
-      navigator.clipboard.writeText(text);
-    }
+    if (navigator.share) { navigator.share({ title: "Barber sahifasi", text, url: pageUrl }).catch(() => {}); }
+    else { navigator.clipboard.writeText(text); }
   }
-
   function handleDownload() {
     const svg = qrRef.current?.querySelector("svg");
     if (!svg) return;
@@ -1097,9 +995,7 @@ function QRLinkTab({ userSlug }: { userSlug: string }) {
       if (ctx) { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 500, 500); ctx.drawImage(img, 25, 25, 450, 450); }
       URL.revokeObjectURL(url);
       const a = document.createElement("a");
-      a.download = `barber-qr-${userSlug}.png`;
-      a.href = canvas.toDataURL("image/png");
-      a.click();
+      a.download = `barber-qr-${userSlug}.png`; a.href = canvas.toDataURL("image/png"); a.click();
     };
     img.src = url;
   }
@@ -1109,29 +1005,20 @@ function QRLinkTab({ userSlug }: { userSlug: string }) {
       <div className="bg-card border border-white/6 rounded-2xl p-4">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Sahifa manzili</p>
         <div className="flex items-center gap-2 bg-background/60 border border-white/8 rounded-xl px-3 py-2.5 mb-3">
-          <a
-            href={pageUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 flex items-center gap-1 min-w-0 hover:opacity-80 transition-opacity"
-          >
+          <a href={pageUrl} target="_blank" rel="noopener noreferrer" className="flex-1 flex items-center gap-1 min-w-0 hover:opacity-80 transition-opacity">
             <span className="text-xs text-muted-foreground shrink-0">{APP_DISPLAY_HOST}/</span>
             <span className="text-sm text-primary font-mono truncate">{userSlug}</span>
             <ExternalLink className="w-3 h-3 text-muted-foreground shrink-0" />
           </a>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={handleCopy}
-            className={`h-10 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all ${copied ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-400" : "bg-white/5 border-white/8 text-muted-foreground hover:text-foreground"}`}
-          >
+          <button onClick={handleCopy}
+            className={`h-10 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all ${copied ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-400" : "bg-white/5 border-white/8 text-muted-foreground hover:text-foreground"}`}>
             {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
             {copied ? "Nusxalandi" : "Nusxalash"}
           </button>
-          <button
-            onClick={handleShare}
-            className="h-10 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-white/8 bg-white/5 text-muted-foreground hover:text-foreground transition-all"
-          >
+          <button onClick={handleShare}
+            className="h-10 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-white/8 bg-white/5 text-muted-foreground hover:text-foreground transition-all">
             <Share2 className="w-3.5 h-3.5" /> Ulashish
           </button>
         </div>
@@ -1143,10 +1030,8 @@ function QRLinkTab({ userSlug }: { userSlug: string }) {
           <QRCode value={pageUrl} size={180} fgColor="#000000" bgColor="#ffffff" level="M" />
         </div>
         <p className="text-xs text-muted-foreground mb-4">📷 Mijozlar skaner qilib bron qilishi mumkin</p>
-        <button
-          onClick={handleDownload}
-          className="h-10 px-5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-white/8 bg-white/5 text-muted-foreground hover:text-foreground transition-all"
-        >
+        <button onClick={handleDownload}
+          className="h-10 px-5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-white/8 bg-white/5 text-muted-foreground hover:text-foreground transition-all">
           <Download className="w-3.5 h-3.5" /> Yuklab olish
         </button>
       </div>
@@ -1166,59 +1051,31 @@ function QRLinkTab({ userSlug }: { userSlug: string }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// BOOKING MODAL
+// BOOKING MODAL (unchanged logic, demo slots)
 // ──────────────────────────────────────────────────────────────────────────────
 
 type BookingStep = "time" | "info" | "verifying" | "done";
 type DateOpt = "today" | "tomorrow" | "custom";
-
 interface TgCustomer { tgId: string; name: string; username: string | null }
 
 function loadTgCustomer(): TgCustomer | null {
   try { return JSON.parse(localStorage.getItem("tg_customer") || "null"); } catch { return null; }
 }
-function saveTgCustomer(c: TgCustomer) {
-  localStorage.setItem("tg_customer", JSON.stringify(c));
-}
+function saveTgCustomer(c: TgCustomer) { localStorage.setItem("tg_customer", JSON.stringify(c)); }
 
-const API_BASE = "";
-
-async function createBookingSession(payload: {
-  barberId: string; barberName: string; barberAddress: string;
-  mapLink: string; barberPageLink: string; isTeam: boolean;
-  teamBarberName: string | null; services: { name: string; price: number; duration: number }[];
-  totalPrice: number; totalDuration: number; date: string; time: string;
-  tgCustomer?: TgCustomer;
-}): Promise<{ sessionId: string; deepLink: string | null; status: string }> {
-  const res = await fetch(`${API_BASE}/api/public/sessions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+async function createBookingSession(payload: Record<string, unknown>): Promise<{ sessionId: string; deepLink: string | null; status: string }> {
+  const res = await fetch("/api/public/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   if (!res.ok) throw new Error("Session creation failed");
   return res.json();
 }
-
 async function pollSession(sessionId: string): Promise<{ status: string; clientName?: string; clientTelegramId?: string; clientTelegramUsername?: string }> {
-  const res = await fetch(`${API_BASE}/api/public/sessions/${sessionId}`);
+  const res = await fetch(`/api/public/sessions/${sessionId}`);
   if (!res.ok) throw new Error("Poll failed");
   return res.json();
 }
 
-function BookingModal({
-  selectedServices,
-  totalDuration,
-  isTeam,
-  barberId,
-  profile,
-  onClose,
-}: {
-  selectedServices: ServiceItem[];
-  totalDuration: number;
-  isTeam: boolean;
-  barberId: string;
-  profile: ProfileData;
-  onClose: () => void;
+function BookingModal({ selectedServices, totalDuration, isTeam, barberId, profile, onClose }: {
+  selectedServices: ServiceItem[]; totalDuration: number; isTeam: boolean; barberId: string; profile: ProfileData; onClose: () => void;
 }) {
   const [step, setStep] = useState<BookingStep>("time");
   const [dateOpt, setDateOpt] = useState<DateOpt>("today");
@@ -1230,90 +1087,43 @@ function BookingModal({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const stopPolling = useCallback(() => {
-    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-  }, []);
-
+  const stopPolling = useCallback(() => { if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; } }, []);
   useEffect(() => () => stopPolling(), [stopPolling]);
-
-  function getDateStr() {
-    return dateOpt;
-  }
 
   function getTeamBarberName() {
     if (!isTeam || !selectedBarber || selectedBarber === "any" || selectedBarber === "solo") return null;
     return TEAM_BARBERS.find(b => b.id === selectedBarber)?.name || null;
   }
 
-  function getBarberPageLink() {
-    return `${APP_ORIGIN}/barber-uz`;
-  }
-
   async function handleBookingSubmit() {
     if (!clientName.trim() || !selectedTime || submitting) return;
     setSubmitting(true);
-
     try {
       const tgCustomer = loadTgCustomer();
       const services = selectedServices.map(s => ({ name: s.name, price: s.price, duration: s.duration }));
       const totalPrice = selectedServices.reduce((a, s) => a + s.price, 0);
-
-      const payload = {
-        barberId: barberId || "demo",
-        barberName: profile.name,
-        barberAddress: profile.address,
-        mapLink: profile.mapLink,
-        barberPageLink: getBarberPageLink(),
-        isTeam,
-        teamBarberName: getTeamBarberName(),
-        services,
-        totalPrice,
-        totalDuration,
-        date: getDateStr(),
-        time: selectedTime,
+      const result = await createBookingSession({
+        barberId: barberId || "demo", barberName: profile.name,
+        barberAddress: profile.address, mapLink: profile.mapLink,
+        barberPageLink: `${APP_ORIGIN}/barber-uz`, isTeam, teamBarberName: getTeamBarberName(),
+        services, totalPrice, totalDuration, date: dateOpt, time: selectedTime,
         tgCustomer: tgCustomer || undefined,
-      };
-
-      const result = await createBookingSession(payload);
-
-      if (result.status === "confirmed") {
-        setStep("done");
-        setSubmitting(false);
-        return;
-      }
-
+      });
+      if (result.status === "confirmed") { setStep("done"); setSubmitting(false); return; }
       setSessionId(result.sessionId);
-
-      if (result.deepLink) {
-        window.open(result.deepLink, "_blank");
-      }
-
-      setStep("verifying");
-      setSubmitting(false);
-
+      if (result.deepLink) window.open(result.deepLink, "_blank");
+      setStep("verifying"); setSubmitting(false);
       pollingRef.current = setInterval(async () => {
         try {
           const poll = await pollSession(result.sessionId);
           if (poll.status === "confirmed") {
             stopPolling();
-            if (poll.clientTelegramId) {
-              saveTgCustomer({
-                tgId: poll.clientTelegramId,
-                name: poll.clientName || clientName,
-                username: poll.clientTelegramUsername || null,
-              });
-            }
+            if (poll.clientTelegramId) saveTgCustomer({ tgId: poll.clientTelegramId, name: poll.clientName || clientName, username: poll.clientTelegramUsername || null });
             setStep("done");
-          } else if (poll.status === "expired") {
-            stopPolling();
-            setStep("info");
-          }
-        } catch {
-        }
+          } else if (poll.status === "expired") { stopPolling(); setStep("info"); }
+        } catch {}
       }, 3000);
-    } catch {
-      setSubmitting(false);
-    }
+    } catch { setSubmitting(false); }
   }
 
   const totalPrice = selectedServices.reduce((acc, s) => acc + s.price, 0);
@@ -1321,40 +1131,28 @@ function BookingModal({
     ? TEAM_BARBERS.map(b => ({ barber: b, slots: generateSlots(totalDuration, b.busy) }))
     : [{ barber: null, slots: generateSlots(totalDuration, SOLO_BUSY) }];
 
-  const canProceed = selectedTime !== null;
-
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={step !== "done" ? onClose : undefined} />
-      <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-        transition={{ type: "spring", damping: 30, stiffness: 280 }}
-        className="relative w-full max-w-md bg-card rounded-t-3xl z-10 max-h-[92vh] flex flex-col"
-        onClick={e => e.stopPropagation()}>
+      <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 280 }}
+        className="relative w-full max-w-md bg-card rounded-t-3xl z-10 max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 shrink-0" />
-
         <div className="flex items-center gap-3 px-5 py-4 shrink-0 border-b border-white/6">
-          {step === "info" && (
-            <button onClick={() => setStep("time")} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0"><ArrowLeft className="w-4 h-4" /></button>
-          )}
+          {step === "info" && <button onClick={() => setStep("time")} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0"><ArrowLeft className="w-4 h-4" /></button>}
           <div className="flex-1">
             {step === "time" && <h2 className="font-bold text-base">Vaqt tanlash</h2>}
             {step === "info" && <h2 className="font-bold text-base">Bronni tasdiqlash</h2>}
             {step === "verifying" && <h2 className="font-bold text-base text-[#2AABEE]">Telegram tasdiq...</h2>}
             {step === "done" && <h2 className="font-bold text-base text-emerald-400">Bron tasdiqlandi!</h2>}
           </div>
-          {step !== "done" && (
-            <button onClick={onClose} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0"><X className="w-4 h-4" /></button>
-          )}
+          {step !== "done" && <button onClick={onClose} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0"><X className="w-4 h-4" /></button>}
         </div>
-
         <div className="overflow-y-auto flex-1 px-5 pb-8">
           {step !== "done" && (
             <div className="bg-primary/6 border border-primary/12 rounded-2xl px-4 py-3 mt-4 mb-5 flex items-center justify-between gap-3">
               <div className="flex flex-wrap gap-1.5 flex-1">
-                {selectedServices.map(s => (
-                  <span key={s.id} className="text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20">{s.name}</span>
-                ))}
+                {selectedServices.map(s => <span key={s.id} className="text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20">{s.name}</span>)}
               </div>
               <div className="text-right shrink-0">
                 <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end"><Clock className="w-3 h-3" /> {formatDur(totalDuration)}</p>
@@ -1362,7 +1160,6 @@ function BookingModal({
               </div>
             </div>
           )}
-
           <AnimatePresence mode="wait">
             {step === "time" && (
               <motion.div key="time" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
@@ -1374,32 +1171,24 @@ function BookingModal({
                     </button>
                   ))}
                   <button onClick={() => setDateOpt("custom")}
-                    className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-all ${dateOpt === "custom" ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground"}`}>
-                    Boshqa
-                  </button>
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-all ${dateOpt === "custom" ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground"}`}>Boshqa</button>
                 </div>
-
                 {isTeam ? (
                   <div className="space-y-4">
                     <div className={`rounded-2xl border p-4 transition-all ${selectedBarber === "any" ? "border-primary/30 bg-primary/6" : "border-white/8 bg-white/3"}`}>
                       <div className="flex items-center gap-3 mb-3">
                         <div className="w-12 h-12 rounded-full bg-white/8 border border-white/10 flex items-center justify-center text-xl shrink-0">👥</div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm text-foreground">Istalgan barber</p>
-                          <p className="text-xs text-muted-foreground">Birinchi bo'sh usta qabul qiladi</p>
-                        </div>
+                        <div><p className="font-semibold text-sm">Istalgan barber</p><p className="text-xs text-muted-foreground">Birinchi bo'sh usta qabul qiladi</p></div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {generateSlots(totalDuration, SOLO_BUSY.slice(0, 2)).map(slot => (
-                          <button key={slot}
-                            onClick={() => { setSelectedBarber("any"); setSelectedTime(slot); }}
-                            className={`px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all ${selectedBarber === "any" && selectedTime === slot ? "border-primary bg-primary/20 text-primary" : "border-white/12 bg-background/50 text-muted-foreground hover:bg-white/8 hover:text-foreground"}`}>
+                          <button key={slot} onClick={() => { setSelectedBarber("any"); setSelectedTime(slot); }}
+                            className={`px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all ${selectedBarber === "any" && selectedTime === slot ? "border-primary bg-primary/20 text-primary" : "border-white/12 bg-background/50 text-muted-foreground hover:bg-white/8"}`}>
                             {slot}
                           </button>
                         ))}
                       </div>
                     </div>
-
                     {barberSlots.map(({ barber, slots }) => barber && (
                       <div key={barber.id} className={`rounded-2xl border p-4 transition-all ${selectedBarber === barber.id ? "border-primary/30 bg-primary/6" : "border-white/8 bg-white/3"}`}>
                         <div className="flex items-center gap-3 mb-3">
@@ -1413,12 +1202,11 @@ function BookingModal({
                           </div>
                         </div>
                         {slots.length === 0
-                          ? <p className="text-xs text-muted-foreground/50 py-1">Bo'sh vaqt yo'q</p>
+                          ? <p className="text-xs text-muted-foreground/50">Bo'sh vaqt yo'q</p>
                           : <div className="flex flex-wrap gap-2">
                               {slots.slice(0, 8).map(slot => (
-                                <button key={slot}
-                                  onClick={() => { setSelectedBarber(barber.id); setSelectedTime(slot); }}
-                                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all ${selectedBarber === barber.id && selectedTime === slot ? "border-primary bg-primary/20 text-primary" : "border-white/12 bg-background/50 text-muted-foreground hover:bg-white/8 hover:text-foreground"}`}>
+                                <button key={slot} onClick={() => { setSelectedBarber(barber.id); setSelectedTime(slot); }}
+                                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all ${selectedBarber === barber.id && selectedTime === slot ? "border-primary bg-primary/20 text-primary" : "border-white/12 bg-background/50 text-muted-foreground hover:bg-white/8"}`}>
                                   {slot}
                                 </button>
                               ))}
@@ -1434,9 +1222,8 @@ function BookingModal({
                       ? <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">Bu kun bo'sh vaqt yo'q 😔</div>
                       : <div className="flex flex-wrap gap-2">
                           {barberSlots[0].slots.map(slot => (
-                            <button key={slot}
-                              onClick={() => setSelectedTime(slot)}
-                              className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all ${selectedTime === slot ? "border-primary bg-primary/20 text-primary" : "border-white/12 bg-background/50 text-muted-foreground hover:bg-white/8 hover:text-foreground"}`}>
+                            <button key={slot} onClick={() => setSelectedTime(slot)}
+                              className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all ${selectedTime === slot ? "border-primary bg-primary/20 text-primary" : "border-white/12 bg-background/50 text-muted-foreground hover:bg-white/8"}`}>
                               {slot}
                             </button>
                           ))}
@@ -1444,31 +1231,23 @@ function BookingModal({
                     }
                   </div>
                 )}
-
-                <button
-                  onClick={() => canProceed && setStep("info")}
-                  disabled={!canProceed}
-                  className="w-full h-13 py-3.5 rounded-2xl bg-primary text-black font-bold text-base mt-6 disabled:opacity-30 transition-opacity shadow-lg shadow-primary/20">
+                <button onClick={() => selectedTime && setStep("info")} disabled={!selectedTime}
+                  className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base mt-6 disabled:opacity-30 shadow-lg shadow-primary/20">
                   Davom etish →
                 </button>
               </motion.div>
             )}
-
             {step === "info" && (
               <motion.div key="info" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                 <p className="text-sm text-muted-foreground mb-5">Telegram bot bron ma'lumotlarini tasdiqlaydi</p>
-
                 <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-5 flex items-center gap-3">
                   <Clock className="w-4 h-4 text-primary shrink-0" />
                   <div>
                     <p className="text-xs text-muted-foreground">Tanlangan vaqt</p>
-                    <p className="text-sm font-bold text-foreground">{dateOpt === "today" ? "Bugun" : "Ertaga"}, soat {selectedTime}</p>
-                    {isTeam && selectedBarber && selectedBarber !== "any" && (
-                      <p className="text-xs text-primary">{TEAM_BARBERS.find(b => b.id === selectedBarber)?.name}</p>
-                    )}
+                    <p className="text-sm font-bold">{dateOpt === "today" ? "Bugun" : "Ertaga"}, soat {selectedTime}</p>
+                    {isTeam && selectedBarber && selectedBarber !== "any" && <p className="text-xs text-primary">{TEAM_BARBERS.find(b => b.id === selectedBarber)?.name}</p>}
                   </div>
                 </div>
-
                 <div className="space-y-4">
                   <div className="space-y-1.5">
                     <label className="text-sm font-semibold text-muted-foreground">Ismingiz *</label>
@@ -1481,36 +1260,26 @@ function BookingModal({
                       className="w-full h-12 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50" />
                   </div>
                   <div className="bg-[#2AABEE]/8 border border-[#2AABEE]/20 rounded-2xl px-4 py-3">
-                    <p className="text-xs text-[#2AABEE]/80 flex items-center gap-1.5"><Send className="w-3.5 h-3.5 shrink-0" /> Telegram bot bron tasdiqlaydi va eslatma yuboradi</p>
+                    <p className="text-xs text-[#2AABEE]/80 flex items-center gap-1.5"><Send className="w-3.5 h-3.5 shrink-0" /> Telegram bot bron tasdiqlaydi</p>
                   </div>
                   <button onClick={handleBookingSubmit} disabled={!clientName.trim() || submitting}
                     className="w-full h-12 rounded-2xl bg-[#2AABEE] text-white font-bold flex items-center justify-center gap-2 disabled:opacity-30 text-sm">
-                    {submitting
-                      ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Yuklanmoqda...</>
-                      : <><Send className="w-4 h-4" /> Telegram orqali tasdiqlash</>
-                    }
+                    {submitting ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Yuklanmoqda...</> : <><Send className="w-4 h-4" /> Telegram orqali tasdiqlash</>}
                   </button>
                 </div>
               </motion.div>
             )}
-
             {step === "verifying" && (
               <motion.div key="verifying" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-10">
                 <div className="w-20 h-20 rounded-3xl bg-[#2AABEE]/10 border border-[#2AABEE]/20 flex items-center justify-center text-4xl mx-auto mb-5">💬</div>
                 <h2 className="text-lg font-bold mb-1">Telegram bot kutilmoqda</h2>
                 <p className="text-sm text-muted-foreground mb-6">Telegram botda <b>✅ Tasdiqlash</b> tugmasini bosing</p>
                 <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-6">
-                  <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                  <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:0.2s]" />
-                  <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:0.4s]" />
+                  {[0, 0.2, 0.4].map((d, i) => <span key={i} className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: `${d}s` }} />)}
                   <span className="ml-1">Tasdiq kutilmoqda</span>
                 </div>
                 {sessionId && (
-                  <button
-                    onClick={() => {
-                      const botName = "Barberuz_yordamchi_bot";
-                      window.open(`https://t.me/${botName}?start=booking_${sessionId}`, "_blank");
-                    }}
+                  <button onClick={() => window.open(`https://t.me/Barberuz_yordamchi_bot?start=booking_${sessionId}`, "_blank")}
                     className="w-full h-12 rounded-2xl bg-[#2AABEE]/15 border border-[#2AABEE]/30 text-[#2AABEE] font-semibold text-sm flex items-center justify-center gap-2 mb-3">
                     <Send className="w-4 h-4" /> Telegram botni qayta ochish
                   </button>
@@ -1518,20 +1287,15 @@ function BookingModal({
                 <button onClick={() => { stopPolling(); setStep("info"); }} className="text-xs text-muted-foreground underline">Bekor qilish</button>
               </motion.div>
             )}
-
             {step === "done" && (
               <motion.div key="done" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-8">
                 <div className="w-24 h-24 rounded-3xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-5xl mx-auto mb-5">✅</div>
                 <h2 className="text-xl font-bold mb-1">Bron qabul qilindi!</h2>
                 <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 my-5 text-left">
                   <p className="text-xs text-muted-foreground mb-1">Bron ma'lumotlari</p>
-                  <p className="text-sm font-semibold text-foreground">{dateOpt === "today" ? "Bugun" : "Ertaga"}, soat {selectedTime}</p>
-                  {isTeam && selectedBarber && selectedBarber !== "any" && (
-                    <p className="text-xs text-primary mt-0.5">{TEAM_BARBERS.find(b => b.id === selectedBarber)?.name}</p>
-                  )}
+                  <p className="text-sm font-semibold">{dateOpt === "today" ? "Bugun" : "Ertaga"}, soat {selectedTime}</p>
                   <p className="text-xs text-muted-foreground mt-2">{selectedServices.map(s => s.name).join(", ")}</p>
                 </div>
-                <p className="text-sm text-muted-foreground mb-6">Telegram bot orqali tasdiqlash kuting</p>
                 <button onClick={onClose} className="w-full h-12 rounded-2xl bg-primary text-black font-bold shadow-lg shadow-primary/20">Yopish</button>
               </motion.div>
             )}
@@ -1543,29 +1307,20 @@ function BookingModal({
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// CUSTOMER VIEW — full premium preview mode
+// CUSTOMER VIEW — preview mode
 // ──────────────────────────────────────────────────────────────────────────────
 
-export function CustomerView({
-  profile,
-  services,
-  isTeam,
-  barberId,
-}: {
-  profile: ProfileData;
-  services: ServiceItem[];
-  isTeam: boolean;
-  barberId: string;
+export function CustomerView({ profile, services, isTeam, barberId }: {
+  profile: ProfileData; services: ServiceItem[]; isTeam: boolean; barberId: string;
 }) {
   const [previewTab, setPreviewTab] = useState<"asosiy" | "xizmatlar">("asosiy");
-  const [activeCat, setActiveCat] = useState<string>("all");
+  const [activeCat, setActiveCat] = useState("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bookingOpen, setBookingOpen] = useState(false);
   const [detailSvc, setDetailSvc] = useState<ServiceItem | null>(null);
 
   const visibleCats = ["all", ...Array.from(new Set(services.map(s => s.category)))];
   const catChips = DEFAULT_CATS.filter(c => visibleCats.includes(c.id));
-
   const filtered = activeCat === "all" ? services : services.filter(s => s.category === activeCat);
   const selectedServices = services.filter(s => selectedIds.includes(s.id));
 
@@ -1574,27 +1329,23 @@ export function CustomerView({
     selectedServices.forEach(s => { dur += s.duration; price += s.price; });
     services.filter(s => s.comboIds).forEach(combo => {
       if (combo.comboIds!.every(id => selectedIds.includes(id)) && combo.comboPrice) {
-        const origPrice = combo.comboIds!.reduce((acc, id) => acc + (services.find(s => s.id === id)?.price ?? 0), 0);
-        price -= (origPrice - combo.comboPrice);
+        const orig = combo.comboIds!.reduce((acc, id) => acc + (services.find(s => s.id === id)?.price ?? 0), 0);
+        price -= (orig - combo.comboPrice);
       }
     });
     return { dur, price };
   }
 
   const { dur: totalDur, price: totalPrice } = calcTotal();
+  function toggleService(id: string) { setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]); }
 
-  function toggleService(id: string) {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  }
-
-  const COVER_GRAD = [
-    "from-primary/50 via-primary/20 to-transparent",
-    "from-amber-600/50 via-amber-600/20 to-transparent",
-    "from-emerald-600/50 via-emerald-600/20 to-transparent",
-    "from-violet-600/50 via-violet-600/20 to-transparent",
-  ];
+  const COVER_GRAD = ["from-primary/50 via-primary/20 to-transparent", "from-amber-600/50 via-amber-600/20 to-transparent", "from-emerald-600/50 via-emerald-600/20 to-transparent", "from-violet-600/50 via-violet-600/20 to-transparent"];
   const gradIdx = profile.name.charCodeAt(0) % COVER_GRAD.length;
   const coverImage = profile.galleryImages[0] || "";
+
+  const workDaysLabel = profile.workDays.length > 0
+    ? profile.workDays.map(k => DAYS.find(d => d.key === k)?.label || k).join(", ")
+    : null;
 
   return (
     <div className="pb-28 -mx-4">
@@ -1604,7 +1355,7 @@ export function CustomerView({
           {coverImage
             ? <img src={coverImage} className="w-full h-full object-cover" />
             : <div className="w-full h-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
-                <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(45deg, #ffffff08 0, #ffffff08 1px, transparent 0, transparent 50%)", backgroundSize: "20px 20px" }} />
+                <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(45deg,#ffffff08 0,#ffffff08 1px,transparent 0,transparent 50%)", backgroundSize: "20px 20px" }} />
                 <div className={`absolute inset-0 bg-gradient-to-br ${COVER_GRAD[gradIdx]}`} />
               </div>
           }
@@ -1626,13 +1377,14 @@ export function CustomerView({
         {profile.bio && <p className="text-sm text-muted-foreground leading-relaxed">{profile.bio}</p>}
       </div>
 
-      {/* Gallery strip (show additional images) */}
-      {profile.galleryImages.length > 1 && (
+      {/* Gallery strip — always above tabs (1+ images) */}
+      {profile.galleryImages.length > 0 && (
         <div className="overflow-x-auto scrollbar-hide pb-3">
           <div className="flex gap-2.5 px-4">
-            {profile.galleryImages.slice(1).map((src, i) => (
-              <div key={i} className="shrink-0 w-40 h-28 rounded-2xl overflow-hidden border border-white/8">
+            {profile.galleryImages.map((src, i) => (
+              <div key={i} className="relative shrink-0 w-40 h-28 rounded-2xl overflow-hidden border border-white/8">
                 <img src={src} className="w-full h-full object-cover" alt="" />
+                {i === 0 && <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-primary/80 text-black text-[9px] font-bold rounded-full">Muqova</div>}
               </div>
             ))}
           </div>
@@ -1643,16 +1395,8 @@ export function CustomerView({
       <div className="px-4 mb-1">
         <div className="flex gap-1 bg-white/5 p-1 rounded-2xl">
           {(["asosiy", "xizmatlar"] as const).map(t => (
-            <motion.button
-              key={t}
-              onClick={() => setPreviewTab(t)}
-              whileTap={{ scale: 0.97 }}
-              className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${
-                previewTab === t
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
+            <motion.button key={t} onClick={() => setPreviewTab(t)} whileTap={{ scale: 0.97 }}
+              className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${previewTab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
               {t === "asosiy" ? "Asosiy" : "Xizmatlar"}
             </motion.button>
           ))}
@@ -1662,45 +1406,26 @@ export function CustomerView({
       {/* Tab content */}
       <AnimatePresence mode="wait">
         {previewTab === "asosiy" && (
-          <motion.div
-            key="asosiy"
-            initial={{ opacity: 0, x: -12 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 12 }}
-            transition={{ duration: 0.18 }}
-          >
+          <motion.div key="asosiy" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.18 }}>
             <div className="px-4 pt-4">
               {profile.speciality.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-4">
-                  {profile.speciality.map((s, i) => (
-                    <span key={i} className="px-2.5 py-1 rounded-full bg-primary/12 border border-primary/20 text-xs text-primary font-medium">{s}</span>
-                  ))}
+                  {profile.speciality.map((s, i) => <span key={i} className="px-2.5 py-1 rounded-full bg-primary/12 border border-primary/20 text-xs text-primary font-medium">{s}</span>)}
                 </div>
               )}
-
-              {(profile.workDays || profile.workStart) && (
+              {(workDaysLabel || profile.workStart) && (
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-4 bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
                   <Clock className="w-3.5 h-3.5 text-primary/70 shrink-0" />
-                  <span>
-                    {profile.workDays ? `${profile.workDays} · ` : ""}
-                    {profile.workStart}–{profile.workEnd}
-                  </span>
+                  <span>{workDaysLabel ? `${workDaysLabel} · ` : ""}{profile.workStart}–{profile.workEnd}</span>
                 </div>
               )}
-
               {profile.address && (
-                <a
-                  href={profile.mapLink || "#"}
-                  target={profile.mapLink ? "_blank" : "_self"}
-                  rel="noopener noreferrer"
-                  className="block bg-card border border-white/8 rounded-2xl overflow-hidden mb-4 hover:border-white/15 transition-colors"
-                >
+                <a href={profile.mapLink || "#"} target={profile.mapLink ? "_blank" : "_self"} rel="noopener noreferrer"
+                  className="block bg-card border border-white/8 rounded-2xl overflow-hidden mb-4 hover:border-white/15 transition-colors">
                   <div className="h-16 bg-zinc-900 relative overflow-hidden">
-                    <div className="absolute inset-0 opacity-15" style={{ backgroundImage: "linear-gradient(#4af 1px, transparent 1px), linear-gradient(90deg, #4af 1px, transparent 1px)", backgroundSize: "30px 30px" }} />
+                    <div className="absolute inset-0 opacity-15" style={{ backgroundImage: "linear-gradient(#4af 1px,transparent 1px),linear-gradient(90deg,#4af 1px,transparent 1px)", backgroundSize: "30px 30px" }} />
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-5 h-5 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center">
-                        <div className="w-2 h-2 rounded-full bg-white" />
-                      </div>
+                      <div className="w-5 h-5 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-white" /></div>
                     </div>
                   </div>
                   <div className="px-4 py-3 flex items-center gap-2">
@@ -1710,7 +1435,6 @@ export function CustomerView({
                   </div>
                 </a>
               )}
-
               {(profile.telegram || profile.instagram) && (
                 <div className="mb-5 space-y-2">
                   {profile.telegram && (
@@ -1730,15 +1454,8 @@ export function CustomerView({
             </div>
           </motion.div>
         )}
-
         {previewTab === "xizmatlar" && (
-          <motion.div
-            key="xizmatlar"
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -12 }}
-            transition={{ duration: 0.18 }}
-          >
+          <motion.div key="xizmatlar" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.18 }}>
             <div className="px-4 pt-4">
               <div className="flex gap-2 overflow-x-auto pb-3 mb-4 scrollbar-hide">
                 {catChips.map(c => (
@@ -1748,30 +1465,19 @@ export function CustomerView({
                   </button>
                 ))}
               </div>
-
               <div className="space-y-3">
                 {filtered.map(s => {
                   const isSelected = selectedIds.includes(s.id);
                   return (
                     <motion.div key={s.id} whileTap={{ scale: 0.985 }}>
-                      <div
-                        className={`bg-card border rounded-2xl p-4 flex items-center gap-3 cursor-pointer transition-all ${isSelected ? "border-primary/40 bg-primary/6 shadow-sm shadow-primary/10" : "border-white/6 hover:border-white/12"}`}
-                        onClick={() => setDetailSvc(s)}
-                      >
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 border ${isSelected ? "bg-primary/10 border-primary/20" : "bg-white/5 border-white/8"}`}>
-                          {catEmoji(s.category)}
-                        </div>
+                      <div className={`bg-card border rounded-2xl p-4 flex items-center gap-3 cursor-pointer transition-all ${isSelected ? "border-primary/40 bg-primary/6" : "border-white/6 hover:border-white/12"}`}
+                        onClick={() => setDetailSvc(s)}>
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 border ${isSelected ? "bg-primary/10 border-primary/20" : "bg-white/5 border-white/8"}`}>{catEmoji(s.category)}</div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-sm text-foreground">{s.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            <span>{formatDur(s.duration)}</span>
-                            <span className="mx-1">·</span>
-                            <span className="text-foreground/80 font-medium">{formatPriceShort(s.price)} so'm</span>
-                          </p>
+                          <p className="text-xs text-muted-foreground">{formatDur(s.duration)} · <span className="text-foreground/80 font-medium">{formatPriceShort(s.price)} so'm</span></p>
                         </div>
-                        <motion.button
-                          whileTap={{ scale: 0.9 }}
-                          onClick={e => { e.stopPropagation(); toggleService(s.id); }}
+                        <motion.button whileTap={{ scale: 0.9 }} onClick={e => { e.stopPropagation(); toggleService(s.id); }}
                           className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all shrink-0 ${isSelected ? "bg-primary text-black border-primary shadow-md shadow-primary/30" : "bg-white/5 border-white/12 text-muted-foreground hover:border-primary/40 hover:text-primary"}`}>
                           {isSelected ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                         </motion.button>
@@ -1790,22 +1496,18 @@ export function CustomerView({
         <div className="max-w-md mx-auto px-4 py-3 bg-card/95 backdrop-blur-xl border-t border-white/8">
           <AnimatePresence mode="wait">
             {selectedIds.length > 0 ? (
-              <motion.div key="active" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-                className="flex items-center gap-3">
+              <motion.div key="active" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className="flex items-center gap-3">
                 <div className="flex-1">
                   <p className="text-xs text-muted-foreground">{selectedIds.length} xizmat · {formatDur(totalDur)}</p>
                   <p className="text-base font-bold text-foreground">{formatPrice(totalPrice)}</p>
                 </div>
-                <button
-                  onClick={() => setBookingOpen(true)}
-                  className="h-12 px-6 rounded-2xl bg-primary text-black font-bold text-sm shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all shrink-0">
+                <button onClick={() => setBookingOpen(true)} className="h-12 px-6 rounded-2xl bg-primary text-black font-bold text-sm shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all shrink-0">
                   Bron qilish →
                 </button>
               </motion.div>
             ) : (
               <motion.div key="inactive" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <button
-                  onClick={() => setPreviewTab("xizmatlar")}
+                <button onClick={() => setPreviewTab("xizmatlar")}
                   className="w-full h-12 rounded-2xl bg-white/6 border border-white/8 text-muted-foreground font-semibold text-sm hover:bg-white/10 hover:text-foreground transition-all">
                   💈 Xizmat tanlash
                 </button>
@@ -1819,10 +1521,8 @@ export function CustomerView({
       <AnimatePresence>
         {detailSvc && (
           <div className="fixed inset-0 z-50 flex items-end justify-center">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDetailSvc(null)} />
-            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 280 }}
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDetailSvc(null)} />
+            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 280 }}
               className="relative w-full max-w-md bg-card rounded-t-3xl z-10 border-t border-white/8" onClick={e => e.stopPropagation()}>
               <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-1" />
               <div className="px-5 pb-10 pt-3">
@@ -1836,10 +1536,8 @@ export function CustomerView({
                 </div>
                 {detailSvc.description && <p className="text-sm text-muted-foreground mb-4 leading-relaxed">{detailSvc.description}</p>}
                 <p className="text-xs text-muted-foreground/50 text-center mb-4">ℹ️ Iltimos, belgilangan vaqtdan 5 daqiqa oldin keling</p>
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => { toggleService(detailSvc.id); setDetailSvc(null); }}
-                  className={`w-full h-13 py-3.5 rounded-2xl font-bold text-base transition-all ${selectedIds.includes(detailSvc.id) ? "bg-white/6 border border-white/10 text-muted-foreground" : "bg-primary text-black shadow-xl shadow-primary/25 hover:bg-primary/90"}`}>
+                <motion.button whileTap={{ scale: 0.98 }} onClick={() => { toggleService(detailSvc.id); setDetailSvc(null); }}
+                  className={`w-full py-3.5 rounded-2xl font-bold text-base transition-all ${selectedIds.includes(detailSvc.id) ? "bg-white/6 border border-white/10 text-muted-foreground" : "bg-primary text-black shadow-xl shadow-primary/25 hover:bg-primary/90"}`}>
                   {selectedIds.includes(detailSvc.id) ? "✓ Tanlangan (bekor qilish)" : "Tanlash →"}
                 </motion.button>
               </div>
@@ -1850,14 +1548,7 @@ export function CustomerView({
 
       <AnimatePresence>
         {bookingOpen && (
-          <BookingModal
-            selectedServices={selectedServices}
-            totalDuration={totalDur}
-            isTeam={isTeam}
-            barberId={barberId}
-            profile={profile}
-            onClose={() => setBookingOpen(false)}
-          />
+          <BookingModal selectedServices={selectedServices} totalDuration={totalDur} isTeam={isTeam} barberId={barberId} profile={profile} onClose={() => setBookingOpen(false)} />
         )}
       </AnimatePresence>
     </div>
@@ -1884,23 +1575,14 @@ export default function PersonalPage() {
   const [slugModalOpen, setSlugModalOpen] = useState(false);
   const [userSlug, setUserSlug] = useState(user?.username || "");
 
-  useEffect(() => {
-    setUserSlug(user?.username || "");
-  }, [user?.username]);
+  useEffect(() => { setUserSlug(user?.username || ""); }, [user?.username]);
 
   useEffect(() => {
     let cancelled = false;
     setLoadingProfile(true);
     apiGet("/api/settings/profile")
-      .then((data: Record<string, unknown>) => {
-        if (!cancelled) {
-          setProfile(apiToProfile(data));
-          setLoadingProfile(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setLoadingProfile(false);
-      });
+      .then((data: Record<string, unknown>) => { if (!cancelled) { setProfile(apiToProfile(data)); setLoadingProfile(false); } })
+      .catch(() => { if (!cancelled) setLoadingProfile(false); });
     return () => { cancelled = true; };
   }, []);
 
@@ -1908,45 +1590,30 @@ export default function PersonalPage() {
     let cancelled = false;
     setLoadingServices(true);
     apiGet("/api/services")
-      .then((data: { services: Record<string, unknown>[] }) => {
-        if (!cancelled) {
-          setServices((data.services || []).map(apiToService));
-          setLoadingServices(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setLoadingServices(false);
-      });
+      .then((data: { services: Record<string, unknown>[] }) => { if (!cancelled) { setServices((data.services || []).map(apiToService)); setLoadingServices(false); } })
+      .catch(() => { if (!cancelled) setLoadingServices(false); });
     return () => { cancelled = true; };
   }, []);
 
   function reloadServices() {
     setLoadingServices(true);
     apiGet("/api/services")
-      .then((data: { services: Record<string, unknown>[] }) => {
-        setServices((data.services || []).map(apiToService));
-        setLoadingServices(false);
-      })
+      .then((data: { services: Record<string, unknown>[] }) => { setServices((data.services || []).map(apiToService)); setLoadingServices(false); })
       .catch(() => setLoadingServices(false));
   }
 
   async function handleSave() {
-    setSaving(true);
-    setSaveMsg(null);
+    setSaving(true); setSaveMsg(null);
     try {
       const updated = await apiPut("/api/settings/profile", profileToApi(profile));
       setProfile(apiToProfile(updated));
       setSaveMsg({ type: "ok", text: "Muvaffaqiyatli saqlandi ✓" });
       setTimeout(() => setSaveMsg(null), 3000);
-    } catch {
-      setSaveMsg({ type: "err", text: "Saqlashda xatolik. Qayta urinib ko'ring." });
-    } finally {
-      setSaving(false);
-    }
+    } catch { setSaveMsg({ type: "err", text: "Saqlashda xatolik. Qayta urinib ko'ring." }); }
+    finally { setSaving(false); }
   }
 
   const pageTitle = isTeam ? "🌐 Barbershop sahifasi" : "🌐 Mening sahifam";
-
   const TABS: { id: Tab; label: string }[] = [
     { id: "asosiy", label: "Asosiy" },
     { id: "xizmatlar", label: "Xizmatlar" },
@@ -1955,6 +1622,7 @@ export default function PersonalPage() {
 
   return (
     <Layout hideBottomNav>
+      {/* Page header */}
       <div className="flex items-center gap-3 mb-4">
         <Link href="/settings">
           <button className="w-10 h-10 rounded-2xl bg-card border border-white/8 flex items-center justify-center hover:bg-white/5 transition-colors shrink-0">
@@ -1974,16 +1642,8 @@ export default function PersonalPage() {
       {/* Save toast */}
       <AnimatePresence>
         {saveMsg && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className={`mb-4 px-4 py-3 rounded-2xl text-sm font-semibold ${
-              saveMsg.type === "ok"
-                ? "bg-emerald-500/12 border border-emerald-500/25 text-emerald-400"
-                : "bg-destructive/12 border border-destructive/25 text-destructive"
-            }`}
-          >
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+            className={`mb-4 px-4 py-3 rounded-2xl text-sm font-semibold ${saveMsg.type === "ok" ? "bg-emerald-500/12 border border-emerald-500/25 text-emerald-400" : "bg-destructive/12 border border-destructive/25 text-destructive"}`}>
             {saveMsg.text}
           </motion.div>
         )}
@@ -1993,23 +1653,26 @@ export default function PersonalPage() {
         <>
           <div className="sticky top-0 z-30 -mx-4 px-4 py-2.5 mb-0 bg-amber-500/10 border-b border-amber-500/20 backdrop-blur-md flex items-center justify-between">
             <p className="text-xs text-amber-400 font-semibold">👁 Ko'rish rejimi — mijoz qanday ko'radi</p>
-            <button onClick={() => setPreview(false)} className="text-xs text-amber-300 font-bold underline underline-offset-2">
-              ← Tahrirlash
-            </button>
+            <button onClick={() => setPreview(false)} className="text-xs text-amber-300 font-bold underline underline-offset-2">← Tahrirlash</button>
           </div>
           <CustomerView profile={profile} services={services} isTeam={isTeam} barberId={user?.id || ""} />
         </>
       ) : (
         <>
+          {/* Gallery strip — ALWAYS visible above tabs in edit mode */}
+          {!loadingProfile && (
+            <GalleryStripEdit images={profile.galleryImages} onChange={imgs => setProfile(p => ({ ...p, galleryImages: imgs }))} />
+          )}
+
+          {/* Completion bar — ALWAYS visible above tabs in edit mode */}
+          {!loadingProfile && <CompletionBar profile={profile} />}
+
           {/* Sticky tab bar */}
           <div className="sticky top-0 z-30 -mx-4 px-4 pt-2 pb-3 mb-4 bg-background/95 backdrop-blur-md border-b border-white/6">
             <div className="flex gap-1 bg-white/5 p-1 rounded-2xl">
               {TABS.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${tab === t.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                >
+                <button key={t.id} onClick={() => setTab(t.id)}
+                  className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${tab === t.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
                   {t.label}
                 </button>
               ))}
@@ -2019,29 +1682,18 @@ export default function PersonalPage() {
           <AnimatePresence mode="wait">
             {tab === "asosiy" && (
               <motion.div key="asosiy" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
-                {loadingProfile ? (
-                  <div className="flex items-center justify-center py-20">
-                    <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  </div>
-                ) : (
-                  <AsosiyTab profile={profile} onChange={setProfile} onSave={handleSave} saving={saving} />
-                )}
+                {loadingProfile
+                  ? <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+                  : <AsosiyTab profile={profile} onChange={setProfile} onSave={handleSave} saving={saving} />
+                }
               </motion.div>
             )}
             {tab === "xizmatlar" && (
               <motion.div key="xizmatlar" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
-                {loadingServices ? (
-                  <div className="flex items-center justify-center py-20">
-                    <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  </div>
-                ) : (
-                  <XizmatlarTab
-                    services={services}
-                    customCats={customCats}
-                    onReload={reloadServices}
-                    onAddCat={c => setCustomCats(prev => [...prev, c])}
-                  />
-                )}
+                {loadingServices
+                  ? <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+                  : <XizmatlarTab services={services} customCats={customCats} onReload={reloadServices} onAddCat={c => setCustomCats(prev => [...prev, c])} />
+                }
               </motion.div>
             )}
             {tab === "qr" && (
@@ -2054,11 +1706,8 @@ export default function PersonalPage() {
       )}
 
       {slugModalOpen && (
-        <SlugEditModal
-          currentSlug={userSlug}
-          onClose={() => setSlugModalOpen(false)}
-          onSaved={newSlug => { setUserSlug(newSlug); setSlugModalOpen(false); }}
-        />
+        <SlugEditModal currentSlug={userSlug} onClose={() => setSlugModalOpen(false)}
+          onSaved={newSlug => { setUserSlug(newSlug); setSlugModalOpen(false); }} />
       )}
     </Layout>
   );
