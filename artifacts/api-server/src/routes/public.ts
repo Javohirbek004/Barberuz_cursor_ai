@@ -305,6 +305,10 @@ router.get("/barber/:slug", async (req, res) => {
       lunchBreakEnd: barber.lunchBreakEnd,
       telegramUsername: barber.telegramUsername,
       username: barber.username,
+      address: barber.address,
+      mapLink: barber.mapLink,
+      instagram: barber.instagram,
+      galleryImages: barber.galleryImages,
       services: services.map(s => ({
         id: s.id,
         name: s.name,

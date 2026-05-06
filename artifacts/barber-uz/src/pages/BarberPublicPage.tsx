@@ -2,9 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Send } from "lucide-react";
-
-// ── API shape ─────────────────────────────────────────────────────────────────
+import { Clock, Send, MapPin, Instagram } from "lucide-react";
 
 interface BarberData {
   id: string;
@@ -24,6 +22,10 @@ interface BarberData {
   lunchBreakEnd: string | null;
   telegramUsername: string | null;
   username: string;
+  address: string | null;
+  mapLink: string | null;
+  instagram: string | null;
+  galleryImages: string | null;
   services: Array<{
     id: string;
     name: string;
@@ -32,8 +34,6 @@ interface BarberData {
     price: number;
   }>;
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDur(n: number) {
   if (n < 60) return `${n} min`;
@@ -51,7 +51,7 @@ function catEmoji(name: string) {
   if (lc.includes("soqol") || lc.includes("soqal")) return "🪒";
   if (lc.includes("bolalar") || lc.includes("bola")) return "👦";
   if (lc.includes("vip") || lc.includes("premium")) return "💎";
-  if (lc.includes("qosh") || lc.includes("qaш")) return "✨";
+  if (lc.includes("qosh")) return "✨";
   return "✂️";
 }
 
@@ -62,7 +62,27 @@ const COVER_GRADS = [
   "from-violet-600/50 via-violet-600/20 to-transparent",
 ];
 
-// ── PublicView (self-contained, no admin elements) ────────────────────────────
+function GalleryStrip({ images }: { images: string[] }) {
+  if (!images.length) return null;
+  return (
+    <div className="overflow-x-auto scrollbar-hide pt-1 pb-3">
+      <div className="flex gap-2.5 px-4">
+        {images.map((src, i) => (
+          <div key={i} className="relative shrink-0">
+            <div className="w-48 h-36 rounded-2xl overflow-hidden border border-white/8 shadow-md shadow-black/30">
+              <img src={src} className="w-full h-full object-cover" alt="" />
+            </div>
+            {i === 0 && (
+              <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-primary/80 backdrop-blur-sm text-black text-[9px] font-bold rounded-full">
+                Asosiy
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function PublicView({ barber }: { barber: BarberData }) {
   const [tab, setTab] = useState<"asosiy" | "xizmatlar">("asosiy");
@@ -77,12 +97,22 @@ function PublicView({ barber }: { barber: BarberData }) {
     ? barber.telegramUsername.replace("@", "")
     : null;
 
+  const instagramHandle = barber.instagram
+    ? barber.instagram.replace("@", "")
+    : null;
+
+  const galleryImages: string[] = (() => {
+    try { return JSON.parse(barber.galleryImages || "[]"); } catch { return []; }
+  })();
+
   return (
     <div className="pb-28 -mx-4">
-      {/* ── Hero ───────────────────────────────────────────────────────────── */}
+      {/* Hero */}
       <div className="relative">
-        <div className="w-full h-52 relative overflow-hidden">
-          {barber.avatarUrl ? (
+        <div className="w-full h-48 relative overflow-hidden">
+          {galleryImages.length > 0 ? (
+            <img src={galleryImages[0]} className="w-full h-full object-cover" alt="" />
+          ) : barber.avatarUrl ? (
             <img src={barber.avatarUrl} className="w-full h-full object-cover" alt="" />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
@@ -97,7 +127,7 @@ function PublicView({ barber }: { barber: BarberData }) {
               <div className={`absolute inset-0 bg-gradient-to-br ${COVER_GRADS[gradIdx]}`} />
             </div>
           )}
-          <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-background to-transparent" />
         </div>
 
         <div className="absolute bottom-0 left-4 translate-y-8">
@@ -113,16 +143,21 @@ function PublicView({ barber }: { barber: BarberData }) {
         </div>
       </div>
 
-      {/* ── Name + bio ─────────────────────────────────────────────────────── */}
-      <div className="px-4 pt-12 pb-4">
+      {/* Name + bio */}
+      <div className="px-4 pt-12 pb-3">
         <h1 className="text-2xl font-display font-bold text-foreground mb-1">{displayName}</h1>
         {barber.bio && (
           <p className="text-sm text-muted-foreground leading-relaxed">{barber.bio}</p>
         )}
       </div>
 
-      {/* ── Tab bar ────────────────────────────────────────────────────────── */}
-      <div className="px-4 mb-1">
+      {/* Gallery strip — always visible, above tabs */}
+      {galleryImages.length > 1 && (
+        <GalleryStrip images={galleryImages} />
+      )}
+
+      {/* Tab bar */}
+      <div className="px-4 mb-1 mt-1">
         <div className="flex gap-1 bg-white/5 p-1 rounded-2xl">
           {(["asosiy", "xizmatlar"] as const).map(t => (
             <motion.button
@@ -141,7 +176,7 @@ function PublicView({ barber }: { barber: BarberData }) {
         </div>
       </div>
 
-      {/* ── Tab content ────────────────────────────────────────────────────── */}
+      {/* Tab content */}
       <AnimatePresence mode="wait">
         {tab === "asosiy" && (
           <motion.div
@@ -176,28 +211,56 @@ function PublicView({ barber }: { barber: BarberData }) {
                 </div>
               )}
 
+              {/* Address card */}
+              {barber.address && (
+                <a
+                  href={barber.mapLink || undefined}
+                  target={barber.mapLink ? "_blank" : undefined}
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 bg-card border border-white/8 rounded-2xl p-3.5 hover:border-white/15 transition-colors"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                    <MapPin className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-foreground truncate">{barber.address}</p>
+                    {barber.mapLink && (
+                      <p className="text-xs text-primary mt-0.5">Xaritada ko'rish →</p>
+                    )}
+                  </div>
+                </a>
+              )}
+
               {/* Social links */}
-              {telegramHandle && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-2.5">
-                    Bizni ijtimoiy tarmoqlarda kuzating
-                  </p>
-                  <div className="flex flex-wrap gap-2">
+              {(telegramHandle || instagramHandle) && (
+                <div className="space-y-2">
+                  {telegramHandle && (
                     <a
                       href={`https://t.me/${telegramHandle}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#2AABEE]/10 border border-[#2AABEE]/25 text-[#2AABEE] text-sm font-medium hover:bg-[#2AABEE]/20 transition-colors"
+                      className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#2AABEE]/8 border border-[#2AABEE]/20 text-[#2AABEE] text-sm font-medium hover:bg-[#2AABEE]/15 transition-colors"
                     >
-                      <Send className="w-3.5 h-3.5" />
-                      @{telegramHandle}
+                      <Send className="w-4 h-4 shrink-0" />
+                      <span>@{telegramHandle}</span>
                     </a>
-                  </div>
+                  )}
+                  {instagramHandle && (
+                    <a
+                      href={`https://instagram.com/${instagramHandle}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-pink-500/8 to-violet-500/8 border border-pink-500/15 text-pink-400 text-sm font-medium hover:from-pink-500/15 hover:to-violet-500/15 transition-colors"
+                    >
+                      <Instagram className="w-4 h-4 shrink-0" />
+                      <span>@{instagramHandle}</span>
+                    </a>
+                  )}
                 </div>
               )}
 
-              {/* Contact / Booking CTA */}
-              <div className="pt-2">
+              {/* Booking CTA */}
+              <div className="pt-1 pb-2">
                 {telegramHandle ? (
                   <a
                     href={`https://t.me/${telegramHandle}`}
@@ -214,8 +277,7 @@ function PublicView({ barber }: { barber: BarberData }) {
                 )}
               </div>
 
-              {/* Empty state for main info */}
-              {!barber.bio && specs.length === 0 && !telegramHandle && !barber.workingHoursStart && (
+              {!barber.bio && specs.length === 0 && !telegramHandle && !barber.workingHoursStart && !barber.address && (
                 <p className="text-sm text-muted-foreground/60 text-center py-4">
                   Ma'lumot kiritilmagan
                 </p>
@@ -258,14 +320,23 @@ function PublicView({ barber }: { barber: BarberData }) {
                           </span>
                         </p>
                       </div>
+                      {telegramHandle && (
+                        <a
+                          href={`https://t.me/${telegramHandle}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 h-9 px-3.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-semibold flex items-center hover:bg-primary/20 transition-colors"
+                        >
+                          Bron
+                        </a>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Booking prompt below services */}
               {barber.services.length > 0 && (
-                <div className="mt-5">
+                <div className="mt-5 pb-4">
                   {telegramHandle ? (
                     <a
                       href={`https://t.me/${telegramHandle}`}
@@ -289,8 +360,6 @@ function PublicView({ barber }: { barber: BarberData }) {
     </div>
   );
 }
-
-// ── Main public page ──────────────────────────────────────────────────────────
 
 type Status = "loading" | "loaded" | "not_found" | "error";
 
@@ -370,7 +439,6 @@ export default function BarberPublicPage() {
 
   return (
     <div className="max-w-md mx-auto px-4">
-      {/* ── Owner banner (only for the page owner) ── */}
       {isOwner && (
         <div className="sticky top-0 z-30 -mx-4 px-4 py-2.5 bg-primary/10 border-b border-primary/20 backdrop-blur-md flex items-center justify-between">
           <p className="text-xs text-primary font-semibold">

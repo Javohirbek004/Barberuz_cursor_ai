@@ -27,6 +27,10 @@ function formatProfile(user: typeof usersTable.$inferSelect) {
     lunchBreakEnabled: user.lunchBreakEnabled,
     lunchBreakStart: user.lunchBreakStart,
     lunchBreakEnd: user.lunchBreakEnd,
+    address: user.address,
+    mapLink: user.mapLink,
+    instagram: user.instagram,
+    galleryImages: user.galleryImages,
     slugChangedAt: user.slugChangedAt,
     slugChangeCount: user.slugChangeCount,
   };
@@ -45,6 +49,7 @@ router.put("/profile", authenticate, async (req, res) => {
       workingHoursStart, workingHoursEnd, bio, avatarUrl,
       specializations, scheduleJson,
       lunchBreakEnabled, lunchBreakStart, lunchBreakEnd,
+      address, mapLink, instagram, galleryImages,
     } = req.body;
     const [updated] = await db.update(usersTable)
       .set({
@@ -62,6 +67,10 @@ router.put("/profile", authenticate, async (req, res) => {
         ...(lunchBreakEnabled !== undefined && { lunchBreakEnabled }),
         ...(lunchBreakStart !== undefined && { lunchBreakStart }),
         ...(lunchBreakEnd !== undefined && { lunchBreakEnd }),
+        ...(address !== undefined && { address }),
+        ...(mapLink !== undefined && { mapLink }),
+        ...(instagram !== undefined && { instagram }),
+        ...(galleryImages !== undefined && { galleryImages }),
         updatedAt: new Date(),
       })
       .where(eq(usersTable.id, user.id))

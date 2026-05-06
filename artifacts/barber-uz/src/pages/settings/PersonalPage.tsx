@@ -9,7 +9,7 @@ import {
   ChevronLeft, Copy, Check, Download, Share2, Eye,
   Plus, X, Pencil, Trash2, Clock, MapPin,
   Instagram, Camera, ArrowLeft, ExternalLink, Send, Tag,
-  Navigation,
+  Navigation, Save,
 } from "lucide-react";
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -21,6 +21,7 @@ type ServiceCategory = string;
 
 export interface ProfileData {
   name: string;
+  brandName: string;
   bio: string;
   speciality: string[];
   phone: string;
@@ -29,12 +30,13 @@ export interface ProfileData {
   workDays: string;
   workStart: string;
   workEnd: string;
+  lunchEnabled: boolean;
   lunchStart: string;
   lunchEnd: string;
   telegram: string;
   instagram: string;
-  profileImage: string;
-  coverImage: string;
+  avatarUrl: string;
+  galleryImages: string[];
 }
 
 export interface ServiceItem {
@@ -58,7 +60,7 @@ interface BarberSlot {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Demo data
+// Static data used by BookingModal (demo slots)
 // ──────────────────────────────────────────────────────────────────────────────
 
 const DEFAULT_CATS: { id: string; label: string }[] = [
@@ -67,37 +69,6 @@ const DEFAULT_CATS: { id: string; label: string }[] = [
   { id: "soqol", label: "🪒 Soqol" },
   { id: "bolalar", label: "👦 Bolalar" },
   { id: "vip", label: "💎 VIP" },
-];
-
-const DEMO_PROFILE: ProfileData = {
-  name: "Sardor Barber",
-  bio: "Zamonaviy va klassik uslublarni uyg'unlashtiruvchi tajribali barber. 7 yillik tajriba.",
-  speciality: ["Fade", "Soqol", "Klassik"],
-  phone: "+998 90 123 45 67",
-  address: "Toshkent, Chilonzor, 14-uy",
-  mapLink: "https://maps.google.com",
-  workDays: "Dush — Shan",
-  workStart: "09:00",
-  workEnd: "20:00",
-  lunchStart: "13:00",
-  lunchEnd: "14:00",
-  telegram: "@sardor_barber",
-  instagram: "@sardor.barber",
-  profileImage: "",
-  coverImage: "",
-};
-
-const DEMO_SERVICES: ServiceItem[] = [
-  { id: "fade", category: "soch", name: "Fade", duration: 45, price: 80000, description: "Zamonaviy fade soch kesim — pastdan yuqoriga silliq gradient o'tish bilan." },
-  { id: "klassik", category: "soch", name: "Klassik soch", duration: 30, price: 60000, description: "Klassik soch kesim, har qanday shaklga moslashadi." },
-  { id: "soqol", category: "soqol", name: "Soqol olish", duration: 20, price: 40000, description: "Professional soqol shakllantirish va parfum bilan parvarishlash." },
-  {
-    id: "kompleks", category: "soch", name: "Soch + Soqol", duration: 60,
-    price: 100000, description: "Combo: Fade + Soqol. Tejaladi: 20 000 so'm.",
-    comboIds: ["fade", "soqol"], comboPrice: 100000,
-  },
-  { id: "bolalar", category: "bolalar", name: "Bolalar kesim", duration: 25, price: 50000, description: "8 yoshgacha bolalar uchun yumshoq va tez kesim." },
-  { id: "vip", category: "vip", name: "VIP paketi", duration: 90, price: 200000, description: "Premium xizmat: soch + soqol + qosh + yuz parvarishi." },
 ];
 
 const TEAM_BARBERS: BarberSlot[] = [
@@ -117,6 +88,26 @@ const SOLO_BUSY = [
   { start: "14:00", duration: 60 },
   { start: "17:30", duration: 45 },
 ];
+
+const EMPTY_PROFILE: ProfileData = {
+  name: "",
+  brandName: "",
+  bio: "",
+  speciality: [],
+  phone: "",
+  address: "",
+  mapLink: "",
+  workDays: "",
+  workStart: "09:00",
+  workEnd: "20:00",
+  lunchEnabled: false,
+  lunchStart: "13:00",
+  lunchEnd: "14:00",
+  telegram: "",
+  instagram: "",
+  avatarUrl: "",
+  galleryImages: [],
+};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -185,24 +176,270 @@ function catEmoji(cat: string) {
   return "💈";
 }
 
+function getToken() {
+  return localStorage.getItem("barber_token") || "";
+}
+
+async function apiGet(path: string) {
+  const res = await fetch(path, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
+  return res.json();
+}
+
+async function apiPut(path: string, body: unknown) {
+  const res = await fetch(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`PUT ${path} failed: ${res.status}`);
+  return res.json();
+}
+
+async function apiPost(path: string, body: unknown) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
+  return res.json();
+}
+
+async function apiDelete(path: string) {
+  const res = await fetch(path, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}`);
+  return res.json();
+}
+
+function apiToProfile(api: Record<string, unknown>): ProfileData {
+  let galleryImages: string[] = [];
+  try { galleryImages = JSON.parse((api.galleryImages as string) || "[]"); } catch {}
+  let speciality: string[] = [];
+  try {
+    speciality = ((api.specializations as string) || "")
+      .split(",").map((s: string) => s.trim()).filter(Boolean);
+  } catch {}
+  return {
+    name: (api.name as string) || "",
+    brandName: (api.brandName as string) || "",
+    bio: (api.bio as string) || "",
+    speciality,
+    phone: (api.phone as string) || "",
+    address: (api.address as string) || "",
+    mapLink: (api.mapLink as string) || "",
+    workDays: "",
+    workStart: (api.workingHoursStart as string) || "09:00",
+    workEnd: (api.workingHoursEnd as string) || "20:00",
+    lunchEnabled: !!(api.lunchBreakEnabled),
+    lunchStart: (api.lunchBreakStart as string) || "13:00",
+    lunchEnd: (api.lunchBreakEnd as string) || "14:00",
+    telegram: (api.telegramUsername as string) || "",
+    instagram: (api.instagram as string) || "",
+    avatarUrl: (api.avatarUrl as string) || "",
+    galleryImages,
+  };
+}
+
+function profileToApi(p: ProfileData) {
+  return {
+    name: p.name,
+    brandName: p.brandName || null,
+    bio: p.bio,
+    specializations: p.speciality.join(", "),
+    workingHoursStart: p.workStart,
+    workingHoursEnd: p.workEnd,
+    lunchBreakEnabled: p.lunchEnabled,
+    lunchBreakStart: p.lunchStart,
+    lunchBreakEnd: p.lunchEnd,
+    address: p.address,
+    mapLink: p.mapLink,
+    instagram: p.instagram,
+    avatarUrl: p.avatarUrl,
+    galleryImages: JSON.stringify(p.galleryImages),
+  };
+}
+
+function apiToService(s: Record<string, unknown>): ServiceItem {
+  return {
+    id: s.id as string,
+    name: s.name as string,
+    category: (s.nameRu as string) || "soch",
+    duration: s.duration as number,
+    price: Number(s.price),
+    description: "",
+    isActive: s.isActive,
+  } as ServiceItem & { isActive?: unknown };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// GALLERY STRIP — edit mode
+// ──────────────────────────────────────────────────────────────────────────────
+
+function GalleryStripEdit({
+  images,
+  onChange,
+}: {
+  images: string[];
+  onChange: (imgs: string[]) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function handleAdd(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || images.length >= 5) return;
+    const reader = new FileReader();
+    reader.onload = ev => onChange([...images, ev.target?.result as string]);
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Galereya rasmlari
+        </label>
+        <span className="text-xs text-muted-foreground/50">{images.length}/5</span>
+      </div>
+
+      {images.length === 0 ? (
+        <button
+          onClick={() => fileRef.current?.click()}
+          className="w-full h-28 rounded-2xl border border-dashed border-white/15 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:border-white/30 hover:text-foreground transition-all"
+        >
+          <Camera className="w-5 h-5" />
+          <span className="text-xs">Rasm qo'shish (max 5 ta)</span>
+          <span className="text-[10px] text-muted-foreground/40">Birinchi rasm muqova bo'ladi</span>
+        </button>
+      ) : (
+        <div className="overflow-x-auto scrollbar-hide">
+          <div className="flex gap-2.5 pb-1">
+            {images.map((src, i) => (
+              <div key={i} className="relative shrink-0">
+                <div className="w-36 h-28 rounded-2xl overflow-hidden border border-white/12">
+                  <img src={src} className="w-full h-full object-cover" alt="" />
+                </div>
+                <button
+                  onClick={() => onChange(images.filter((_, j) => j !== i))}
+                  className="absolute top-1.5 right-1.5 w-6 h-6 bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
+                >
+                  <X className="w-3 h-3 text-white" />
+                </button>
+                {i === 0 && (
+                  <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-primary/80 text-black text-[9px] font-bold rounded-full">
+                    Muqova
+                  </div>
+                )}
+              </div>
+            ))}
+            {images.length < 5 && (
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="shrink-0 w-28 h-28 rounded-2xl border border-dashed border-white/20 flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:border-white/40 hover:text-foreground transition-all"
+              >
+                <Camera className="w-5 h-5" />
+                <span className="text-[10px]">+ Rasm</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAdd} />
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// COMPLETION BAR
+// ──────────────────────────────────────────────────────────────────────────────
+
+function CompletionBar({ profile }: { profile: ProfileData }) {
+  const checks = [
+    !!profile.name,
+    profile.bio.length >= 10,
+    profile.speciality.length >= 1,
+    !!profile.avatarUrl,
+    profile.galleryImages.length >= 1,
+    !!profile.address,
+    !!profile.workStart,
+  ];
+  const done = checks.filter(Boolean).length;
+  const pct = Math.round((done / checks.length) * 100);
+
+  if (pct === 100) return null;
+
+  return (
+    <div className="bg-card border border-white/6 rounded-2xl p-4 mb-5">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold text-foreground">Profil to'ldirilishi</p>
+        <p className="text-xs font-bold text-primary">{pct}%</p>
+      </div>
+      <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-primary rounded-full transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="flex flex-wrap gap-1.5 mt-3">
+        {[
+          { label: "Ism", done: checks[0] },
+          { label: "Bio (10+ belgi)", done: checks[1] },
+          { label: "Mutaxassislik", done: checks[2] },
+          { label: "Avatar rasm", done: checks[3] },
+          { label: "Galereya", done: checks[4] },
+          { label: "Manzil", done: checks[5] },
+          { label: "Ish vaqti", done: checks[6] },
+        ].map((c, i) => (
+          <span
+            key={i}
+            className={`text-[10px] px-2 py-0.5 rounded-full border ${
+              c.done
+                ? "bg-emerald-500/12 border-emerald-500/20 text-emerald-400"
+                : "bg-white/4 border-white/8 text-muted-foreground/60"
+            }`}
+          >
+            {c.done ? "✓" : "○"} {c.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // ASOSIY TAB — edit mode
 // ──────────────────────────────────────────────────────────────────────────────
 
-function AsosiyTab({ profile, onChange }: { profile: ProfileData; onChange: (p: ProfileData) => void }) {
+function AsosiyTab({
+  profile,
+  onChange,
+  onSave,
+  saving,
+}: {
+  profile: ProfileData;
+  onChange: (p: ProfileData) => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
   const imgRef = useRef<HTMLInputElement>(null);
-  const coverRef = useRef<HTMLInputElement>(null);
   const [newTag, setNewTag] = useState("");
 
-  function set(k: keyof ProfileData, v: string) {
+  function set<K extends keyof ProfileData>(k: K, v: ProfileData[K]) {
     onChange({ ...profile, [k]: v });
   }
 
-  function handleImage(key: "profileImage" | "coverImage", e: React.ChangeEvent<HTMLInputElement>) {
+  function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => set(key, ev.target?.result as string);
+    reader.onload = ev => set("avatarUrl", ev.target?.result as string);
     reader.readAsDataURL(file);
   }
 
@@ -217,50 +454,68 @@ function AsosiyTab({ profile, onChange }: { profile: ProfileData; onChange: (p: 
     onChange({ ...profile, speciality: profile.speciality.filter((_, idx) => idx !== i) });
   }
 
-  const field = (label: string, key: keyof ProfileData, placeholder?: string) => (
+  const field = (label: string, key: keyof ProfileData, placeholder?: string, readOnly?: boolean) => (
     <div className="space-y-1.5">
       <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</label>
       <input
         value={profile[key] as string}
-        onChange={e => set(key, e.target.value)}
+        onChange={readOnly ? undefined : e => set(key as keyof ProfileData, e.target.value as ProfileData[keyof ProfileData])}
+        readOnly={readOnly}
         placeholder={placeholder}
-        className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors"
+        className={`w-full h-11 px-4 rounded-2xl bg-white/5 border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors ${readOnly ? "border-white/4 text-muted-foreground cursor-default" : "border-white/8"}`}
       />
     </div>
   );
 
   return (
-    <div className="space-y-6 pb-10">
-      {/* Cover + Avatar */}
+    <div className="space-y-6 pb-28">
+      <CompletionBar profile={profile} />
+
+      {/* Gallery */}
+      <GalleryStripEdit images={profile.galleryImages} onChange={imgs => set("galleryImages", imgs)} />
+
+      {/* Avatar */}
       <div className="space-y-2">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Rasmlar</label>
-        <div className="relative">
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Avatar (profil rasmi)</label>
+        <div className="flex items-center gap-4">
           <div
-            className="w-full h-28 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 border border-white/8 flex items-center justify-center cursor-pointer hover:from-primary/35 transition-all relative overflow-hidden"
-            onClick={() => coverRef.current?.click()}
-          >
-            {profile.coverImage
-              ? <img src={profile.coverImage} className="w-full h-full object-cover" />
-              : <div className="flex flex-col items-center gap-1 text-muted-foreground/40"><Camera className="w-5 h-5" /><span className="text-xs">Muqova rasmi</span></div>
-            }
-          </div>
-          <div
-            className="absolute -bottom-6 left-4 w-16 h-16 rounded-full border-[3px] border-background cursor-pointer shadow-lg"
+            className="w-16 h-16 rounded-2xl border border-white/12 bg-white/5 overflow-hidden cursor-pointer shrink-0 relative hover:border-white/25 transition-colors"
             onClick={() => imgRef.current?.click()}
           >
-            {profile.profileImage
-              ? <img src={profile.profileImage} className="w-full h-full rounded-full object-cover" />
-              : <div className="w-full h-full rounded-full bg-gradient-to-br from-primary/40 to-primary/15 border border-white/10 flex items-center justify-center font-bold text-2xl text-primary uppercase">{profile.name.charAt(0) || "?"}</div>
-            }
-            <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center shadow-md"><Camera className="w-2.5 h-2.5 text-black" /></div>
+            {profile.avatarUrl ? (
+              <img src={profile.avatarUrl} className="w-full h-full object-cover" alt="" />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-0.5 text-muted-foreground/40">
+                <Camera className="w-5 h-5" />
+              </div>
+            )}
+            <div className="absolute bottom-0.5 right-0.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+              <Camera className="w-2.5 h-2.5 text-black" />
+            </div>
+          </div>
+          <div>
+            <button
+              onClick={() => imgRef.current?.click()}
+              className="text-xs text-primary font-semibold hover:text-primary/80 transition-colors"
+            >
+              Rasm yuklash
+            </button>
+            <p className="text-xs text-muted-foreground/50 mt-0.5">Kvadrat rasm tavsiya etiladi</p>
+            {profile.avatarUrl && (
+              <button
+                onClick={() => set("avatarUrl", "")}
+                className="text-xs text-destructive/70 hover:text-destructive transition-colors mt-0.5"
+              >
+                O'chirish
+              </button>
+            )}
           </div>
         </div>
-        <p className="text-xs text-muted-foreground/40 text-center pt-7">Profil va muqova rasmlarini yuklash uchun bosing</p>
-        <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={e => handleImage("profileImage", e)} />
-        <input ref={coverRef} type="file" accept="image/*" className="hidden" onChange={e => handleImage("coverImage", e)} />
+        <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
       </div>
 
       {field("Ism / Nom *", "name", "Sardor Barber")}
+      {field("Brend nomi (ixtiyoriy)", "brandName", "Sardor Barbershop")}
 
       {/* Bio */}
       <div className="space-y-1.5">
@@ -292,14 +547,17 @@ function AsosiyTab({ profile, onChange }: { profile: ProfileData; onChange: (p: 
             value={newTag}
             onChange={e => setNewTag(e.target.value)}
             onKeyDown={e => e.key === "Enter" && addTag()}
-            placeholder="+ Yangi teg"
+            placeholder="+ Yangi teg (Fade, Soqol...)"
             className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50"
           />
-          <button onClick={addTag} className="h-10 px-3 rounded-xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors"><Plus className="w-4 h-4" /></button>
+          <button onClick={addTag} disabled={!newTag.trim() || profile.speciality.length >= 6}
+            className="h-10 px-3 rounded-xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors disabled:opacity-40">
+            <Plus className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
-      {field("Telefon (faqat admin ko'radi)", "phone", "+998 90 123 45 67")}
+      {field("Telefon (faqat admin ko'radi)", "phone", "+998 90 123 45 67", true)}
 
       {/* Address */}
       <div className="space-y-2">
@@ -359,8 +617,8 @@ function AsosiyTab({ profile, onChange }: { profile: ProfileData; onChange: (p: 
           <div className="w-9 h-9 rounded-xl bg-[#2AABEE]/10 border border-[#2AABEE]/20 flex items-center justify-center shrink-0">
             <Send className="w-4 h-4 text-[#2AABEE]" />
           </div>
-          <input value={profile.telegram} onChange={e => set("telegram", e.target.value)} placeholder="@username"
-            className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50" />
+          <input value={profile.telegram} readOnly placeholder="Telegram orqali bog'lanish orqali qo'shiladi"
+            className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/4 text-sm text-muted-foreground cursor-default focus:outline-none" />
         </div>
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500/20 to-violet-500/20 border border-pink-500/20 flex items-center justify-center shrink-0">
@@ -370,6 +628,25 @@ function AsosiyTab({ profile, onChange }: { profile: ProfileData; onChange: (p: 
             className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50" />
         </div>
       </div>
+
+      {/* Save button */}
+      <button
+        onClick={onSave}
+        disabled={saving || !profile.name.trim()}
+        className="w-full h-12 rounded-2xl bg-primary text-black font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:bg-primary/90"
+      >
+        {saving ? (
+          <>
+            <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+            Saqlanmoqda...
+          </>
+        ) : (
+          <>
+            <Save className="w-4 h-4" />
+            Saqlash
+          </>
+        )}
+      </button>
     </div>
   );
 }
@@ -383,11 +660,13 @@ function ServiceForm({
   customCats,
   onSave,
   onCancel,
+  saving,
 }: {
   initial?: ServiceItem;
   customCats: string[];
-  onSave: (s: ServiceItem) => void;
+  onSave: (s: Omit<ServiceItem, "id"> & { id?: string }) => void;
   onCancel: () => void;
+  saving?: boolean;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [category, setCategory] = useState<string>(initial?.category ?? "soch");
@@ -401,7 +680,7 @@ function ServiceForm({
   function handleSave() {
     if (!name.trim() || !price) return;
     onSave({
-      id: initial?.id ?? Date.now().toString(),
+      id: initial?.id,
       name: name.trim(),
       category,
       duration: parseInt(duration) || 30,
@@ -452,33 +731,38 @@ function ServiceForm({
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder="Qisqa tavsif..."
           className="w-full px-4 py-3 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50 resize-none" />
       </div>
-      <button onClick={handleSave} disabled={!name.trim() || !price}
-        className="w-full h-12 rounded-2xl bg-primary text-black font-bold text-sm disabled:opacity-40">
-        {initial ? "Saqlash" : "Qo'shish"}
+      <button onClick={handleSave} disabled={!name.trim() || !price || saving}
+        className="w-full h-12 rounded-2xl bg-primary text-black font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2">
+        {saving
+          ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Saqlanmoqda...</>
+          : (initial ? "Saqlash" : "Qo'shish")
+        }
       </button>
     </div>
   );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// XIZMATLAR TAB — edit mode
+// XIZMATLAR TAB — edit mode with real API
 // ──────────────────────────────────────────────────────────────────────────────
 
 function XizmatlarTab({
   services,
   customCats,
-  onChange,
+  onReload,
   onAddCat,
 }: {
   services: ServiceItem[];
   customCats: string[];
-  onChange: (s: ServiceItem[]) => void;
+  onReload: () => void;
   onAddCat: (c: string) => void;
 }) {
   const [activeCat, setActiveCat] = useState<string>("all");
   const [addingOrEditing, setAddingOrEditing] = useState<"new" | string | null>(null);
   const [newCat, setNewCat] = useState("");
   const [showNewCat, setShowNewCat] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   const allCats = [
     ...DEFAULT_CATS,
@@ -487,14 +771,37 @@ function XizmatlarTab({
 
   const filtered = activeCat === "all" ? services : services.filter(s => s.category === activeCat);
 
-  function handleSave(item: ServiceItem) {
-    const exists = services.find(s => s.id === item.id);
-    onChange(exists ? services.map(s => s.id === item.id ? item : s) : [...services, item]);
-    setAddingOrEditing(null);
+  async function handleSave(item: Omit<ServiceItem, "id"> & { id?: string }) {
+    setSaving(true);
+    setError("");
+    try {
+      const body = {
+        name: item.name,
+        nameRu: item.category,
+        duration: item.duration,
+        price: item.price,
+      };
+      if (item.id) {
+        await apiPut(`/api/services/${item.id}`, body);
+      } else {
+        await apiPost("/api/services", body);
+      }
+      setAddingOrEditing(null);
+      onReload();
+    } catch {
+      setError("Xatolik yuz berdi. Qayta urinib ko'ring.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function handleDelete(id: string) {
-    onChange(services.filter(s => s.id !== id));
+  async function handleDelete(id: string) {
+    try {
+      await apiDelete(`/api/services/${id}`);
+      onReload();
+    } catch {
+      setError("O'chirishda xatolik yuz berdi.");
+    }
   }
 
   function handleAddCat() {
@@ -507,12 +814,19 @@ function XizmatlarTab({
 
   if (addingOrEditing !== null) {
     const editing = addingOrEditing !== "new" ? services.find(s => s.id === addingOrEditing) : undefined;
-    return <ServiceForm customCats={customCats} initial={editing} onSave={handleSave} onCancel={() => setAddingOrEditing(null)} />;
+    return (
+      <>
+        {error && <p className="text-xs text-destructive bg-destructive/10 rounded-xl px-3 py-2 mb-3">{error}</p>}
+        <ServiceForm customCats={customCats} initial={editing} onSave={handleSave} onCancel={() => setAddingOrEditing(null)} saving={saving} />
+      </>
+    );
   }
 
   return (
     <div className="pb-10">
-      {/* Category filter with "+ Yangi" */}
+      {error && <p className="text-xs text-destructive bg-destructive/10 rounded-xl px-3 py-2 mb-3">{error}</p>}
+
+      {/* Category filter */}
       <div className="flex gap-2 overflow-x-auto pb-3 mb-4 scrollbar-hide">
         {allCats.map(c => (
           <button key={c.id} onClick={() => setActiveCat(c.id)}
@@ -545,10 +859,7 @@ function XizmatlarTab({
                   {catEmoji(s.category)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <p className="font-semibold text-sm text-foreground truncate">{s.name}</p>
-                    {s.comboIds && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">COMBO</span>}
-                  </div>
+                  <p className="font-semibold text-sm text-foreground truncate">{s.name}</p>
                   <p className="text-xs text-muted-foreground">{formatDur(s.duration)} · <span className="text-foreground/70">{formatPriceShort(s.price)} so'm</span></p>
                 </div>
                 <div className="flex gap-1.5 shrink-0">
@@ -650,8 +961,6 @@ function SlugEditModal({
         setStep("edit");
       } else {
         const newSlug = data.username ?? draft;
-        // Patch localStorage so same-session navigation shows the updated slug
-        // without waiting for the next /api/auth/me refetch
         try {
           const raw = localStorage.getItem("barber_user");
           if (raw) {
@@ -659,7 +968,7 @@ function SlugEditModal({
             cached.username = newSlug;
             localStorage.setItem("barber_user", JSON.stringify(cached));
           }
-        } catch { /* non-critical */ }
+        } catch { }
         onSaved(newSlug);
       }
     } catch {
@@ -701,7 +1010,7 @@ function SlugEditModal({
             <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl px-4 py-3 mb-5">
               <p className="text-xs text-amber-400 font-semibold mb-1">⚠️ Diqqat:</p>
               <p className="text-xs text-amber-400/80 leading-relaxed">
-                Linkni o'zgartirsangiz, eski QR kodlar eski manzilga olib boradi, lekin tizim avtomatik yangi sahifaga yo'naltiradi. Tez-tez o'zgartirish tavsiya etilmaydi.
+                Linkni o'zgartirsangiz, eski QR kodlar eski manzilga olib boradi, lekin tizim avtomatik yangi sahifaga yo'naltiradi.
               </p>
             </div>
 
@@ -797,7 +1106,6 @@ function QRLinkTab({ userSlug }: { userSlug: string }) {
 
   return (
     <div className="space-y-5 pb-10">
-      {/* ── Link block ─────────────────────────────────────────────────────── */}
       <div className="bg-card border border-white/6 rounded-2xl p-4">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Sahifa manzili</p>
         <div className="flex items-center gap-2 bg-background/60 border border-white/8 rounded-xl px-3 py-2.5 mb-3">
@@ -829,7 +1137,6 @@ function QRLinkTab({ userSlug }: { userSlug: string }) {
         </div>
       </div>
 
-      {/* ── QR block ───────────────────────────────────────────────────────── */}
       <div className="bg-card border border-white/6 rounded-2xl p-5 flex flex-col items-center">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">QR kod</p>
         <div ref={qrRef} className="bg-white p-4 rounded-2xl shadow-xl shadow-black/30 mb-3">
@@ -844,14 +1151,13 @@ function QRLinkTab({ userSlug }: { userSlug: string }) {
         </button>
       </div>
 
-      {/* ── Stats (placeholder) ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-card border border-white/6 rounded-2xl p-4 text-center">
-          <p className="text-3xl font-bold font-display text-primary mb-1">24</p>
+          <p className="text-3xl font-bold font-display text-primary mb-1">—</p>
           <p className="text-xs text-muted-foreground">QR skanerlashlar</p>
         </div>
         <div className="bg-card border border-white/6 rounded-2xl p-4 text-center">
-          <p className="text-3xl font-bold font-display text-emerald-400 mb-1">8</p>
+          <p className="text-3xl font-bold font-display text-emerald-400 mb-1">—</p>
           <p className="text-xs text-muted-foreground">Bronlar (bu oy)</p>
         </div>
       </div>
@@ -1027,7 +1333,6 @@ function BookingModal({
         onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 shrink-0" />
 
-        {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 shrink-0 border-b border-white/6">
           {step === "info" && (
             <button onClick={() => setStep("time")} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0"><ArrowLeft className="w-4 h-4" /></button>
@@ -1044,7 +1349,6 @@ function BookingModal({
         </div>
 
         <div className="overflow-y-auto flex-1 px-5 pb-8">
-          {/* Service summary */}
           {step !== "done" && (
             <div className="bg-primary/6 border border-primary/12 rounded-2xl px-4 py-3 mt-4 mb-5 flex items-center justify-between gap-3">
               <div className="flex flex-wrap gap-1.5 flex-1">
@@ -1060,10 +1364,8 @@ function BookingModal({
           )}
 
           <AnimatePresence mode="wait">
-            {/* STEP: TIME */}
             {step === "time" && (
               <motion.div key="time" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                {/* Date */}
                 <div className="flex gap-2 mb-5">
                   {(["today", "tomorrow"] as DateOpt[]).map(d => (
                     <button key={d} onClick={() => setDateOpt(d)}
@@ -1079,7 +1381,6 @@ function BookingModal({
 
                 {isTeam ? (
                   <div className="space-y-4">
-                    {/* Any barber option */}
                     <div className={`rounded-2xl border p-4 transition-all ${selectedBarber === "any" ? "border-primary/30 bg-primary/6" : "border-white/8 bg-white/3"}`}>
                       <div className="flex items-center gap-3 mb-3">
                         <div className="w-12 h-12 rounded-full bg-white/8 border border-white/10 flex items-center justify-center text-xl shrink-0">👥</div>
@@ -1099,7 +1400,6 @@ function BookingModal({
                       </div>
                     </div>
 
-                    {/* Individual barbers */}
                     {barberSlots.map(({ barber, slots }) => barber && (
                       <div key={barber.id} className={`rounded-2xl border p-4 transition-all ${selectedBarber === barber.id ? "border-primary/30 bg-primary/6" : "border-white/8 bg-white/3"}`}>
                         <div className="flex items-center gap-3 mb-3">
@@ -1154,12 +1454,10 @@ function BookingModal({
               </motion.div>
             )}
 
-            {/* STEP: INFO */}
             {step === "info" && (
               <motion.div key="info" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                 <p className="text-sm text-muted-foreground mb-5">Telegram bot bron ma'lumotlarini tasdiqlaydi</p>
 
-                {/* Selected time reminder */}
                 <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-5 flex items-center gap-3">
                   <Clock className="w-4 h-4 text-primary shrink-0" />
                   <div>
@@ -1196,7 +1494,6 @@ function BookingModal({
               </motion.div>
             )}
 
-            {/* STEP: VERIFYING */}
             {step === "verifying" && (
               <motion.div key="verifying" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-10">
                 <div className="w-20 h-20 rounded-3xl bg-[#2AABEE]/10 border border-[#2AABEE]/20 flex items-center justify-center text-4xl mx-auto mb-5">💬</div>
@@ -1222,7 +1519,6 @@ function BookingModal({
               </motion.div>
             )}
 
-            {/* STEP: DONE */}
             {step === "done" && (
               <motion.div key="done" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-8">
                 <div className="w-24 h-24 rounded-3xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-5xl mx-auto mb-5">✅</div>
@@ -1298,38 +1594,52 @@ export function CustomerView({
     "from-violet-600/50 via-violet-600/20 to-transparent",
   ];
   const gradIdx = profile.name.charCodeAt(0) % COVER_GRAD.length;
+  const coverImage = profile.galleryImages[0] || "";
 
   return (
     <div className="pb-28 -mx-4">
-      {/* ── Hero section ─────────────────────────────────────────────────── */}
+      {/* Hero */}
       <div className="relative">
-        <div className="w-full h-52 relative overflow-hidden">
-          {profile.coverImage
-            ? <img src={profile.coverImage} className="w-full h-full object-cover" />
+        <div className="w-full h-48 relative overflow-hidden">
+          {coverImage
+            ? <img src={coverImage} className="w-full h-full object-cover" />
             : <div className="w-full h-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
                 <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(45deg, #ffffff08 0, #ffffff08 1px, transparent 0, transparent 50%)", backgroundSize: "20px 20px" }} />
                 <div className={`absolute inset-0 bg-gradient-to-br ${COVER_GRAD[gradIdx]}`} />
               </div>
           }
-          <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-background to-transparent" />
         </div>
         <div className="absolute bottom-0 left-4 translate-y-8">
           <div className="w-20 h-20 rounded-full border-4 border-background overflow-hidden bg-gradient-to-br from-primary/40 to-primary/15 flex items-center justify-center shadow-2xl shadow-black/40">
-            {profile.profileImage
-              ? <img src={profile.profileImage} className="w-full h-full object-cover" />
-              : <span className="text-3xl font-bold text-primary uppercase">{profile.name.charAt(0)}</span>
+            {profile.avatarUrl
+              ? <img src={profile.avatarUrl} className="w-full h-full object-cover" />
+              : <span className="text-3xl font-bold text-primary uppercase">{profile.name.charAt(0) || "?"}</span>
             }
           </div>
         </div>
       </div>
 
-      {/* ── Name + bio (always visible) ──────────────────────────────────── */}
-      <div className="px-4 pt-12 pb-4">
-        <h1 className="text-2xl font-display font-bold text-foreground mb-1">{profile.name}</h1>
+      {/* Name + bio */}
+      <div className="px-4 pt-12 pb-3">
+        <h1 className="text-2xl font-display font-bold text-foreground mb-1">{profile.brandName || profile.name}</h1>
         {profile.bio && <p className="text-sm text-muted-foreground leading-relaxed">{profile.bio}</p>}
       </div>
 
-      {/* ── Tab bar ───────────────────────────────────────────────────────── */}
+      {/* Gallery strip (show additional images) */}
+      {profile.galleryImages.length > 1 && (
+        <div className="overflow-x-auto scrollbar-hide pb-3">
+          <div className="flex gap-2.5 px-4">
+            {profile.galleryImages.slice(1).map((src, i) => (
+              <div key={i} className="shrink-0 w-40 h-28 rounded-2xl overflow-hidden border border-white/8">
+                <img src={src} className="w-full h-full object-cover" alt="" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tab bar */}
       <div className="px-4 mb-1">
         <div className="flex gap-1 bg-white/5 p-1 rounded-2xl">
           {(["asosiy", "xizmatlar"] as const).map(t => (
@@ -1349,7 +1659,7 @@ export function CustomerView({
         </div>
       </div>
 
-      {/* ── Tab content ──────────────────────────────────────────────────── */}
+      {/* Tab content */}
       <AnimatePresence mode="wait">
         {previewTab === "asosiy" && (
           <motion.div
@@ -1360,7 +1670,6 @@ export function CustomerView({
             transition={{ duration: 0.18 }}
           >
             <div className="px-4 pt-4">
-              {/* Speciality tags */}
               {profile.speciality.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-4">
                   {profile.speciality.map((s, i) => (
@@ -1369,15 +1678,16 @@ export function CustomerView({
                 </div>
               )}
 
-              {/* Work hours pill */}
-              {profile.workDays && (
+              {(profile.workDays || profile.workStart) && (
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-4 bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
                   <Clock className="w-3.5 h-3.5 text-primary/70 shrink-0" />
-                  <span>{profile.workDays} · {profile.workStart}–{profile.workEnd}</span>
+                  <span>
+                    {profile.workDays ? `${profile.workDays} · ` : ""}
+                    {profile.workStart}–{profile.workEnd}
+                  </span>
                 </div>
               )}
 
-              {/* Map card */}
               {profile.address && (
                 <a
                   href={profile.mapLink || "#"}
@@ -1385,7 +1695,7 @@ export function CustomerView({
                   rel="noopener noreferrer"
                   className="block bg-card border border-white/8 rounded-2xl overflow-hidden mb-4 hover:border-white/15 transition-colors"
                 >
-                  <div className="h-20 bg-zinc-900 relative overflow-hidden">
+                  <div className="h-16 bg-zinc-900 relative overflow-hidden">
                     <div className="absolute inset-0 opacity-15" style={{ backgroundImage: "linear-gradient(#4af 1px, transparent 1px), linear-gradient(90deg, #4af 1px, transparent 1px)", backgroundSize: "30px 30px" }} />
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="w-5 h-5 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center">
@@ -1401,44 +1711,23 @@ export function CustomerView({
                 </a>
               )}
 
-              {/* Social links */}
               {(profile.telegram || profile.instagram) && (
-                <div className="mb-5">
-                  <p className="text-xs text-muted-foreground mb-2.5">Bizni ijtimoiy tarmoqlarda kuzating</p>
-                  <div className="flex flex-wrap gap-2">
-                    {profile.telegram && (
-                      <a href={`https://t.me/${profile.telegram.replace("@", "")}`} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#2AABEE]/10 border border-[#2AABEE]/25 text-[#2AABEE] text-sm font-medium hover:bg-[#2AABEE]/20 transition-colors">
-                        <Send className="w-3.5 h-3.5" /> {profile.telegram}
-                      </a>
-                    )}
-                    {profile.instagram && (
-                      <a href={`https://instagram.com/${profile.instagram.replace("@", "")}`} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gradient-to-r from-pink-500/10 to-violet-500/10 border border-pink-500/20 text-pink-400 text-sm font-medium hover:from-pink-500/20 hover:to-violet-500/20 transition-colors">
-                        <Instagram className="w-3.5 h-3.5" /> {profile.instagram}
-                      </a>
-                    )}
-                  </div>
+                <div className="mb-5 space-y-2">
+                  {profile.telegram && (
+                    <a href={`https://t.me/${profile.telegram.replace("@", "")}`} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#2AABEE]/10 border border-[#2AABEE]/25 text-[#2AABEE] text-sm font-medium hover:bg-[#2AABEE]/20 transition-colors">
+                      <Send className="w-3.5 h-3.5" /> {profile.telegram}
+                    </a>
+                  )}
+                  {profile.instagram && (
+                    <a href={`https://instagram.com/${profile.instagram.replace("@", "")}`} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gradient-to-r from-pink-500/10 to-violet-500/10 border border-pink-500/20 text-pink-400 text-sm font-medium hover:from-pink-500/20 hover:to-violet-500/20 transition-colors">
+                      <Instagram className="w-3.5 h-3.5" /> {profile.instagram}
+                    </a>
+                  )}
                 </div>
               )}
             </div>
-
-            {/* Team barbers */}
-            {isTeam && (
-              <div className="px-4 mb-5">
-                <p className="text-sm font-bold text-foreground mb-3">👷 Ustalar</p>
-                <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-hide">
-                  {TEAM_BARBERS.map(b => (
-                    <div key={b.id} className="flex flex-col items-center gap-2 shrink-0">
-                      <BarbAvatar barber={b} size="lg" />
-                      <p className="text-sm font-semibold text-foreground text-center">{b.name}</p>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${DARAJA_CLS[b.daraja]}`}>{DARAJA_LABEL[b.daraja]}</span>
-                      <p className="text-[10px] text-muted-foreground text-center max-w-16 leading-snug">{b.speciality[0]}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </motion.div>
         )}
 
@@ -1451,7 +1740,6 @@ export function CustomerView({
             transition={{ duration: 0.18 }}
           >
             <div className="px-4 pt-4">
-              {/* Category filter */}
               <div className="flex gap-2 overflow-x-auto pb-3 mb-4 scrollbar-hide">
                 {catChips.map(c => (
                   <button key={c.id} onClick={() => setActiveCat(c.id)}
@@ -1474,10 +1762,7 @@ export function CustomerView({
                           {catEmoji(s.category)}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <p className="font-semibold text-sm text-foreground">{s.name}</p>
-                            {s.comboIds && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">COMBO</span>}
-                          </div>
+                          <p className="font-semibold text-sm text-foreground">{s.name}</p>
                           <p className="text-xs text-muted-foreground">
                             <span>{formatDur(s.duration)}</span>
                             <span className="mx-1">·</span>
@@ -1500,7 +1785,7 @@ export function CustomerView({
         )}
       </AnimatePresence>
 
-      {/* ── Fixed bottom CTA (always visible) ───────────────────────────── */}
+      {/* Fixed bottom CTA */}
       <div className="fixed bottom-0 left-0 right-0 z-40">
         <div className="max-w-md mx-auto px-4 py-3 bg-card/95 backdrop-blur-xl border-t border-white/8">
           <AnimatePresence mode="wait">
@@ -1530,7 +1815,7 @@ export function CustomerView({
         </div>
       </div>
 
-      {/* ── Service detail sheet ─────────────────────────────────────────── */}
+      {/* Service detail sheet */}
       <AnimatePresence>
         {detailSvc && (
           <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -1546,17 +1831,10 @@ export function CustomerView({
                   <div className="flex-1">
                     <h3 className="font-bold text-xl text-foreground mb-0.5">{detailSvc.name}</h3>
                     <p className="text-sm text-muted-foreground">{formatDur(detailSvc.duration)} · {formatPrice(detailSvc.price)}</p>
-                    {detailSvc.comboIds && <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 inline-block mt-1.5">COMBO CHEGIRMA</span>}
                   </div>
                   <button onClick={() => setDetailSvc(null)} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0"><X className="w-4 h-4" /></button>
                 </div>
                 {detailSvc.description && <p className="text-sm text-muted-foreground mb-4 leading-relaxed">{detailSvc.description}</p>}
-                {detailSvc.comboIds && (
-                  <div className="bg-emerald-500/8 border border-emerald-500/20 rounded-2xl px-4 py-3 mb-4">
-                    <p className="text-sm text-emerald-400 font-semibold">🎉 Combo narxi — {formatPriceShort(20000)} so'm tejaysiz!</p>
-                    <p className="text-xs text-emerald-400/70 mt-0.5">Fade + Soqolni birga tanlasangiz avtomatik chegirma qo'llanadi</p>
-                  </div>
-                )}
                 <p className="text-xs text-muted-foreground/50 text-center mb-4">ℹ️ Iltimos, belgilangan vaqtdan 5 daqiqa oldin keling</p>
                 <motion.button
                   whileTap={{ scale: 0.98 }}
@@ -1570,7 +1848,6 @@ export function CustomerView({
         )}
       </AnimatePresence>
 
-      {/* ── Booking modal ────────────────────────────────────────────────── */}
       <AnimatePresence>
         {bookingOpen && (
           <BookingModal
@@ -1597,9 +1874,76 @@ export default function PersonalPage() {
 
   const [tab, setTab] = useState<Tab>("asosiy");
   const [preview, setPreview] = useState(false);
-  const [profile, setProfile] = useState<ProfileData>(DEMO_PROFILE);
-  const [services, setServices] = useState<ServiceItem[]>(DEMO_SERVICES);
+  const [profile, setProfile] = useState<ProfileData>(EMPTY_PROFILE);
+  const [services, setServices] = useState<ServiceItem[]>([]);
   const [customCats, setCustomCats] = useState<string[]>([]);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [loadingServices, setLoadingServices] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [slugModalOpen, setSlugModalOpen] = useState(false);
+  const [userSlug, setUserSlug] = useState(user?.username || "");
+
+  useEffect(() => {
+    setUserSlug(user?.username || "");
+  }, [user?.username]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingProfile(true);
+    apiGet("/api/settings/profile")
+      .then((data: Record<string, unknown>) => {
+        if (!cancelled) {
+          setProfile(apiToProfile(data));
+          setLoadingProfile(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoadingProfile(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingServices(true);
+    apiGet("/api/services")
+      .then((data: { services: Record<string, unknown>[] }) => {
+        if (!cancelled) {
+          setServices((data.services || []).map(apiToService));
+          setLoadingServices(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoadingServices(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  function reloadServices() {
+    setLoadingServices(true);
+    apiGet("/api/services")
+      .then((data: { services: Record<string, unknown>[] }) => {
+        setServices((data.services || []).map(apiToService));
+        setLoadingServices(false);
+      })
+      .catch(() => setLoadingServices(false));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const updated = await apiPut("/api/settings/profile", profileToApi(profile));
+      setProfile(apiToProfile(updated));
+      setSaveMsg({ type: "ok", text: "Muvaffaqiyatli saqlandi ✓" });
+      setTimeout(() => setSaveMsg(null), 3000);
+    } catch {
+      setSaveMsg({ type: "err", text: "Saqlashda xatolik. Qayta urinib ko'ring." });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const pageTitle = isTeam ? "🌐 Barbershop sahifasi" : "🌐 Mening sahifam";
 
@@ -1611,7 +1955,6 @@ export default function PersonalPage() {
 
   return (
     <Layout hideBottomNav>
-      {/* ── Page header ───────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-4">
         <Link href="/settings">
           <button className="w-10 h-10 rounded-2xl bg-card border border-white/8 flex items-center justify-center hover:bg-white/5 transition-colors shrink-0">
@@ -1628,10 +1971,26 @@ export default function PersonalPage() {
         </button>
       </div>
 
+      {/* Save toast */}
+      <AnimatePresence>
+        {saveMsg && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className={`mb-4 px-4 py-3 rounded-2xl text-sm font-semibold ${
+              saveMsg.type === "ok"
+                ? "bg-emerald-500/12 border border-emerald-500/25 text-emerald-400"
+                : "bg-destructive/12 border border-destructive/25 text-destructive"
+            }`}
+          >
+            {saveMsg.text}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {preview ? (
-        /* ── PREVIEW MODE ─────────────────────────────────────────────── */
         <>
-          {/* Sticky preview banner */}
           <div className="sticky top-0 z-30 -mx-4 px-4 py-2.5 mb-0 bg-amber-500/10 border-b border-amber-500/20 backdrop-blur-md flex items-center justify-between">
             <p className="text-xs text-amber-400 font-semibold">👁 Ko'rish rejimi — mijoz qanday ko'radi</p>
             <button onClick={() => setPreview(false)} className="text-xs text-amber-300 font-bold underline underline-offset-2">
@@ -1641,7 +2000,6 @@ export default function PersonalPage() {
           <CustomerView profile={profile} services={services} isTeam={isTeam} barberId={user?.id || ""} />
         </>
       ) : (
-        /* ── EDIT MODE ────────────────────────────────────────────────── */
         <>
           {/* Sticky tab bar */}
           <div className="sticky top-0 z-30 -mx-4 px-4 pt-2 pb-3 mb-4 bg-background/95 backdrop-blur-md border-b border-white/6">
@@ -1661,26 +2019,46 @@ export default function PersonalPage() {
           <AnimatePresence mode="wait">
             {tab === "asosiy" && (
               <motion.div key="asosiy" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
-                <AsosiyTab profile={profile} onChange={setProfile} />
+                {loadingProfile ? (
+                  <div className="flex items-center justify-center py-20">
+                    <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  <AsosiyTab profile={profile} onChange={setProfile} onSave={handleSave} saving={saving} />
+                )}
               </motion.div>
             )}
             {tab === "xizmatlar" && (
               <motion.div key="xizmatlar" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
-                <XizmatlarTab
-                  services={services}
-                  customCats={customCats}
-                  onChange={setServices}
-                  onAddCat={c => setCustomCats(prev => [...prev, c])}
-                />
+                {loadingServices ? (
+                  <div className="flex items-center justify-center py-20">
+                    <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  <XizmatlarTab
+                    services={services}
+                    customCats={customCats}
+                    onReload={reloadServices}
+                    onAddCat={c => setCustomCats(prev => [...prev, c])}
+                  />
+                )}
               </motion.div>
             )}
             {tab === "qr" && (
               <motion.div key="qr" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
-                <QRLinkTab userSlug={user?.username || ""} />
+                <QRLinkTab userSlug={userSlug} />
               </motion.div>
             )}
           </AnimatePresence>
         </>
+      )}
+
+      {slugModalOpen && (
+        <SlugEditModal
+          currentSlug={userSlug}
+          onClose={() => setSlugModalOpen(false)}
+          onSaved={newSlug => { setUserSlug(newSlug); setSlugModalOpen(false); }}
+        />
       )}
     </Layout>
   );
