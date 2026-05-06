@@ -229,6 +229,13 @@ function apiToProfile(api: Record<string, unknown>): ProfileData {
   };
 }
 
+function safeUrl(url: string): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return null;
+}
+
 function profileToApi(p: ProfileData) {
   return {
     name: p.name,
@@ -242,8 +249,8 @@ function profileToApi(p: ProfileData) {
     lunchBreakEnd: p.lunchEnd,
     scheduleJson: JSON.stringify({ workDays: p.workDays }),
     address: p.address,
-    mapLink: p.mapLink,
-    instagram: p.instagram,
+    mapLink: safeUrl(p.mapLink) ?? "",
+    instagram: p.instagram.replace(/^@+/, ""),
     avatarUrl: p.avatarUrl,
     galleryImages: JSON.stringify(p.galleryImages),
   };
@@ -560,8 +567,8 @@ function AsosiyTab({
             placeholder="Google Maps havolasi"
             className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-xs focus:outline-none focus:border-primary/50 text-muted-foreground"
           />
-          {profile.mapLink && (
-            <a href={profile.mapLink} target="_blank" rel="noopener noreferrer"
+          {safeUrl(profile.mapLink) && (
+            <a href={safeUrl(profile.mapLink)!} target="_blank" rel="noopener noreferrer"
               className="h-10 px-3 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center text-xs font-semibold gap-1.5 hover:bg-primary/20 transition-colors shrink-0">
               <Navigation className="w-3.5 h-3.5" /> Ko'rish
             </a>
@@ -969,7 +976,7 @@ function SlugEditModal({ currentSlug, onClose, onSaved }: { currentSlug: string;
   );
 }
 
-function QRLinkTab({ userSlug }: { userSlug: string }) {
+function QRLinkTab({ userSlug, onEditSlug }: { userSlug: string; onEditSlug: () => void }) {
   const [copied, setCopied] = useState(false);
   const qrRef = useRef<HTMLDivElement>(null);
   const pageUrl = `${APP_ORIGIN}/${userSlug}`;
@@ -1003,7 +1010,13 @@ function QRLinkTab({ userSlug }: { userSlug: string }) {
   return (
     <div className="space-y-5 pb-10">
       <div className="bg-card border border-white/6 rounded-2xl p-4">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Sahifa manzili</p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sahifa manzili</p>
+          <button onClick={onEditSlug}
+            className="flex items-center gap-1 text-xs text-primary font-semibold hover:text-primary/80 transition-colors">
+            <Pencil className="w-3 h-3" /> Tahrirlash
+          </button>
+        </div>
         <div className="flex items-center gap-2 bg-background/60 border border-white/8 rounded-xl px-3 py-2.5 mb-3">
           <a href={pageUrl} target="_blank" rel="noopener noreferrer" className="flex-1 flex items-center gap-1 min-w-0 hover:opacity-80 transition-opacity">
             <span className="text-xs text-muted-foreground shrink-0">{APP_DISPLAY_HOST}/</span>
@@ -1419,22 +1432,26 @@ export function CustomerView({ profile, services, isTeam, barberId }: {
                   <span>{workDaysLabel ? `${workDaysLabel} · ` : ""}{profile.workStart}–{profile.workEnd}</span>
                 </div>
               )}
-              {profile.address && (
-                <a href={profile.mapLink || "#"} target={profile.mapLink ? "_blank" : "_self"} rel="noopener noreferrer"
-                  className="block bg-card border border-white/8 rounded-2xl overflow-hidden mb-4 hover:border-white/15 transition-colors">
-                  <div className="h-16 bg-zinc-900 relative overflow-hidden">
-                    <div className="absolute inset-0 opacity-15" style={{ backgroundImage: "linear-gradient(#4af 1px,transparent 1px),linear-gradient(90deg,#4af 1px,transparent 1px)", backgroundSize: "30px 30px" }} />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-5 h-5 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-white" /></div>
+              {profile.address && (() => {
+                const href = safeUrl(profile.mapLink);
+                const Tag = href ? "a" : "div";
+                const extraProps = href ? { href, target: "_blank" as const, rel: "noopener noreferrer" } : {};
+                return (
+                  <Tag {...extraProps} className="block bg-card border border-white/8 rounded-2xl overflow-hidden mb-4 hover:border-white/15 transition-colors">
+                    <div className="h-16 bg-zinc-900 relative overflow-hidden">
+                      <div className="absolute inset-0 opacity-15" style={{ backgroundImage: "linear-gradient(#4af 1px,transparent 1px),linear-gradient(90deg,#4af 1px,transparent 1px)", backgroundSize: "30px 30px" }} />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-5 h-5 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-white" /></div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="px-4 py-3 flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-primary shrink-0" />
-                    <span className="text-sm text-foreground flex-1">{profile.address}</span>
-                    {profile.mapLink && <span className="text-xs text-primary font-semibold">Ko'rish →</span>}
-                  </div>
-                </a>
-              )}
+                    <div className="px-4 py-3 flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-primary shrink-0" />
+                      <span className="text-sm text-foreground flex-1">{profile.address}</span>
+                      {href && <span className="text-xs text-primary font-semibold">Ko'rish →</span>}
+                    </div>
+                  </Tag>
+                );
+              })()}
               {(profile.telegram || profile.instagram) && (
                 <div className="mb-5 space-y-2">
                   {profile.telegram && (
@@ -1698,7 +1715,7 @@ export default function PersonalPage() {
             )}
             {tab === "qr" && (
               <motion.div key="qr" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
-                <QRLinkTab userSlug={userSlug} />
+                <QRLinkTab userSlug={userSlug} onEditSlug={() => setSlugModalOpen(true)} />
               </motion.div>
             )}
           </AnimatePresence>

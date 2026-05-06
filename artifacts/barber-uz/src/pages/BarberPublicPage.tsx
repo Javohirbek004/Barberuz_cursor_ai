@@ -35,6 +35,12 @@ interface BarberData {
   }>;
 }
 
+function safeHref(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const t = url.trim();
+  return /^https?:\/\//i.test(t) ? t : null;
+}
+
 const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const DAY_LABELS: Record<string, string> = {
   mon: "Du", tue: "Se", wed: "Ch", thu: "Pa", fri: "Ju", sat: "Sh", sun: "Ya",
@@ -196,22 +202,22 @@ function PublicView({ barber }: { barber: BarberData }) {
                 </div>
               )}
 
-              {barber.address && (
-                <a
-                  href={barber.mapLink || undefined}
-                  target={barber.mapLink ? "_blank" : undefined}
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 bg-card border border-white/8 rounded-2xl p-3.5 hover:border-white/15 transition-colors"
-                >
-                  <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                    <MapPin className="w-4 h-4 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-foreground truncate">{barber.address}</p>
-                    {barber.mapLink && <p className="text-xs text-primary mt-0.5">Xaritada ko'rish →</p>}
-                  </div>
-                </a>
-              )}
+              {barber.address && (() => {
+                const href = safeHref(barber.mapLink);
+                const Tag = href ? "a" : "div";
+                const extraProps = href ? { href, target: "_blank" as const, rel: "noopener noreferrer" } : {};
+                return (
+                  <Tag {...extraProps} className="flex items-center gap-3 bg-card border border-white/8 rounded-2xl p-3.5 hover:border-white/15 transition-colors">
+                    <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                      <MapPin className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground truncate">{barber.address}</p>
+                      {href && <p className="text-xs text-primary mt-0.5">Xaritada ko'rish →</p>}
+                    </div>
+                  </Tag>
+                );
+              })()}
 
               {(telegramHandle || instagramHandle) && (
                 <div className="space-y-2">
@@ -254,7 +260,7 @@ function PublicView({ barber }: { barber: BarberData }) {
               {barber.services.length === 0 ? (
                 <div className="text-center py-10 border border-dashed border-white/8 rounded-2xl">
                   <p className="text-3xl mb-2">✂️</p>
-                  <p className="text-sm text-muted-foreground">Ma'lumotlar hali to'ldirilmagan</p>
+                  <p className="text-sm text-muted-foreground">Hozircha xizmatlar qo'shilmagan</p>
                 </div>
               ) : (
                 <div className="space-y-3">

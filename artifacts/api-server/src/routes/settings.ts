@@ -49,8 +49,14 @@ router.put("/profile", authenticate, async (req, res) => {
       workingHoursStart, workingHoursEnd, bio, avatarUrl,
       specializations, scheduleJson,
       lunchBreakEnabled, lunchBreakStart, lunchBreakEnd,
-      address, mapLink, instagram, galleryImages,
+      address, mapLink: rawMapLink, instagram: rawInstagram, galleryImages,
     } = req.body;
+    const mapLink = typeof rawMapLink === "string"
+      ? (/^https?:\/\//i.test(rawMapLink.trim()) ? rawMapLink.trim() : "")
+      : rawMapLink;
+    const instagram = typeof rawInstagram === "string"
+      ? rawInstagram.replace(/^@+/, "")
+      : rawInstagram;
     const [updated] = await db.update(usersTable)
       .set({
         ...(name !== undefined && { name }),
