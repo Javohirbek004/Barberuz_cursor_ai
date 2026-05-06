@@ -52,6 +52,9 @@ export function useAuth(requireAuth = true) {
   useEffect(() => {
     if (isBarberMember) return;
     if (requireAuth && !apiLoading && (error || !apiUser)) {
+      // Clear stale token so Login page does not redirect back to dashboard in a loop
+      localStorage.removeItem('barber_token');
+      localStorage.removeItem('barber_user');
       navigate('/login');
     }
   }, [apiUser, apiLoading, error, requireAuth, navigate, isBarberMember]);

@@ -37,12 +37,21 @@ export default function Login() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  // Already logged in — skip login page entirely
+  // Already logged in — verify token with server before redirecting
   useEffect(() => {
     const token = localStorage.getItem("barber_token");
-    if (token && !new URLSearchParams(window.location.search).has("tg_code") && !new URLSearchParams(window.location.search).has("authToken")) {
-      navigate("/dashboard");
-    }
+    const params = new URLSearchParams(window.location.search);
+    if (!token || params.has("tg_code") || params.has("authToken")) return;
+    fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => {
+        if (r.ok) {
+          navigate("/dashboard");
+        } else {
+          localStorage.removeItem("barber_token");
+          localStorage.removeItem("barber_user");
+        }
+      })
+      .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [username, setUsername] = useState("");
