@@ -56,31 +56,76 @@ function formatPrice(n: number) {
   return n.toLocaleString("uz-UZ") + " so'm";
 }
 
-const COVER_GRADS = [
-  "from-primary/50 via-primary/20 to-transparent",
-  "from-amber-600/50 via-amber-600/20 to-transparent",
-  "from-emerald-600/50 via-emerald-600/20 to-transparent",
-  "from-violet-600/50 via-violet-600/20 to-transparent",
-];
 
-function GalleryStrip({ images }: { images: string[] }) {
-  if (!images.length) return null;
+function GalleryMosaic({ images, avatar, displayName }: { images: string[]; avatar: string | null; displayName: string }) {
+  const GAP = "gap-0.5";
+  const shown = images.slice(0, 5);
+
+  if (shown.length === 0) {
+    return (
+      <div className="w-full h-52 overflow-hidden relative">
+        {avatar ? (
+          <img src={avatar} className="w-full h-full object-cover" alt={displayName} />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 flex items-center justify-center">
+            <span className="text-7xl font-bold text-primary/30 uppercase select-none">{displayName.charAt(0)}</span>
+          </div>
+        )}
+        <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background to-transparent" />
+      </div>
+    );
+  }
+
+  if (shown.length === 1) {
+    return (
+      <div className="w-full h-60 overflow-hidden relative">
+        <img src={shown[0]} className="w-full h-full object-cover" alt="" />
+        <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background to-transparent" />
+      </div>
+    );
+  }
+
+  if (shown.length === 2) {
+    return (
+      <div className={`flex ${GAP} h-60 relative overflow-hidden`}>
+        <img src={shown[0]} className="flex-1 h-full object-cover" alt="" />
+        <img src={shown[1]} className="flex-1 h-full object-cover" alt="" />
+        <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background to-transparent" />
+      </div>
+    );
+  }
+
+  if (shown.length === 3) {
+    return (
+      <div className={`flex ${GAP} h-64 relative overflow-hidden`}>
+        <img src={shown[0]} className="flex-1 h-full object-cover" alt="" />
+        <div className={`flex-1 flex flex-col ${GAP}`}>
+          <img src={shown[1]} className="flex-1 w-full object-cover" alt="" />
+          <img src={shown[2]} className="flex-1 w-full object-cover" alt="" />
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background to-transparent" />
+      </div>
+    );
+  }
+
+  // 4–5 images
+  const extra = images.length - 5;
   return (
-    <div className="overflow-x-auto scrollbar-hide pb-3">
-      <div className="flex gap-2.5 px-4">
-        {images.map((src, i) => (
-          <div key={i} className="relative shrink-0">
-            <div className="w-48 h-36 rounded-2xl overflow-hidden border border-white/8 shadow-md shadow-black/30">
-              <img src={src} className="w-full h-full object-cover" alt="" />
-            </div>
-            {i === 0 && (
-              <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-primary/80 backdrop-blur-sm text-black text-[9px] font-bold rounded-full">
-                Asosiy
+    <div className={`flex ${GAP} h-68 relative overflow-hidden`} style={{ height: 272 }}>
+      <img src={shown[0]} className="flex-1 h-full object-cover" alt="" />
+      <div className={`flex flex-col ${GAP}`} style={{ width: "45%" }}>
+        {shown.slice(1).map((src, i) => (
+          <div key={i} className="flex-1 relative overflow-hidden">
+            <img src={src} className="w-full h-full object-cover" alt="" />
+            {i === shown.length - 2 && extra > 0 && (
+              <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
+                <span className="text-white font-bold text-xl">+{extra}</span>
               </div>
             )}
           </div>
         ))}
       </div>
+      <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background to-transparent" />
     </div>
   );
 }
@@ -92,7 +137,6 @@ function PublicView({ barber }: { barber: BarberData }) {
   const specs = barber.specializations
     ? barber.specializations.split(",").map(s => s.trim()).filter(Boolean)
     : [];
-  const gradIdx = displayName.charCodeAt(0) % COVER_GRADS.length;
   const telegramHandle = barber.telegramUsername?.replace("@", "") || null;
   const instagramHandle = barber.instagram?.replace("@", "") || null;
 
@@ -118,41 +162,14 @@ function PublicView({ barber }: { barber: BarberData }) {
 
   return (
     <div className="pb-16 -mx-4">
-      {/* Hero */}
-      <div className="relative">
-        <div className="w-full h-48 relative overflow-hidden">
-          {galleryImages.length > 0 ? (
-            <img src={galleryImages[0]} className="w-full h-full object-cover" alt="" />
-          ) : barber.avatarUrl ? (
-            <img src={barber.avatarUrl} className="w-full h-full object-cover" alt="" />
-          ) : (
-            <div className="w-full h-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
-              <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(45deg,#ffffff08 0,#ffffff08 1px,transparent 0,transparent 50%)", backgroundSize: "20px 20px" }} />
-              <div className={`absolute inset-0 bg-gradient-to-br ${COVER_GRADS[gradIdx]}`} />
-            </div>
-          )}
-          <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-background to-transparent" />
-        </div>
-
-        <div className="absolute bottom-0 left-4 translate-y-8">
-          <div className="w-20 h-20 rounded-full border-4 border-background overflow-hidden bg-gradient-to-br from-primary/40 to-primary/15 flex items-center justify-center shadow-2xl shadow-black/40">
-            {barber.avatarUrl ? (
-              <img src={barber.avatarUrl} className="w-full h-full object-cover" alt={displayName} />
-            ) : (
-              <span className="text-3xl font-bold text-primary uppercase">{displayName.charAt(0)}</span>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Photo mosaic */}
+      <GalleryMosaic images={galleryImages} avatar={barber.avatarUrl} displayName={displayName} />
 
       {/* Name + bio */}
-      <div className="px-4 pt-12 pb-3">
+      <div className="px-4 pt-3 pb-3">
         <h1 className="text-2xl font-display font-bold text-foreground mb-1">{displayName}</h1>
         {barber.bio && <p className="text-sm text-muted-foreground leading-relaxed">{barber.bio}</p>}
       </div>
-
-      {/* Gallery strip — always visible above tabs (1–5 images) */}
-      {galleryImages.length > 0 && <GalleryStrip images={galleryImages} />}
 
       {/* Tab bar */}
       <div className="px-4 mb-1 mt-1">
