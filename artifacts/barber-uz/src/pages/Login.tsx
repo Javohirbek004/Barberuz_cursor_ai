@@ -19,15 +19,31 @@ function generateAuthCode(): string {
     .join("");
 }
 
-/** Read stored auth code — survives page refresh. */
+/** Read stored auth code — survives page refresh. Returns null if older than 10 min. */
 function getStoredCode(): string | null {
-  return localStorage.getItem("telegram_auth_code");
+  const code = localStorage.getItem("telegram_auth_code");
+  const ts   = localStorage.getItem("telegram_auth_code_ts");
+  if (!code) return null;
+  if (ts && Date.now() - Number(ts) > 10 * 60 * 1000) {
+    localStorage.removeItem("telegram_auth_code");
+    localStorage.removeItem("telegram_auth_code_ts");
+    return null;
+  }
+  return code;
 }
 
 export default function Login() {
   const { t, lang } = useTranslation();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+
+  // Already logged in — skip login page entirely
+  useEffect(() => {
+    const token = localStorage.getItem("barber_token");
+    if (token && !new URLSearchParams(window.location.search).has("tg_code") && !new URLSearchParams(window.location.search).has("authToken")) {
+      navigate("/dashboard");
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -82,6 +98,7 @@ export default function Login() {
     const tgCode = params.get("tg_code");
     if (tgCode && !getStoredCode()) {
       localStorage.setItem("telegram_auth_code", tgCode);
+      localStorage.setItem("telegram_auth_code_ts", String(Date.now()));
       setTgState("waiting");
       // Clean up URL without triggering a reload
       window.history.replaceState({}, "", window.location.pathname);
@@ -92,6 +109,7 @@ export default function Login() {
   function startTelegramLogin() {
     const code = generateAuthCode();
     localStorage.setItem("telegram_auth_code", code);
+    localStorage.setItem("telegram_auth_code_ts", String(Date.now()));
     setTgState("waiting");
 
     const botUrl = `https://t.me/Barberuz_yordamchi_bot?start=auth_${code}_${lang}`;
@@ -101,6 +119,7 @@ export default function Login() {
   function cancelTelegramLogin() {
     stopPolling();
     localStorage.removeItem("telegram_auth_code");
+    localStorage.removeItem("telegram_auth_code_ts");
     setTgState("idle");
   }
 
@@ -133,6 +152,7 @@ export default function Login() {
         if (data.ready && data.token && data.user) {
           stopPolling();
           localStorage.removeItem("telegram_auth_code");
+          localStorage.removeItem("telegram_auth_code_ts");
           localStorage.setItem("barber_token", data.token);
           localStorage.setItem("barber_user", JSON.stringify(data.user));
           toast({ title: t("success") });

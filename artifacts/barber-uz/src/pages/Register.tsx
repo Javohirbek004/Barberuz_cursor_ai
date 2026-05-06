@@ -40,6 +40,9 @@ export default function Register() {
   const registerMutation = useRegisterUser({
     mutation: {
       onSuccess: (data) => {
+        // Clear any stale Telegram auth code from previous sessions
+        localStorage.removeItem("telegram_auth_code");
+        localStorage.removeItem("telegram_auth_code_ts");
         localStorage.setItem("barber_token", data.token);
         localStorage.setItem("barber_user", JSON.stringify(data.user));
         toast({ title: t("success") });

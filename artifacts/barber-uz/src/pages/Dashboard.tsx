@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-import { useLocation, Link } from "wouter";
+import { Link } from "wouter";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, useListBookings } from "@workspace/api-client-react";
@@ -377,14 +376,7 @@ function TeamDashboard() {
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { t, lang } = useTranslation();
-  const [, navigate] = useLocation();
   const { user, isLoading } = useAuth();
-
-  useEffect(() => {
-    if (!isLoading && user && !user.telegramVerified) {
-      navigate("/verify-telegram");
-    }
-  }, [user, isLoading, navigate]);
 
   if (isLoading || !user) return null;
 
