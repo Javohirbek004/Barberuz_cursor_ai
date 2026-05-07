@@ -68,8 +68,7 @@ const pendingVerifications = new Map<number, string>();
 const pendingBarberVerifications = new Map<number, { userId: string; name: string; shopName: string }>();
 
 /** Login step 1: chatId → { code, lang, step } */
-type AuthStep = "confirm" | "phone";
-const pendingAuthLogins = new Map<number, { code: string; lang: string; step: AuthStep }>();
+const pendingAuthLogins = new Map<number, { code: string; lang: string; step: "phone" }>();
 
 /** Login result: code → { token, userId, expiresAt } (kept 10 min so polling doesn't miss) */
 interface LoginResult {
@@ -254,29 +253,6 @@ async function sendVerificationSuccess(chatId: number, userId: string) {
 // ──────────────────────────────────────────────────────────────
 // Message senders — Login/Auth flow
 // ──────────────────────────────────────────────────────────────
-
-async function sendAuthConfirmation(chatId: number, userName: string, lang: string, code: string) {
-  const isUz = lang !== "ru";
-  const text = isUz
-    ? `<b>${userName}</b>, Barber.uz tizimiga kirishni tasdiqlaysizmi?`
-    : `<b>${userName}</b>, Вы подтверждаете вход в систему Barber.uz?`;
-  const yesText = isUz ? "✅ Ha, kirish" : "✅ Да, войти";
-  const noText  = isUz ? "❌ Yo'q" : "❌ Нет";
-
-  return callTelegram("sendMessage", {
-    chat_id: chatId,
-    text,
-    parse_mode: "HTML",
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: yesText, callback_data: `auth_yes_${code}` },
-          { text: noText,  callback_data: `auth_no_${code}` },
-        ],
-      ],
-    },
-  });
-}
 
 async function sendAuthPhoneRequest(chatId: number, lang: string) {
   const isUz = lang !== "ru";
