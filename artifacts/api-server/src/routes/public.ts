@@ -307,6 +307,9 @@ router.get("/barber/:slug", async (req, res) => {
       username: barber.username,
       address: barber.address,
       mapLink: barber.mapLink,
+      latitude: barber.latitude,
+      longitude: barber.longitude,
+      phoneVisible: barber.phoneVisible,
       instagram: barber.instagram,
       galleryImages: barber.galleryImages,
       services: services.map(s => ({

@@ -25,7 +25,9 @@ Professional Barber CRM Progressive Web App. Uzbek primary language, Russian sec
 - **Telegram Verification**: Bot link with polling for auto-redirect
 - **Dashboard**: Stat cards (Skanerlar, Kliklar, Bugungi Bronlar, Bugungi Daromad)
 - **Calendar**: Weekly/daily interactive schedule with booking slots
-- **Clients CRM**: Filters (Hammasi, Doimiy 🔥, Yangi ✨, Qora ro'yxat 🧊)
+- **Clients CRM**: Filters (Hammasi, Doimiy, Yangi, Qora ro'yxat)
+- **Profile — Asosiy tab (edit)**: map-based location picker (Leaflet + OSM), phone visibility toggle, lunch break toggle, Instagram username-only input
+- **Profile — Public view**: OSM iframe map preview + "Xaritada ochish" button, phone call button (if phoneVisible), lunch break pill, social links
 - **Settings**: Profile, Page placeholder, Notifications, Analytics, Security
 - **PWA**: manifest.json, installable on mobile
 - **Light/Dark mode**: Full theme support

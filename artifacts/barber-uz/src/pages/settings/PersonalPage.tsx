@@ -1,3 +1,4 @@
+import "leaflet/dist/leaflet.css";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { APP_ORIGIN, APP_DISPLAY_HOST } from "@/lib/config";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,7 +10,7 @@ import {
   ChevronLeft, Copy, Check, Download, Share2, Eye,
   Plus, X, Pencil, Trash2, Clock, MapPin,
   Instagram, Camera, ArrowLeft, ExternalLink, Send, Tag,
-  Navigation, Save,
+  Navigation, Save, Phone,
 } from "lucide-react";
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -24,8 +25,11 @@ export interface ProfileData {
   bio: string;
   speciality: string[];
   phone: string;        // read-only (from registration)
+  phoneVisible: boolean;
   address: string;
   mapLink: string;
+  latitude: string;
+  longitude: string;
   workDays: string[];   // ["mon","tue",...] — stored in scheduleJson
   workStart: string;
   workEnd: string;
@@ -98,7 +102,7 @@ const SOLO_BUSY = [
 
 const EMPTY_PROFILE: ProfileData = {
   name: "", brandName: "", bio: "", speciality: [],
-  phone: "", address: "", mapLink: "",
+  phone: "", phoneVisible: true, address: "", mapLink: "", latitude: "", longitude: "",
   workDays: [], workStart: "09:00", workEnd: "20:00",
   lunchEnabled: false, lunchStart: "13:00", lunchEnd: "14:00",
   telegram: "", instagram: "", avatarUrl: "", galleryImages: [],
@@ -214,8 +218,11 @@ function apiToProfile(api: Record<string, unknown>): ProfileData {
     bio: (api.bio as string) || "",
     speciality,
     phone: (api.phone as string) || "",
+    phoneVisible: api.phoneVisible !== false,
     address: (api.address as string) || "",
     mapLink: (api.mapLink as string) || "",
+    latitude: (api.latitude as string) || "",
+    longitude: (api.longitude as string) || "",
     workDays,
     workStart: (api.workingHoursStart as string) || "09:00",
     workEnd: (api.workingHoursEnd as string) || "20:00",
@@ -250,6 +257,9 @@ function profileToApi(p: ProfileData) {
     scheduleJson: JSON.stringify({ workDays: p.workDays }),
     address: p.address,
     mapLink: safeUrl(p.mapLink) ?? "",
+    latitude: p.latitude || null,
+    longitude: p.longitude || null,
+    phoneVisible: p.phoneVisible,
     instagram: p.instagram.replace(/^@+/, ""),
     avatarUrl: p.avatarUrl,
     galleryImages: JSON.stringify(p.galleryImages),
@@ -388,6 +398,145 @@ function CompletionBar({ profile }: { profile: ProfileData }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// MAP PICKER MODAL
+// ──────────────────────────────────────────────────────────────────────────────
+
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`,
+      { headers: { "Accept-Language": "uz,ru,en" } },
+    );
+    const data = await res.json();
+    return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  } catch {
+    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  }
+}
+
+function MapPickerModal({
+  initialLat,
+  initialLng,
+  onSave,
+  onClose,
+}: {
+  initialLat: number;
+  initialLng: number;
+  onSave: (lat: number, lng: number, address: string) => void;
+  onClose: () => void;
+}) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<unknown>(null);
+  const markerRef = useRef<unknown>(null);
+  const [address, setAddress] = useState("");
+  const [geocoding, setGeocoding] = useState(false);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    let destroyed = false;
+
+    import("leaflet").then((Lmod) => {
+      const L = Lmod.default ?? Lmod;
+      if (destroyed || !mapRef.current) return;
+
+      const iconBase = "https://unpkg.com/leaflet@1.9.4/dist/images/";
+      // @ts-expect-error leaflet private
+      delete L.Icon.Default.prototype._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: iconBase + "marker-icon-2x.png",
+        iconUrl: iconBase + "marker-icon.png",
+        shadowUrl: iconBase + "marker-shadow.png",
+      });
+
+      const map = (L as typeof import("leaflet")).map(mapRef.current!, {
+        center: [initialLat, initialLng],
+        zoom: 15,
+      });
+      (L as typeof import("leaflet")).tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        { attribution: "© OpenStreetMap" },
+      ).addTo(map as import("leaflet").Map);
+
+      const marker = (L as typeof import("leaflet")).marker(
+        [initialLat, initialLng],
+        { draggable: true },
+      ).addTo(map as import("leaflet").Map);
+
+      mapInstanceRef.current = map;
+      markerRef.current = marker;
+
+      async function handlePos(lat: number, lng: number) {
+        if (destroyed) return;
+        setGeocoding(true);
+        const addr = await reverseGeocode(lat, lng);
+        if (!destroyed) { setAddress(addr); setGeocoding(false); }
+      }
+
+      handlePos(initialLat, initialLng);
+
+      (marker as import("leaflet").Marker).on("dragend", () => {
+        const pos = (marker as import("leaflet").Marker).getLatLng();
+        handlePos(pos.lat, pos.lng);
+      });
+
+      (map as import("leaflet").Map).on("click", (e: import("leaflet").LeafletMouseEvent) => {
+        (marker as import("leaflet").Marker).setLatLng(e.latlng);
+        handlePos(e.latlng.lat, e.latlng.lng);
+      });
+    });
+
+    return () => {
+      destroyed = true;
+      if (mapInstanceRef.current) {
+        (mapInstanceRef.current as import("leaflet").Map).remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
+
+  function handleSave() {
+    const marker = markerRef.current as import("leaflet").Marker | null;
+    if (!marker) return;
+    const pos = marker.getLatLng();
+    onSave(pos.lat, pos.lng, address);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex flex-col bg-background">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-white/8 shrink-0 bg-background/95 backdrop-blur-sm">
+        <button
+          onClick={onClose}
+          className="w-9 h-9 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center shrink-0"
+        >
+          <X className="w-4 h-4" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-foreground">Manzilni xaritadan tanlang</p>
+          <p className={`text-xs truncate mt-0.5 ${geocoding ? "text-primary/60 animate-pulse" : "text-muted-foreground"}`}>
+            {geocoding ? "Manzil aniqlanmoqda..." : (address || "Xaritaga bosing yoki pin-ni sudrang")}
+          </p>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={geocoding}
+          className="h-9 px-4 rounded-xl bg-primary text-black text-xs font-bold disabled:opacity-50 shrink-0"
+        >
+          Saqlash
+        </button>
+      </div>
+      <div ref={mapRef} className="flex-1" style={{ minHeight: 0 }} />
+    </div>
+  );
+}
+
+function osmPreviewUrl(lat: string, lng: string): string {
+  const la = parseFloat(lat);
+  const lo = parseFloat(lng);
+  const d = 0.005;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${lo - d},${la - d},${lo + d},${la + d}&layer=mapnik&marker=${la},${lo}`;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // ASOSIY TAB — edit mode (no gallery/completion, those are page-level)
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -404,6 +553,7 @@ function AsosiyTab({
 }) {
   const imgRef = useRef<HTMLInputElement>(null);
   const [newTag, setNewTag] = useState("");
+  const [showMapModal, setShowMapModal] = useState(false);
 
   function set<K extends keyof ProfileData>(k: K, v: ProfileData[K]) {
     onChange({ ...profile, [k]: v });
@@ -539,42 +689,89 @@ function AsosiyTab({
         {profile.speciality.length === 0 && warn("Hech bo'lmaganda bitta teg qo'shing")}
       </div>
 
-      {/* Phone — read-only */}
-      <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Telefon (faqat admin ko'radi)</label>
-        <input
-          value={profile.phone}
-          readOnly
-          placeholder="+998 90 123 45 67"
-          className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/4 text-sm text-muted-foreground cursor-default focus:outline-none"
-        />
+      {/* Phone — read-only + visibility toggle */}
+      <div className="space-y-2">
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Telefon raqam</label>
+        <div className="flex items-center gap-3 bg-white/3 border border-white/6 rounded-2xl px-4 py-3">
+          <Phone className="w-4 h-4 text-primary/60 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-foreground font-medium">
+              {profile.phone || "Telegram orqali qo'shiladi"}
+            </p>
+            {profile.phone && (
+              <p className="text-[11px] text-muted-foreground/60 mt-0.5">Telegram orqali tasdiqlangan</p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs text-muted-foreground">Mijozlarga ko'rsatish</span>
+          <button
+            onClick={() => set("phoneVisible", !profile.phoneVisible)}
+            className={`relative w-10 h-5.5 rounded-full transition-all ${profile.phoneVisible ? "bg-primary" : "bg-white/10"}`}
+            style={{ height: 22, width: 40 }}
+          >
+            <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${profile.phoneVisible ? "translate-x-[18px]" : "translate-x-0"}`} />
+          </button>
+        </div>
       </div>
 
-      {/* Address */}
+      {/* Address / Map */}
       <div className="space-y-2">
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Manzil</label>
+
+        {profile.latitude && profile.longitude ? (
+          <div className="relative rounded-2xl overflow-hidden border border-white/10" style={{ height: 160 }}>
+            <iframe
+              src={osmPreviewUrl(profile.latitude, profile.longitude)}
+              className="w-full h-full"
+              style={{ border: 0, pointerEvents: "none" }}
+              scrolling="no"
+              loading="lazy"
+              title="Joylashuv"
+            />
+            <div className="absolute bottom-2 right-2">
+              <button
+                onClick={() => setShowMapModal(true)}
+                className="h-8 px-3 rounded-xl bg-black/70 backdrop-blur-sm text-white text-xs font-semibold flex items-center gap-1.5"
+              >
+                <Navigation className="w-3 h-3" /> O'zgartirish
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowMapModal(true)}
+            className="w-full h-28 rounded-2xl border border-dashed border-white/15 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:border-primary/30 hover:text-primary/80 transition-all"
+          >
+            <MapPin className="w-5 h-5" />
+            <span className="text-xs">Xaritadan manzil tanlash</span>
+          </button>
+        )}
+
         <input
           value={profile.address}
           onChange={e => set("address", e.target.value)}
-          placeholder="Toshkent, Chilonzor, 14-uy"
-          className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors"
+          placeholder="Manzilni qo'lda yozish"
+          className="w-full h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors"
         />
-        {!profile.address && warn("To'ldirilmagan")}
-        <div className="flex gap-2">
-          <input
-            value={profile.mapLink}
-            onChange={e => set("mapLink", e.target.value)}
-            placeholder="Google Maps havolasi"
-            className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-xs focus:outline-none focus:border-primary/50 text-muted-foreground"
-          />
-          {safeUrl(profile.mapLink) && (
-            <a href={safeUrl(profile.mapLink)!} target="_blank" rel="noopener noreferrer"
-              className="h-10 px-3 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center text-xs font-semibold gap-1.5 hover:bg-primary/20 transition-colors shrink-0">
-              <Navigation className="w-3.5 h-3.5" /> Ko'rish
-            </a>
-          )}
-        </div>
       </div>
+
+      {showMapModal && (
+        <MapPickerModal
+          initialLat={profile.latitude ? parseFloat(profile.latitude) : 41.2995}
+          initialLng={profile.longitude ? parseFloat(profile.longitude) : 69.2401}
+          onSave={(lat, lng, address) => {
+            onChange({
+              ...profile,
+              latitude: String(lat),
+              longitude: String(lng),
+              address: address,
+            });
+            setShowMapModal(false);
+          }}
+          onClose={() => setShowMapModal(false)}
+        />
+      )}
 
       {/* Work schedule */}
       <div className="space-y-3">
@@ -615,15 +812,27 @@ function AsosiyTab({
         </div>
 
         {/* Lunch */}
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">Tushlik vaqti (ixtiyoriy)</p>
-          <div className="flex items-center gap-2">
-            <input value={profile.lunchStart} onChange={e => set("lunchStart", e.target.value)} placeholder="13:00"
-              className="w-28 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm text-center focus:outline-none focus:border-primary/50" />
-            <span className="text-muted-foreground text-xs">—</span>
-            <input value={profile.lunchEnd} onChange={e => set("lunchEnd", e.target.value)} placeholder="14:00"
-              className="w-28 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm text-center focus:outline-none focus:border-primary/50" />
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">Tushlik vaqtini qo'shish</p>
+            <button
+              onClick={() => set("lunchEnabled", !profile.lunchEnabled)}
+              className={`relative rounded-full transition-all shrink-0`}
+              style={{ height: 22, width: 40 }}
+            >
+              <span className={`absolute inset-0 rounded-full transition-colors ${profile.lunchEnabled ? "bg-primary" : "bg-white/10"}`} />
+              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${profile.lunchEnabled ? "translate-x-[18px]" : "translate-x-0"}`} />
+            </button>
           </div>
+          {profile.lunchEnabled && (
+            <div className="flex items-center gap-2">
+              <input value={profile.lunchStart} onChange={e => set("lunchStart", e.target.value)} placeholder="13:00"
+                className="w-28 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm text-center focus:outline-none focus:border-primary/50" />
+              <span className="text-muted-foreground text-xs">—</span>
+              <input value={profile.lunchEnd} onChange={e => set("lunchEnd", e.target.value)} placeholder="14:00"
+                className="w-28 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm text-center focus:outline-none focus:border-primary/50" />
+            </div>
+          )}
         </div>
       </div>
 
@@ -636,27 +845,26 @@ function AsosiyTab({
           <div className="w-9 h-9 rounded-xl bg-[#2AABEE]/10 border border-[#2AABEE]/20 flex items-center justify-center shrink-0">
             <Send className="w-4 h-4 text-[#2AABEE]" />
           </div>
-          <input
-            value={profile.telegram || "Telegram orqali kirish orqali qo'shiladi"}
-            readOnly
-            className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/4 text-sm text-muted-foreground cursor-default focus:outline-none"
-          />
+          <div className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/4 flex items-center text-sm text-muted-foreground cursor-default">
+            {profile.telegram ? `@${profile.telegram.replace(/^@+/, "")}` : "Telegram orqali kirish orqali qo'shiladi"}
+          </div>
         </div>
 
-        {/* Instagram */}
+        {/* Instagram — username only, @ auto-prepended */}
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500/20 to-violet-500/20 border border-pink-500/20 flex items-center justify-center shrink-0">
             <Instagram className="w-4 h-4 text-pink-400" />
           </div>
-          <input
-            value={profile.instagram}
-            onChange={e => set("instagram", e.target.value)}
-            placeholder="@username"
-            className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50"
-          />
+          <div className="flex-1 h-10 rounded-xl bg-white/5 border border-white/8 flex items-center overflow-hidden focus-within:border-primary/50 transition-colors">
+            <span className="pl-3 pr-1 text-sm text-muted-foreground/60 select-none shrink-0">@</span>
+            <input
+              value={profile.instagram.replace(/^@+/, "")}
+              onChange={e => set("instagram", e.target.value.replace(/^@+/, ""))}
+              placeholder="username"
+              className="flex-1 h-full bg-transparent text-sm focus:outline-none pr-3"
+            />
+          </div>
         </div>
-
-        {!profile.telegram && !profile.instagram && warn("Kamida bitta ijtimoiy tarmoq kerak")}
       </div>
 
       {/* Save button */}

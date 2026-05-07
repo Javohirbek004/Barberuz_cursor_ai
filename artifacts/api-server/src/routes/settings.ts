@@ -16,6 +16,7 @@ function formatProfile(user: typeof usersTable.$inferSelect) {
     mode: user.mode,
     lang: user.lang,
     phone: user.phone,
+    phoneVisible: user.phoneVisible,
     workingHoursStart: user.workingHoursStart,
     workingHoursEnd: user.workingHoursEnd,
     telegramVerified: user.telegramVerified,
@@ -29,6 +30,8 @@ function formatProfile(user: typeof usersTable.$inferSelect) {
     lunchBreakEnd: user.lunchBreakEnd,
     address: user.address,
     mapLink: user.mapLink,
+    latitude: user.latitude,
+    longitude: user.longitude,
     instagram: user.instagram,
     galleryImages: user.galleryImages,
     slugChangedAt: user.slugChangedAt,
@@ -45,11 +48,12 @@ router.put("/profile", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
     const {
-      name, brandName, mode, lang, phone,
+      name, brandName, mode, lang, phone, phoneVisible,
       workingHoursStart, workingHoursEnd, bio, avatarUrl,
       specializations, scheduleJson,
       lunchBreakEnabled, lunchBreakStart, lunchBreakEnd,
-      address, mapLink: rawMapLink, instagram: rawInstagram, galleryImages,
+      address, mapLink: rawMapLink, latitude, longitude,
+      instagram: rawInstagram, galleryImages,
     } = req.body;
     const mapLink = typeof rawMapLink === "string"
       ? (/^https?:\/\//i.test(rawMapLink.trim()) ? rawMapLink.trim() : "")
@@ -64,6 +68,7 @@ router.put("/profile", authenticate, async (req, res) => {
         ...(mode !== undefined && { mode }),
         ...(lang !== undefined && { lang }),
         ...(phone !== undefined && { phone }),
+        ...(phoneVisible !== undefined && { phoneVisible }),
         ...(workingHoursStart !== undefined && { workingHoursStart }),
         ...(workingHoursEnd !== undefined && { workingHoursEnd }),
         ...(bio !== undefined && { bio }),
@@ -75,6 +80,8 @@ router.put("/profile", authenticate, async (req, res) => {
         ...(lunchBreakEnd !== undefined && { lunchBreakEnd }),
         ...(address !== undefined && { address }),
         ...(mapLink !== undefined && { mapLink }),
+        ...(latitude !== undefined && { latitude }),
+        ...(longitude !== undefined && { longitude }),
         ...(instagram !== undefined && { instagram }),
         ...(galleryImages !== undefined && { galleryImages }),
         updatedAt: new Date(),

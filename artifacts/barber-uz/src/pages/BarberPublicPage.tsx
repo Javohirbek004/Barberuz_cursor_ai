@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Send, MapPin, Instagram } from "lucide-react";
+import { Clock, Send, MapPin, Instagram, Phone } from "lucide-react";
 
 interface BarberData {
   id: string;
@@ -11,6 +11,7 @@ interface BarberData {
   bio: string | null;
   avatarUrl: string | null;
   phone: string | null;
+  phoneVisible: boolean;
   specializations: string | null;
   mode: string;
   lang: string;
@@ -24,6 +25,8 @@ interface BarberData {
   username: string;
   address: string | null;
   mapLink: string | null;
+  latitude: string | null;
+  longitude: string | null;
   instagram: string | null;
   galleryImages: string | null;
   services: Array<{
@@ -39,6 +42,18 @@ function safeHref(url: string | null | undefined): string | null {
   if (!url) return null;
   const t = url.trim();
   return /^https?:\/\//i.test(t) ? t : null;
+}
+
+function osmEmbedUrl(lat: string, lng: string): string {
+  const la = parseFloat(lat);
+  const lo = parseFloat(lng);
+  const delta = 0.005;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${lo - delta},${la - delta},${lo + delta},${la + delta}&layer=mapnik&marker=${la},${lo}`;
+}
+
+function mapsHref(lat: string, lng: string, mapLink: string | null): string {
+  if (mapLink && /^https?:\/\//i.test(mapLink)) return mapLink;
+  return `https://www.google.com/maps?q=${lat},${lng}`;
 }
 
 const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
@@ -172,31 +187,79 @@ function PublicView({ barber }: { barber: BarberData }) {
               )}
 
               {(barber.workingHoursStart || workDaysLabel) && (
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
-                  <Clock className="w-3.5 h-3.5 text-primary/70 shrink-0" />
-                  <span>
-                    {workDaysLabel ? `${workDaysLabel} · ` : ""}
-                    {barber.workingHoursStart || "09:00"}–{barber.workingHoursEnd || "20:00"}
-                  </span>
+                <div className="flex flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
+                    <Clock className="w-3.5 h-3.5 text-primary/70 shrink-0" />
+                    <span>
+                      {workDaysLabel ? `${workDaysLabel} · ` : ""}
+                      {barber.workingHoursStart || "09:00"}–{barber.workingHoursEnd || "20:00"}
+                    </span>
+                  </div>
+                  {barber.lunchBreakEnabled && barber.lunchBreakStart && barber.lunchBreakEnd && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
+                      <span>🍽</span>
+                      <span>Tushlik: {barber.lunchBreakStart}–{barber.lunchBreakEnd}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {barber.address && (() => {
-                const href = safeHref(barber.mapLink);
-                const Tag = href ? "a" : "div";
-                const extraProps = href ? { href, target: "_blank" as const, rel: "noopener noreferrer" } : {};
-                return (
-                  <Tag {...extraProps} className="flex items-center gap-3 bg-card border border-white/8 rounded-2xl p-3.5 hover:border-white/15 transition-colors">
-                    <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                      <MapPin className="w-4 h-4 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground truncate">{barber.address}</p>
-                      {href && <p className="text-xs text-primary mt-0.5">Xaritada ko'rish →</p>}
-                    </div>
-                  </Tag>
-                );
-              })()}
+              {barber.phoneVisible && barber.phone && (
+                <a
+                  href={`tel:${barber.phone}`}
+                  className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-500/8 border border-emerald-500/20 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/15 transition-colors"
+                >
+                  <Phone className="w-4 h-4 shrink-0" />
+                  <span>Qo'ng'iroq qilish</span>
+                  <span className="ml-auto text-xs text-emerald-400/70">{barber.phone}</span>
+                </a>
+              )}
+
+              {(barber.latitude && barber.longitude) ? (
+                <div className="space-y-2">
+                  <div className="rounded-2xl overflow-hidden border border-white/8" style={{ height: 160 }}>
+                    <iframe
+                      src={osmEmbedUrl(barber.latitude, barber.longitude)}
+                      className="w-full h-full"
+                      style={{ border: 0, pointerEvents: "none" }}
+                      scrolling="no"
+                      loading="lazy"
+                      title="Joylashuv"
+                    />
+                  </div>
+                  {barber.address && (
+                    <p className="text-sm text-muted-foreground px-0.5 flex items-start gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary/60" />
+                      <span className="truncate">{barber.address}</span>
+                    </p>
+                  )}
+                  <a
+                    href={mapsHref(barber.latitude, barber.longitude, barber.mapLink)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-card border border-white/8 text-sm font-semibold text-primary hover:border-primary/30 transition-colors"
+                  >
+                    <MapPin className="w-4 h-4" /> Xaritada ochish
+                  </a>
+                </div>
+              ) : barber.address ? (
+                (() => {
+                  const href = safeHref(barber.mapLink);
+                  const Tag = href ? "a" : "div";
+                  const extraProps = href ? { href, target: "_blank" as const, rel: "noopener noreferrer" } : {};
+                  return (
+                    <Tag {...extraProps} className="flex items-center gap-3 bg-card border border-white/8 rounded-2xl p-3.5 hover:border-white/15 transition-colors">
+                      <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                        <MapPin className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-foreground truncate">{barber.address}</p>
+                        {href && <p className="text-xs text-primary mt-0.5">Xaritada ko'rish →</p>}
+                      </div>
+                    </Tag>
+                  );
+                })()
+              ) : null}
 
               {(telegramHandle || instagramHandle) && (
                 <div className="space-y-2">
