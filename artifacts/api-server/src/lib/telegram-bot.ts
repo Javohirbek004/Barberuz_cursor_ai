@@ -333,15 +333,6 @@ async function sendLoginSuccess(
   });
 }
 
-async function sendLoginCancelled(chatId: number, lang: string) {
-  const isUz = lang !== "ru";
-  return callTelegram("sendMessage", {
-    chat_id: chatId,
-    text: isUz ? "Kirish bekor qilindi." : "Вход отменён.",
-    reply_markup: { remove_keyboard: true },
-  });
-}
-
 async function sendNotRegistered(chatId: number, lang: string) {
   const isUz = lang !== "ru";
   return callTelegram("sendMessage", {
@@ -355,14 +346,6 @@ async function sendNotRegistered(chatId: number, lang: string) {
         [{ text: isUz ? "\uD83C\uDF10 Ro\u02BByxatdan o\u02BBtish" : "\uD83C\uDF10 Зарегистрироваться", url: `${getAppUrl()}/register` }],
       ],
     },
-  });
-}
-
-async function sendGenericWelcome(chatId: number) {
-  return callTelegram("sendMessage", {
-    chat_id: chatId,
-    text: "👋 Salom!\n\nIltimos, barber_uz ilovasidan berilgan maxsus link orqali kiring",
-    reply_markup: { remove_keyboard: true },
   });
 }
 
@@ -536,6 +519,11 @@ export async function handleTelegramUpdate(update: unknown) {
   // Telegram always shows a text input alongside the keyboard — users may
   // accidentally type instead of pressing the contact button. Re-prompt them.
   if (text && !text.startsWith("/")) {
+    const authPendingText = pendingAuthLogins.get(chatId);
+    if (authPendingText && authPendingText.step === "phone") {
+      await sendAuthPhoneRequest(chatId, authPendingText.lang);
+      return;
+    }
     if (pendingVerifications.has(chatId)) {
       const userId = pendingVerifications.get(chatId)!;
       const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -573,6 +561,14 @@ async function handleNoPayloadStart(
 ) {
   const firstName = (from?.first_name as string) || "Barber";
   log("reg_start", { chatId, telegramUserId: String(from?.id || chatId) });
+
+  // If an active login (auth_) flow is in progress, re-send the phone request
+  // so the user doesn't see the generic welcome message mid-login.
+  const authPending = pendingAuthLogins.get(chatId);
+  if (authPending) {
+    await sendAuthPhoneRequest(chatId, authPending.lang);
+    return;
+  }
 
   // Check if already linked
   const [user] = await db
@@ -848,6 +844,7 @@ async function handleAuthStart(chatId: number, code: string, lang: string, _from
   console.log(`[TelegramBot] Auth start: chatId=${chatId} code=${code} lang=${lang}`);
   // Always verify by phone — skipping telegramId fast-path so every login is phone-confirmed
   pendingAuthLogins.delete(chatId); // clear any stale pending state
+  pendingPhoneLogins.delete(chatId); // clear no-payload flow if active
   pendingAuthLogins.set(chatId, { code, lang, step: "phone" });
   await sendAuthPhoneRequest(chatId, lang);
 }
@@ -860,51 +857,6 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
 
   // Always answer the callback to remove the loading spinner
   await callTelegram("answerCallbackQuery", { callback_query_id: callbackId });
-
-  if (callbackData.startsWith("auth_yes_")) {
-    const code    = callbackData.slice("auth_yes_".length);
-    const pending = pendingAuthLogins.get(chatId);
-
-    // Verify the code matches what we stored for this chatId
-    if (!pending || pending.code !== code) {
-      console.warn(`[TelegramBot] auth_yes: code mismatch for chatId=${chatId}`);
-      return;
-    }
-
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.telegramId, String(chatId)))
-      .limit(1);
-
-    if (!user) {
-      console.warn(`[TelegramBot] auth_yes: user not found for chatId=${chatId}`);
-      return;
-    }
-
-    const token = generateToken(user.id);
-    pendingLoginResults.set(code, {
-      token,
-      userId: user.id,
-      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
-    });
-    pendingAuthLogins.delete(chatId);
-
-    const firstName = (from.first_name as string) || user.name;
-    console.log(`[TelegramBot] Auth confirmed: userId=${user.id} code=${code}`);
-    await sendLoginSuccess(chatId, pending.lang, code, token, firstName);
-    return;
-  }
-
-  if (callbackData.startsWith("auth_no_")) {
-    const code    = callbackData.slice("auth_no_".length);
-    const pending = pendingAuthLogins.get(chatId);
-    const lang    = pending?.lang || "uz";
-    pendingAuthLogins.delete(chatId);
-    console.log(`[TelegramBot] Auth cancelled: chatId=${chatId} code=${code}`);
-    await sendLoginCancelled(chatId, lang);
-    return;
-  }
 
   if (callbackData.startsWith("book_confirm_")) {
     const sessionId = callbackData.slice("book_confirm_".length);
