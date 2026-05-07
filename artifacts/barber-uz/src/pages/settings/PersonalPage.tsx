@@ -754,6 +754,25 @@ function AsosiyTab({
           placeholder="Manzilni qo'lda yozish"
           className="w-full h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors"
         />
+
+        <div className="flex gap-2">
+          <input
+            value={profile.mapLink}
+            onChange={e => set("mapLink", e.target.value)}
+            placeholder="Google Maps / Yandex Maps havolasi"
+            className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-xs text-muted-foreground focus:outline-none focus:border-primary/50 transition-colors"
+          />
+          {safeUrl(profile.mapLink) && (
+            <a
+              href={safeUrl(profile.mapLink)!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-10 px-3 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center text-xs font-semibold gap-1.5 hover:bg-primary/20 transition-colors shrink-0"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          )}
+        </div>
       </div>
 
       {showMapModal && (

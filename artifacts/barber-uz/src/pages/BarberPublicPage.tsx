@@ -72,21 +72,8 @@ function formatPrice(n: number) {
 }
 
 
-function GalleryMosaic({ images, avatar, displayName }: { images: string[]; avatar: string | null; displayName: string }) {
-  if (images.length === 0) {
-    return (
-      <div className="w-full h-48 overflow-hidden relative">
-        {avatar ? (
-          <img src={avatar} className="w-full h-full object-cover" alt={displayName} />
-        ) : (
-          <div className="w-full h-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 flex items-center justify-center">
-            <span className="text-7xl font-bold text-primary/30 uppercase select-none">{displayName.charAt(0)}</span>
-          </div>
-        )}
-        <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background to-transparent" />
-      </div>
-    );
-  }
+function GalleryStrip({ images }: { images: string[] }) {
+  if (images.length === 0) return null;
 
   return (
     <div className="overflow-x-auto scrollbar-hide">
@@ -139,8 +126,8 @@ function PublicView({ barber }: { barber: BarberData }) {
 
   return (
     <div className="pb-16 -mx-4">
-      {/* Photo mosaic */}
-      <GalleryMosaic images={galleryImages} avatar={barber.avatarUrl} displayName={displayName} />
+      {/* Gallery strip — hidden when empty */}
+      <GalleryStrip images={galleryImages} />
 
       {/* Name + bio */}
       <div className="px-4 pt-3 pb-3">
