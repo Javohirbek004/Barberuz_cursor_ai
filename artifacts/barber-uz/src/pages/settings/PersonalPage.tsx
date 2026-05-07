@@ -554,9 +554,35 @@ function AsosiyTab({
   const imgRef = useRef<HTMLInputElement>(null);
   const [newTag, setNewTag] = useState("");
   const [showMapModal, setShowMapModal] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
 
   function set<K extends keyof ProfileData>(k: K, v: ProfileData[K]) {
     onChange({ ...profile, [k]: v });
+  }
+
+  function handleGPS() {
+    if (!navigator.geolocation) {
+      setGpsError("Brauzer joylashuvni qo'llab-quvvatlamaydi");
+      return;
+    }
+    setGpsLoading(true);
+    setGpsError(null);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const addr = await reverseGeocode(lat, lng);
+        onChange({ ...profile, latitude: String(lat), longitude: String(lng), address: addr });
+        setGpsLoading(false);
+      },
+      (err) => {
+        setGpsLoading(false);
+        if (err.code === 1) setGpsError("Joylashuvga ruxsat berilmadi");
+        else setGpsError("Joylashuvni aniqlab bo'lmadi");
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
   }
 
   function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -695,8 +721,8 @@ function AsosiyTab({
         <div className="flex items-center gap-3 bg-white/3 border border-white/6 rounded-2xl px-4 py-3">
           <Phone className="w-4 h-4 text-primary/60 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-foreground font-medium">
-              {profile.phone || "Telegram orqali qo'shiladi"}
+            <p className={`text-sm font-medium ${profile.phone ? "text-foreground" : "text-muted-foreground/60"}`}>
+              {profile.phone || "Kiritilmagan"}
             </p>
             {profile.phone && (
               <p className="text-[11px] text-muted-foreground/60 mt-0.5">Telegram orqali tasdiqlangan</p>
@@ -729,23 +755,50 @@ function AsosiyTab({
               loading="lazy"
               title="Joylashuv"
             />
-            <div className="absolute bottom-2 right-2">
+            <div className="absolute bottom-2 right-2 flex gap-1.5">
+              <button
+                onClick={handleGPS}
+                disabled={gpsLoading}
+                title="Joriy joylashuvni aniqlash"
+                className="h-8 px-3 rounded-xl bg-black/70 backdrop-blur-sm text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-60"
+              >
+                {gpsLoading
+                  ? <span className="w-3 h-3 border border-white/50 border-t-white rounded-full animate-spin" />
+                  : <Navigation className="w-3 h-3" />
+                }
+              </button>
               <button
                 onClick={() => setShowMapModal(true)}
                 className="h-8 px-3 rounded-xl bg-black/70 backdrop-blur-sm text-white text-xs font-semibold flex items-center gap-1.5"
               >
-                <Navigation className="w-3 h-3" /> O'zgartirish
+                <MapPin className="w-3 h-3" /> O'zgartirish
               </button>
             </div>
           </div>
         ) : (
-          <button
-            onClick={() => setShowMapModal(true)}
-            className="w-full h-28 rounded-2xl border border-dashed border-white/15 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:border-primary/30 hover:text-primary/80 transition-all"
-          >
-            <MapPin className="w-5 h-5" />
-            <span className="text-xs">Xaritadan manzil tanlash</span>
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowMapModal(true)}
+              className="flex-1 h-24 rounded-2xl border border-dashed border-white/15 flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:border-primary/30 hover:text-primary/80 transition-all"
+            >
+              <MapPin className="w-4 h-4" />
+              <span className="text-xs">Xaritadan tanlash</span>
+            </button>
+            <button
+              onClick={handleGPS}
+              disabled={gpsLoading}
+              className="flex-1 h-24 rounded-2xl border border-dashed border-emerald-500/25 flex flex-col items-center justify-center gap-1.5 text-emerald-400/70 hover:border-emerald-500/50 hover:text-emerald-400 transition-all disabled:opacity-50"
+            >
+              {gpsLoading
+                ? <span className="w-4 h-4 border border-emerald-400/50 border-t-emerald-400 rounded-full animate-spin" />
+                : <Navigation className="w-4 h-4" />
+              }
+              <span className="text-xs">{gpsLoading ? "Aniqlanmoqda..." : "Joylashuvimni aniqlash"}</span>
+            </button>
+          </div>
+        )}
+        {gpsError && (
+          <p className="text-xs text-destructive/80 px-1">{gpsError}</p>
         )}
 
         <input
@@ -859,14 +912,28 @@ function AsosiyTab({
       <div className="space-y-3">
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ijtimoiy tarmoqlar</label>
 
-        {/* Telegram — read-only */}
+        {/* Telegram — read-only, clickable if username set */}
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-xl bg-[#2AABEE]/10 border border-[#2AABEE]/20 flex items-center justify-center shrink-0">
             <Send className="w-4 h-4 text-[#2AABEE]" />
           </div>
-          <div className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/4 flex items-center text-sm text-muted-foreground cursor-default">
-            {profile.telegram ? `@${profile.telegram.replace(/^@+/, "")}` : "Telegram orqali kirish orqali qo'shiladi"}
-          </div>
+          {profile.telegram ? (
+            <div className="flex-1 h-10 rounded-xl bg-white/5 border border-white/8 flex items-center overflow-hidden">
+              <span className="pl-3 pr-1 text-sm text-muted-foreground/60 select-none shrink-0">@</span>
+              <a
+                href={`https://t.me/${profile.telegram.replace(/^@+/, "")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 h-full flex items-center text-sm text-[#2AABEE] hover:underline pr-3"
+              >
+                {profile.telegram.replace(/^@+/, "")}
+              </a>
+            </div>
+          ) : (
+            <div className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/4 flex items-center text-sm text-muted-foreground/50 cursor-default">
+              Telegram orqali kirish orqali qo'shiladi
+            </div>
+          )}
         </div>
 
         {/* Instagram — username only, @ auto-prepended */}
@@ -1664,31 +1731,78 @@ export function CustomerView({ profile, services, isTeam, barberId }: {
                 </div>
               )}
               {(workDaysLabel || profile.workStart) && (
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-4 bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
-                  <Clock className="w-3.5 h-3.5 text-primary/70 shrink-0" />
-                  <span>{workDaysLabel ? `${workDaysLabel} · ` : ""}{profile.workStart}–{profile.workEnd}</span>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
+                    <Clock className="w-3.5 h-3.5 text-primary/70 shrink-0" />
+                    <span>{workDaysLabel ? `${workDaysLabel} · ` : ""}{profile.workStart}–{profile.workEnd}</span>
+                  </div>
+                  {profile.lunchEnabled && profile.lunchStart && profile.lunchEnd && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
+                      <span>🍽</span>
+                      <span>Tushlik: {profile.lunchStart}–{profile.lunchEnd}</span>
+                    </div>
+                  )}
                 </div>
               )}
-              {profile.address && (() => {
-                const href = safeUrl(profile.mapLink);
-                const Tag = href ? "a" : "div";
-                const extraProps = href ? { href, target: "_blank" as const, rel: "noopener noreferrer" } : {};
-                return (
-                  <Tag {...extraProps} className="block bg-card border border-white/8 rounded-2xl overflow-hidden mb-4 hover:border-white/15 transition-colors">
-                    <div className="h-16 bg-zinc-900 relative overflow-hidden">
-                      <div className="absolute inset-0 opacity-15" style={{ backgroundImage: "linear-gradient(#4af 1px,transparent 1px),linear-gradient(90deg,#4af 1px,transparent 1px)", backgroundSize: "30px 30px" }} />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-5 h-5 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-white" /></div>
+              {profile.phoneVisible && profile.phone && (
+                <a
+                  href={`tel:${profile.phone}`}
+                  className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-500/8 border border-emerald-500/20 text-emerald-400 text-sm font-semibold mb-4 hover:bg-emerald-500/15 transition-colors"
+                >
+                  <Phone className="w-4 h-4 shrink-0" />
+                  <span>Qo'ng'iroq qilish</span>
+                  <span className="ml-auto text-xs text-emerald-400/70">{profile.phone}</span>
+                </a>
+              )}
+              {(profile.latitude && profile.longitude) ? (
+                <div className="mb-4 space-y-2">
+                  <div className="rounded-2xl overflow-hidden border border-white/8" style={{ height: 140 }}>
+                    <iframe
+                      src={osmPreviewUrl(profile.latitude, profile.longitude)}
+                      className="w-full h-full"
+                      style={{ border: 0, pointerEvents: "none" }}
+                      scrolling="no"
+                      loading="lazy"
+                      title="Joylashuv"
+                    />
+                  </div>
+                  {profile.address && (
+                    <p className="text-xs text-muted-foreground px-0.5 flex items-center gap-1.5">
+                      <MapPin className="w-3 h-3 shrink-0 text-primary/60" />
+                      <span className="truncate">{profile.address}</span>
+                    </p>
+                  )}
+                  <a
+                    href={safeUrl(profile.mapLink) || `https://www.google.com/maps?q=${profile.latitude},${profile.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl bg-card border border-white/8 text-xs font-semibold text-primary hover:border-primary/30 transition-colors"
+                  >
+                    <MapPin className="w-3.5 h-3.5" /> Xaritada ochish
+                  </a>
+                </div>
+              ) : profile.address ? (
+                (() => {
+                  const href = safeUrl(profile.mapLink);
+                  const Tag = href ? "a" : "div";
+                  const extraProps = href ? { href, target: "_blank" as const, rel: "noopener noreferrer" } : {};
+                  return (
+                    <Tag {...extraProps} className="block bg-card border border-white/8 rounded-2xl overflow-hidden mb-4 hover:border-white/15 transition-colors">
+                      <div className="h-16 bg-zinc-900 relative overflow-hidden">
+                        <div className="absolute inset-0 opacity-15" style={{ backgroundImage: "linear-gradient(#4af 1px,transparent 1px),linear-gradient(90deg,#4af 1px,transparent 1px)", backgroundSize: "30px 30px" }} />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="w-5 h-5 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-white" /></div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="px-4 py-3 flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-primary shrink-0" />
-                      <span className="text-sm text-foreground flex-1">{profile.address}</span>
-                      {href && <span className="text-xs text-primary font-semibold">Ko'rish →</span>}
-                    </div>
-                  </Tag>
-                );
-              })()}
+                      <div className="px-4 py-3 flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-primary shrink-0" />
+                        <span className="text-sm text-foreground flex-1">{profile.address}</span>
+                        {href && <span className="text-xs text-primary font-semibold">Ko'rish →</span>}
+                      </div>
+                    </Tag>
+                  );
+                })()
+              ) : null}
               {(profile.telegram || profile.instagram) && (
                 <div className="mb-5 space-y-2">
                   {profile.telegram && (
