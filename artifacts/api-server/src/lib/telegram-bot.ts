@@ -81,9 +81,6 @@ const pendingLoginResults = new Map<string, LoginResult>();
 /** Secure login tokens: token → { userId, expiresAt } — single use, 5 min */
 const loginTokens = new Map<string, { userId: string; expiresAt: number }>();
 
-/** No-payload /start: chatId waiting for contact share to link account by phone */
-const pendingPhoneLogins = new Map<number, true>();
-
 /** Called by auth route to store a secure login token before sending deep link */
 export function storeLoginToken(token: string, userId: string, ttlMs = 5 * 60 * 1000) {
   loginTokens.set(token, { userId, expiresAt: Date.now() + ttlMs });
@@ -145,13 +142,6 @@ async function callTelegram(
 function validateAppUrl(url: string): boolean {
   if (!url || !url.startsWith("https://")) return false;
   try { new URL(url); return true; } catch { return false; }
-}
-
-function buildProfileUrl(authToken: string): string {
-  const base = getAppUrl();
-  // Points to /login so the Login page can read ?authToken= and auto-sign in
-  const url = `${base}/login?authToken=${encodeURIComponent(authToken)}`;
-  return validateAppUrl(url) ? url : "";
 }
 
 /**
@@ -480,12 +470,6 @@ export async function handleTelegramUpdate(update: unknown) {
       return;
     }
 
-    // No-payload /start flow: look up by phone, link account
-    if (pendingPhoneLogins.has(chatId)) {
-      await handlePhoneLoginContact(chatId, phone, tgUserId, tgUsername);
-      return;
-    }
-
     // Otherwise it's the registration verification flow
     await handleRegContact(chatId, phone, tgUserId, tgUsername);
     return;
@@ -505,23 +489,6 @@ export async function handleTelegramUpdate(update: unknown) {
       const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
       const name = user?.name || "Barber";
       await sendContactRequest(chatId, name);
-      return;
-    }
-    if (pendingPhoneLogins.has(chatId)) {
-      const firstName = (from?.first_name as string) || "Barber";
-      await callTelegram("sendMessage", {
-        chat_id: chatId,
-        text:
-          `Assalomu alaykum, ${firstName}! \uD83D\uDC4B\n` +
-          `Men sizning shaxsiy yordamchingizman.\n\n` +
-          `Endi mijozlaringiz yozilsa sizga darhol xabar beraman.\n\n` +
-          `\uD83D\uDCF2 Ilovadan to\u02BBliq foydalanish uchun raqamingizni tasdiqlang:`,
-        reply_markup: {
-          keyboard: [[{ text: "\uD83D\uDCF1 Raqamni yuborish", request_contact: true }]],
-          resize_keyboard: true,
-          one_time_keyboard: true,
-        },
-      });
       return;
     }
   }
@@ -574,83 +541,15 @@ async function handleNoPayloadStart(
     return;
   }
 
-  // Not linked — ask for phone
-  pendingPhoneLogins.set(chatId, true);
+  // Not linked — guide to app (no phone prompt, no state)
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text:
-      `Assalomu alaykum, <b>${firstName}</b>! \uD83D\uDC4B\n\n` +
-      `Men sizning shaxsiy yordamchingizman.\n\n` +
-      `Endi mijozlaringiz yozilsa sizga darhol xabar beraman.\n\n` +
-      `\uD83D\uDCF2 Ilovadan to\u02BBliq foydalanish uchun raqamingizni tasdiqlang:`,
-    parse_mode: "HTML",
+    text: "Assalomu alaykum! \uD83D\uDC4B\n\nRo\u02BByxatdan o\u02BBtish yoki kirish uchun ilovadan foydalaning:",
     reply_markup: {
-      keyboard: [[{ text: "\uD83D\uDCF1 Raqamni yuborish", request_contact: true }]],
-      resize_keyboard: true,
-      one_time_keyboard: true,
+      remove_keyboard: true,
+      inline_keyboard: [[{ text: "\uD83C\uDF10 Ilovaga o\u02BBtish", url: `${getAppUrl()}/register` }]],
     },
   });
-}
-
-async function handlePhoneLoginContact(
-  chatId: number,
-  phone: string | null,
-  tgUserId: string,
-  tgUsername: string | null,
-) {
-  pendingPhoneLogins.delete(chatId);
-
-  if (!phone) {
-    await callTelegram("sendMessage", {
-      chat_id: chatId,
-      text: "Telefon raqam olinmadi. Iltimos, qayta urinib ko\u02BBring.",
-      reply_markup: { remove_keyboard: true },
-    });
-    return;
-  }
-
-  log("reg_contact", { chatId, telegramUserId: tgUserId, phone });
-
-  // Build all phone variants to maximise match rate regardless of storage format
-  const noSpaces   = phone.replace(/\s+/g, "");
-  const noPlus     = noSpaces.replace(/^\+/, "");
-  const withPlus   = `+${noPlus}`;
-  const phonesToTry = [...new Set([phone, noSpaces, noPlus, withPlus])];
-
-  let foundUser: typeof usersTable.$inferSelect | undefined;
-  for (const variant of phonesToTry) {
-    const [match] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.phone, variant))
-      .limit(1);
-    if (match) { foundUser = match; break; }
-  }
-
-  if (!foundUser) {
-    await callTelegram("sendMessage", {
-      chat_id: chatId,
-      text:
-        "Bu raqam bilan hisob topilmadi. \uD83D\uDE4F\n\n" +
-        "Iltimos, ilovadan ro\u02BByxatdan o\u02BBting:",
-      reply_markup: {
-        remove_keyboard: true,
-        inline_keyboard: [[{ text: "\uD83D\uDD17 Ro\u02BByxatdan o\u02BBtish", url: `${getAppUrl()}/register` }]],
-      },
-    });
-    return;
-  }
-
-  await db.update(usersTable).set({
-    telegramVerified: true,
-    telegramId: tgUserId,
-    telegramUsername: tgUsername,
-    phone,
-    updatedAt: new Date(),
-  }).where(eq(usersTable.id, foundUser.id));
-
-  log("reg_verified", { chatId, userId: foundUser.id, telegramUserId: tgUserId });
-  await sendVerificationSuccess(chatId, foundUser.id);
 }
 
 async function handleRegStart(chatId: number, userId: string, _lang: string, from?: Record<string, unknown>) {
@@ -820,7 +719,6 @@ async function handleAuthStart(chatId: number, code: string, lang: string, _from
   console.log(`[TelegramBot] Auth start: chatId=${chatId} code=${code} lang=${lang}`);
   // Always verify by phone — skipping telegramId fast-path so every login is phone-confirmed
   pendingAuthLogins.delete(chatId); // clear any stale pending state
-  pendingPhoneLogins.delete(chatId); // clear no-payload flow if active
   pendingAuthLogins.set(chatId, { code, lang, step: "phone" });
   await sendAuthPhoneRequest(chatId, lang);
 }
