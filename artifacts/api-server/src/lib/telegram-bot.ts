@@ -582,6 +582,14 @@ async function handleRegStart(chatId: number, userId: string, _lang: string, fro
     return;
   }
 
+  // Clear any stale auth state so phone share routes to reg flow, not auth flow
+  pendingAuthLogins.delete(chatId);
+
+  // Persist chatId on user record so we can recover the session after a server restart
+  await db.update(usersTable)
+    .set({ telegramId: String(chatId), updatedAt: new Date() })
+    .where(eq(usersTable.id, userId));
+
   pendingVerifications.set(chatId, userId);
   console.log(`[TelegramBot] Reg: pending chatId=${chatId} → userId=${userId}`);
   await sendContactRequest(chatId, user.name);
@@ -848,11 +856,35 @@ async function handleRegContact(
   tgUserId: string,
   tgUsername: string | null,
 ) {
-  const userId = pendingVerifications.get(chatId);
+  // Primary: in-memory session (normal flow)
+  let userId = pendingVerifications.get(chatId);
+
+  // Fallback: server may have restarted — recover via telegramId written in handleRegStart
+  if (!userId) {
+    const [recovered] = await db
+      .select()
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.telegramId, String(chatId)),
+          eq(usersTable.telegramVerified, false),
+        ),
+      )
+      .limit(1);
+    if (recovered) {
+      userId = recovered.id;
+      console.log(`[TelegramBot] Reg contact: recovered session from DB chatId=${chatId} userId=${userId}`);
+    }
+  }
+
   if (!userId) {
     await callTelegram("sendMessage", {
       chat_id: chatId,
-      text: "Tasdiqlash sessiyasi topilmadi. Iltimos, ilovadan qayta harakat qiling.",
+      text: "Ro\u02BByxatdan o\u02BBtish uchun ilovadan maxsus havola oling:",
+      reply_markup: {
+        remove_keyboard: true,
+        inline_keyboard: [[{ text: "\uD83C\uDF10 Ilovaga o\u02BBtish", url: `${getAppUrl()}/register` }]],
+      },
     });
     return;
   }
