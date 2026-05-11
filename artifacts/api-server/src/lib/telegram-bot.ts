@@ -202,7 +202,7 @@ async function sendContactRequest(chatId: number, userName: string) {
   return callTelegram("sendMessage", {
     chat_id: chatId,
     text:
-      `Assalomu alaykum, ${userName}! \uD83D\uDC4B\n` +
+      `Assalomu alaykum, ${userName}! \uD83D\uDC4B\n\n` +
       `Men sizning shaxsiy yordamchingizman.\n\n` +
       `Endi mijozlaringiz yozilsa sizga darhol xabar beraman.\n\n` +
       `\uD83D\uDCF2 Ilovadan to\u02BBliq foydalanish uchun raqamingizni tasdiqlang:`,
@@ -230,7 +230,7 @@ async function sendVerificationSuccess(chatId: number, userId: string) {
   log("reg_verified", { chatId, userId, url: profileUrl });
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Raqamingiz tasdiqlandi! \u2705\nProfilingizga o\u02BBtish uchun quyidagi linkni bosing:",
+    text: "Raqamingiz tasdiqlandi! \u2705\n\nProfilingizga o\u02BBtish uchun quyidagi linkni bosing:",
     reply_markup: {
       remove_keyboard: true,
       inline_keyboard: [
@@ -584,6 +584,26 @@ async function handleRegStart(chatId: number, userId: string, _lang: string, fro
 
   // Clear any stale auth state so phone share routes to reg flow, not auth flow
   pendingAuthLogins.delete(chatId);
+
+  // Send + pin the welcome summary so barber always has it at the top of the chat
+  const pinResult = await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text:
+      "Xush kelibsiz! \uD83D\uDC88\n\n" +
+      "Bu bot orqali siz:\n" +
+      "\u2022 Yangi mijozlar haqida xabar olasiz\n" +
+      "\u2022 Bronlarni boshqarasiz\n" +
+      "\u2022 Eslatmalarni olasiz",
+    reply_markup: { remove_keyboard: true },
+  }) as Record<string, unknown> | null;
+  const pinMsgId = (pinResult?.result as Record<string, unknown> | undefined)?.message_id as number | undefined;
+  if (pinMsgId) {
+    await callTelegram("pinChatMessage", {
+      chat_id: chatId,
+      message_id: pinMsgId,
+      disable_notification: true,
+    });
+  }
 
   pendingVerifications.set(chatId, userId);
   console.log(`[TelegramBot] Reg: pending chatId=${chatId} → userId=${userId}`);
