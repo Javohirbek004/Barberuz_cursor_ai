@@ -501,15 +501,7 @@ export async function handleTelegramUpdate(update: unknown) {
       return;
     }
     if (pendingNoPayloadLogins.has(chatId)) {
-      await callTelegram("sendMessage", {
-        chat_id: chatId,
-        text: "Hisobingizga kirish uchun telefon raqamingizni tasdiqlang:",
-        reply_markup: {
-          keyboard: [[{ text: "\uD83D\uDCF2 Raqamni yuborish", request_contact: true }]],
-          resize_keyboard: true,
-          one_time_keyboard: true,
-        },
-      });
+      await sendContactRequest(chatId, "Barber");
       return;
     }
   }
@@ -526,86 +518,27 @@ async function handleNoPayloadStart(
   const firstName = (from?.first_name as string) || "Barber";
   log("reg_start", { chatId, telegramUserId: String(from?.id || chatId) });
 
-  // If an active login (auth_) flow is in progress, re-send the phone request
-  // so the user doesn't see the generic welcome message mid-login.
+  // If an active login (auth_) flow is in progress, re-send the phone request.
   const authPending = pendingAuthLogins.get(chatId);
   if (authPending) {
     await sendAuthPhoneRequest(chatId, authPending.lang);
     return;
   }
 
-  // Check if already linked
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.telegramId, String(chatId)))
-    .limit(1);
-
-  if (user) {
-    const profileUrl = buildLoginUrl(user.id);
-    log("reg_verified", { chatId, userId: user.id, url: profileUrl || "invalid" });
-    if (profileUrl) {
-      await callTelegram("sendMessage", {
-        chat_id: chatId,
-        text: `Xush kelibsiz, <b>${firstName}</b>! \uD83D\uDC4B\nProfilingizga o\u02BBtish uchun quyidagi tugmani bosing:`,
-        parse_mode: "HTML",
-        reply_markup: {
-          inline_keyboard: [[{ text: "\uD83C\uDF10 Ilovaga kirish", url: profileUrl }]],
-        },
-      });
-    } else {
-      await callTelegram("sendMessage", {
-        chat_id: chatId,
-        text: "Xush kelibsiz! Iltimos, ilovaga qo\u02BBlda kiring.",
-      });
-    }
-    return;
-  }
-
-  // Not linked — ask for phone to identify (register or login)
+  // Ask for phone — handleNoPayloadContact will route to login or registration.
   pendingNoPayloadLogins.set(chatId, new Date());
-  await callTelegram("sendMessage", {
-    chat_id: chatId,
-    text: "Assalomu alaykum! \uD83D\uDC4B\n\nHisobingizga kirish uchun telefon raqamingizni tasdiqlang:",
-    reply_markup: {
-      keyboard: [[{ text: "\uD83D\uDCF2 Raqamni yuborish", request_contact: true }]],
-      resize_keyboard: true,
-      one_time_keyboard: true,
-    },
-  });
+  await sendContactRequest(chatId, firstName);
 }
 
 async function handleRegStart(chatId: number, userId: string, _lang: string, from?: Record<string, unknown>) {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
-    // Stale deep-link (e.g. user deleted their account) — fall back to the
-    // no-payload /start flow: check by Telegram ID, or ask for phone number.
     console.warn(`[TelegramBot] Reg: user not found userId=${userId}, falling back to no-payload flow`);
     await handleNoPayloadStart(chatId, from);
     return;
   }
 
-  if (user.telegramVerified) {
-    const profileUrl = buildLoginUrl(user.id);
-    log("reg_start", { chatId, userId, url: profileUrl || "invalid" });
-    if (profileUrl) {
-      await callTelegram("sendMessage", {
-        chat_id: chatId,
-        text: "Siz allaqachon tasdiqlangansiz! \u2705\nProfilingizga o\u02BBtish uchun quyidagi tugmani bosing:",
-        reply_markup: {
-          inline_keyboard: [[{ text: "\uD83C\uDF10 Ilovaga kirish", url: profileUrl }]],
-        },
-      });
-    } else {
-      await callTelegram("sendMessage", {
-        chat_id: chatId,
-        text: "Siz allaqachon tasdiqlangansiz! \u2705 Iltimos, ilovaga qo\u02BBlda kiring.",
-      });
-    }
-    return;
-  }
-
-  // Clear any stale auth state so phone share routes to reg flow, not auth flow
+  // Clear any stale state so phone share routes to reg flow
   pendingAuthLogins.delete(chatId);
   pendingNoPayloadLogins.delete(chatId);
 
