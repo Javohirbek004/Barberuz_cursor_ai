@@ -810,14 +810,8 @@ async function handleRegContact(
 ) {
   const userId = pendingVerifications.get(chatId);
   if (!userId) {
-    await callTelegram("sendMessage", {
-      chat_id: chatId,
-      text: "Ro\u02BByxatdan o\u02BBtish uchun ilovadan maxsus havola oling:",
-      reply_markup: {
-        remove_keyboard: true,
-        inline_keyboard: [[{ text: "\uD83C\uDF10 Ilovaga o\u02BBtish", url: `${getAppUrl()}/register` }]],
-      },
-    });
+    // Map cleared (server restart) — fall back to phone-based identification
+    await handleNoPayloadContact(chatId, phone, tgUserId, tgUsername);
     return;
   }
 
@@ -875,29 +869,20 @@ async function handleNoPayloadContact(
   const existingUser = userByPhone || userByNorm;
 
   if (existingUser) {
+    // Phone found — re-verify and send "Raqamingiz tasdiqlandi!" (registration flow)
     await db
       .update(usersTable)
-      .set({ telegramId: tgUserId, telegramUsername: tgUsername, phone, updatedAt: new Date() })
+      .set({
+        telegramVerified: true,
+        telegramId: tgUserId,
+        telegramUsername: tgUsername,
+        phone,
+        updatedAt: new Date(),
+      })
       .where(eq(usersTable.id, existingUser.id));
 
-    const profileUrl = buildLoginUrl(existingUser.id);
-    if (profileUrl) {
-      await callTelegram("sendMessage", {
-        chat_id: chatId,
-        text: "Sahifangiz topildi \u2705\n\nProfilingizga o\u02BBtish uchun quyidagi tugmani bosing:",
-        reply_markup: {
-          remove_keyboard: true,
-          inline_keyboard: [[{ text: "\uD83C\uDF10 Sahifaga qaytish", url: profileUrl }]],
-        },
-      });
-    } else {
-      await callTelegram("sendMessage", {
-        chat_id: chatId,
-        text: "Xatolik yuz berdi. Iltimos, ilovaga qo\u02BBlda kiring.",
-        reply_markup: { remove_keyboard: true },
-      });
-    }
-    console.log(`[TelegramBot] NoPayload login: userId=${existingUser.id} ✅`);
+    console.log(`[TelegramBot] NoPayload re-verified: userId=${existingUser.id} ✅`);
+    await sendVerificationSuccess(chatId, existingUser.id);
     return;
   }
 
