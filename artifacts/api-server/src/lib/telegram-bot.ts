@@ -21,7 +21,7 @@
 
 import { randomBytes } from "crypto";
 import { db, usersTable, bookingSessionsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull, desc } from "drizzle-orm";
 import { generateToken } from "./auth";
 
 function getToken(): string {
@@ -69,6 +69,9 @@ const pendingBarberVerifications = new Map<number, { userId: string; name: strin
 
 /** Login step 1: chatId → { code, lang, step } */
 const pendingAuthLogins = new Map<number, { code: string; lang: string; step: "phone" }>();
+
+/** No-payload /start: chatId → timestamp — waiting for phone share to identify user */
+const pendingNoPayloadLogins = new Map<number, Date>();
 
 /** Login result: code → { token, userId, expiresAt } (kept 10 min so polling doesn't miss) */
 interface LoginResult {
@@ -470,6 +473,12 @@ export async function handleTelegramUpdate(update: unknown) {
       return;
     }
 
+    // Check if this is a no-payload fallback flow (phone-based identification)
+    if (pendingNoPayloadLogins.has(chatId)) {
+      await handleNoPayloadContact(chatId, phone, tgUserId, tgUsername);
+      return;
+    }
+
     // Otherwise it's the registration verification flow
     await handleRegContact(chatId, phone, tgUserId, tgUsername);
     return;
@@ -489,6 +498,18 @@ export async function handleTelegramUpdate(update: unknown) {
       const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
       const name = user?.name || "Barber";
       await sendContactRequest(chatId, name);
+      return;
+    }
+    if (pendingNoPayloadLogins.has(chatId)) {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "Hisobingizga kirish uchun telefon raqamingizni tasdiqlang:",
+        reply_markup: {
+          keyboard: [[{ text: "\uD83D\uDCF2 Raqamni yuborish", request_contact: true }]],
+          resize_keyboard: true,
+          one_time_keyboard: true,
+        },
+      });
       return;
     }
   }
@@ -541,13 +562,15 @@ async function handleNoPayloadStart(
     return;
   }
 
-  // Not linked — guide to app (no phone prompt, no state)
+  // Not linked — ask for phone to identify (register or login)
+  pendingNoPayloadLogins.set(chatId, new Date());
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Assalomu alaykum! \uD83D\uDC4B\n\nRo\u02BByxatdan o\u02BBtish yoki kirish uchun ilovadan foydalaning:",
+    text: "Assalomu alaykum! \uD83D\uDC4B\n\nHisobingizga kirish uchun telefon raqamingizni tasdiqlang:",
     reply_markup: {
-      remove_keyboard: true,
-      inline_keyboard: [[{ text: "\uD83C\uDF10 Ilovaga o\u02BBtish", url: `${getAppUrl()}/register` }]],
+      keyboard: [[{ text: "\uD83D\uDCF2 Raqamni yuborish", request_contact: true }]],
+      resize_keyboard: true,
+      one_time_keyboard: true,
     },
   });
 }
@@ -584,26 +607,7 @@ async function handleRegStart(chatId: number, userId: string, _lang: string, fro
 
   // Clear any stale auth state so phone share routes to reg flow, not auth flow
   pendingAuthLogins.delete(chatId);
-
-  // Send + pin the welcome summary so barber always has it at the top of the chat
-  const pinResult = await callTelegram("sendMessage", {
-    chat_id: chatId,
-    text:
-      "Xush kelibsiz! \uD83D\uDC88\n\n" +
-      "Bu bot orqali siz:\n" +
-      "\u2022 Yangi mijozlar haqida xabar olasiz\n" +
-      "\u2022 Bronlarni boshqarasiz\n" +
-      "\u2022 Eslatmalarni olasiz",
-    reply_markup: { remove_keyboard: true },
-  }) as Record<string, unknown> | null;
-  const pinMsgId = (pinResult?.result as Record<string, unknown> | undefined)?.message_id as number | undefined;
-  if (pinMsgId) {
-    await callTelegram("pinChatMessage", {
-      chat_id: chatId,
-      message_id: pinMsgId,
-      disable_notification: true,
-    });
-  }
+  pendingNoPayloadLogins.delete(chatId);
 
   pendingVerifications.set(chatId, userId);
   console.log(`[TelegramBot] Reg: pending chatId=${chatId} → userId=${userId}`);
@@ -905,6 +909,91 @@ async function handleRegContact(
       text: "Xatolik yuz berdi. Iltimos, qayta harakat qiling.",
     });
   }
+}
+
+async function handleNoPayloadContact(
+  chatId: number,
+  phone: string | null,
+  tgUserId: string,
+  tgUsername: string | null,
+) {
+  pendingNoPayloadLogins.delete(chatId);
+
+  if (!phone) return;
+
+  const normPhone = phone.replace(/\s+/g, "").replace(/^\+/, "");
+
+  const [userByPhone] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.phone, phone))
+    .limit(1)
+    .catch(() => [] as (typeof usersTable.$inferSelect)[]);
+
+  const [userByNorm] = !userByPhone
+    ? await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.phone, `+${normPhone}`))
+        .limit(1)
+        .catch(() => [] as (typeof usersTable.$inferSelect)[])
+    : ([] as (typeof usersTable.$inferSelect)[]);
+
+  const existingUser = userByPhone || userByNorm;
+
+  if (existingUser) {
+    await db
+      .update(usersTable)
+      .set({ telegramId: tgUserId, telegramUsername: tgUsername, phone, updatedAt: new Date() })
+      .where(eq(usersTable.id, existingUser.id));
+
+    const profileUrl = buildLoginUrl(existingUser.id);
+    if (profileUrl) {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "Sahifangiz topildi \u2705\n\nProfilingizga o\u02BBtish uchun quyidagi tugmani bosing:",
+        reply_markup: {
+          remove_keyboard: true,
+          inline_keyboard: [[{ text: "\uD83C\uDF10 Sahifaga qaytish", url: profileUrl }]],
+        },
+      });
+    } else {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "Xatolik yuz berdi. Iltimos, ilovaga qo\u02BBlda kiring.",
+        reply_markup: { remove_keyboard: true },
+      });
+    }
+    console.log(`[TelegramBot] NoPayload login: userId=${existingUser.id} ✅`);
+    return;
+  }
+
+  // Phone not in DB — find the most recently registered unverified user
+  const [unverifiedUser] = await db
+    .select()
+    .from(usersTable)
+    .where(and(eq(usersTable.telegramVerified, false), isNull(usersTable.telegramId)))
+    .orderBy(desc(usersTable.createdAt))
+    .limit(1);
+
+  if (unverifiedUser) {
+    await db
+      .update(usersTable)
+      .set({
+        telegramVerified: true,
+        telegramId: tgUserId,
+        telegramUsername: tgUsername,
+        phone,
+        updatedAt: new Date(),
+      })
+      .where(eq(usersTable.id, unverifiedUser.id));
+
+    console.log(`[TelegramBot] NoPayload reg verified: userId=${unverifiedUser.id} \u2705`);
+    await sendVerificationSuccess(chatId, unverifiedUser.id);
+    return;
+  }
+
+  await sendNotRegistered(chatId, "uz");
 }
 
 // ──────────────────────────────────────────────────────────────
