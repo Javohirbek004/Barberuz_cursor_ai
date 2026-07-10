@@ -103,7 +103,7 @@ export default function TelegramVerify() {
     }
   }, [status, navigate]);
 
-  const botLink = `https://t.me/Barberuz_yordamchi_bot?start=reg_${userId}_${lang}`;
+  const botLink = `https://t.me/BARBERUZ_YORDAMCHI_BOT?start=reg_${userId}_${lang}`;
 
   // ── "Return to original tab" screen ───────────────────────────────────────
   if (showReturnToTab) {
