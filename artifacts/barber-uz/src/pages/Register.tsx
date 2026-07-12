@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { motion } from "framer-motion";
-import { Loader2, User, Users, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 function generateUsername(name: string): string {
@@ -188,38 +188,6 @@ export default function Register() {
               {pwdMismatch && (
                 <p className="text-red-400 text-xs">{t("register.error.pwd_mismatch")}</p>
               )}
-            </div>
-          </div>
-
-          {/* Mode selection */}
-          <div className="space-y-3">
-            <Label className="text-white/80 pl-2">{t("register.mode")}</Label>
-            <div className="grid grid-cols-2 gap-4">
-              <div
-                onClick={() => update("mode", "solo")}
-                className={`cursor-pointer p-4 rounded-2xl border-2 transition-all duration-300 ${
-                  formData.mode === "solo"
-                    ? "border-primary bg-primary/10 shadow-lg shadow-primary/10"
-                    : "border-white/5 bg-black/20 hover:border-white/20"
-                }`}
-              >
-                <User className={`w-8 h-8 mb-3 ${formData.mode === "solo" ? "text-primary" : "text-muted-foreground"}`} />
-                <div className="font-bold text-foreground">{t("register.mode.solo")}</div>
-                <div className="text-xs text-muted-foreground mt-1">{t("register.mode.solo_sub")}</div>
-              </div>
-
-              <div
-                onClick={() => update("mode", "team")}
-                className={`cursor-pointer p-4 rounded-2xl border-2 transition-all duration-300 ${
-                  formData.mode === "team"
-                    ? "border-primary bg-primary/10 shadow-lg shadow-primary/10"
-                    : "border-white/5 bg-black/20 hover:border-white/20"
-                }`}
-              >
-                <Users className={`w-8 h-8 mb-3 ${formData.mode === "team" ? "text-primary" : "text-muted-foreground"}`} />
-                <div className="font-bold text-foreground">{t("register.mode.team")}</div>
-                <div className="text-xs text-muted-foreground mt-1">{t("register.mode.team_sub")}</div>
-              </div>
             </div>
           </div>
 
