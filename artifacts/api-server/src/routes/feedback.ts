@@ -24,11 +24,11 @@ router.post("/", authenticate, async (req, res) => {
     return;
   }
 
-  const botToken = process.env.FEEDBACK_BOT_TOKEN;
+  const botToken = process.env.FEEDBACKS_BOT;
   const chatId   = process.env.ADMIN_TELEGRAM_ID;
 
   if (!botToken || !chatId) {
-    console.warn("[Feedback] FEEDBACK_BOT_TOKEN or ADMIN_TELEGRAM_ID not set — skipping Telegram send");
+    console.warn("[Feedback] FEEDBACKS_BOT or ADMIN_TELEGRAM_ID not set — skipping Telegram send");
     res.json({ ok: true, sent: false, reason: "bot_not_configured" });
     return;
   }
