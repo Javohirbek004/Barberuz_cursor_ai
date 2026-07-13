@@ -108,7 +108,7 @@ function IndividualSettings({ userName, telegramVerified }: { userName: string; 
           {userName.charAt(0)}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-display font-bold text-foreground text-xl leading-tight truncate">
+          <p className="font-display font-bold text-foreground text-xl leading-tight break-words">
             {userName}
           </p>
           <p className="text-sm text-muted-foreground mt-0.5">{t("settings.role.solo")}</p>
