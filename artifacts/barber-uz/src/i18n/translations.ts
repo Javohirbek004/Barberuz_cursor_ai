@@ -5,7 +5,7 @@ export const translations = {
     // Auth & Register
     'register.title': "Ro'yxatdan o'tish",
     'register.note': "Parolingiz hisobingiz kalitidir. Uni unutmaslikka harakat qiling!",
-    'register.name': "Ism",
+    'register.name': "Ism va familiya",
     'register.name_required': "Ism va familiya (majburiy)",
     'register.name_placeholder': "Masalan: Ali Valiyev",
     'register.username': "Foydalanuvchi nomi",
@@ -291,7 +291,7 @@ export const translations = {
     // Auth & Register
     'register.title': "Регистрация",
     'register.note': "Ваш пароль — ключ к аккаунту. Постарайтесь не забыть его!",
-    'register.name': "Имя",
+    'register.name': "Имя и фамилия",
     'register.name_required': "Имя и фамилия (обязательно)",
     'register.name_placeholder': "Например: Ali Valiyev",
     'register.username': "Имя пользователя",
