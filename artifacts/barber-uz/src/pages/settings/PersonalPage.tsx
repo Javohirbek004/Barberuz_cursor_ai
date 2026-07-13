@@ -1724,99 +1724,150 @@ export function CustomerView({ profile, services, isTeam, barberId }: {
       <AnimatePresence mode="wait">
         {previewTab === "asosiy" && (
           <motion.div key="asosiy" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.18 }}>
-            <div className="px-4 pt-4">
+            <div className="px-4 pt-4 space-y-5">
+              {/* Speciality chips */}
               {profile.speciality.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-4">
+                <div className="flex flex-wrap gap-1.5">
                   {profile.speciality.map((s, i) => <span key={i} className="px-2.5 py-1 rounded-full bg-primary/12 border border-primary/20 text-xs text-primary font-medium">{s}</span>)}
                 </div>
               )}
+
+              {/* 🕐 Ish vaqti */}
               {(workDaysLabel || profile.workStart) && (
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
-                    <Clock className="w-3.5 h-3.5 text-primary/70 shrink-0" />
-                    <span>{workDaysLabel ? `${workDaysLabel} · ` : ""}{profile.workStart}–{profile.workEnd}</span>
+                <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className="text-sm">🕐</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Ish vaqti</span>
+                    <div className="flex-1 h-px bg-white/6" />
+                  </div>
+                  <div className="flex items-center justify-between bg-white/4 border border-white/8 rounded-2xl px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <Clock className="w-4 h-4 text-primary/70 shrink-0" />
+                      <div>
+                        <p className="text-[10px] text-muted-foreground/50 mb-0.5">Kun</p>
+                        <p className="text-xs text-foreground font-medium">{workDaysLabel || "—"}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-muted-foreground/50 mb-0.5">Soat</p>
+                      <p className="text-xs text-foreground font-medium">{profile.workStart}–{profile.workEnd}</p>
+                    </div>
                   </div>
                   {profile.lunchEnabled && profile.lunchStart && profile.lunchEnd && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
-                      <span>🍽</span>
-                      <span>Tushlik: {profile.lunchStart}–{profile.lunchEnd}</span>
+                    <div className="flex items-center gap-2 mt-2 px-4 py-2.5 bg-white/3 border border-white/6 rounded-2xl">
+                      <span className="text-sm">🍽</span>
+                      <span className="text-xs text-muted-foreground">Tushlik tanaffus: {profile.lunchStart}–{profile.lunchEnd}</span>
                     </div>
                   )}
                 </div>
               )}
+
+              {/* 📞 Aloqa */}
               {profile.phoneVisible && profile.phone && (
-                <a
-                  href={`tel:${profile.phone}`}
-                  className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-500/8 border border-emerald-500/20 text-emerald-400 text-sm font-semibold mb-4 hover:bg-emerald-500/15 transition-colors"
-                >
-                  <Phone className="w-4 h-4 shrink-0" />
-                  <span>Qo'ng'iroq qilish</span>
-                  <span className="ml-auto text-xs text-emerald-400/70">{profile.phone}</span>
-                </a>
-              )}
-              {(profile.latitude && profile.longitude) ? (
-                <div className="mb-4 space-y-2">
-                  <div className="rounded-2xl overflow-hidden border border-white/8" style={{ height: 140 }}>
-                    <iframe
-                      src={osmPreviewUrl(profile.latitude, profile.longitude)}
-                      className="w-full h-full"
-                      style={{ border: 0, pointerEvents: "none" }}
-                      scrolling="no"
-                      loading="lazy"
-                      title="Joylashuv"
-                    />
+                <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className="text-sm">📞</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Aloqa</span>
+                    <div className="flex-1 h-px bg-white/6" />
                   </div>
-                  {profile.address && (
-                    <p className="text-xs text-muted-foreground px-0.5 flex items-center gap-1.5">
-                      <MapPin className="w-3 h-3 shrink-0 text-primary/60" />
-                      <span className="truncate">{profile.address}</span>
-                    </p>
-                  )}
                   <a
-                    href={safeUrl(profile.mapLink) || `https://www.google.com/maps?q=${profile.latitude},${profile.longitude}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl bg-card border border-white/8 text-xs font-semibold text-primary hover:border-primary/30 transition-colors"
+                    href={`tel:${profile.phone}`}
+                    className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-500/8 border border-emerald-500/20 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/15 transition-colors"
                   >
-                    <MapPin className="w-3.5 h-3.5" /> Xaritada ochish
+                    <Phone className="w-4 h-4 shrink-0" />
+                    <span>Qo'ng'iroq qilish</span>
+                    <span className="ml-auto text-xs text-emerald-400/70">{profile.phone}</span>
                   </a>
                 </div>
+              )}
+
+              {/* 📍 Manzil */}
+              {(profile.latitude && profile.longitude) ? (
+                <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className="text-sm">📍</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Manzil</span>
+                    <div className="flex-1 h-px bg-white/6" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="rounded-2xl overflow-hidden border border-white/8" style={{ height: 140 }}>
+                      <iframe
+                        src={osmPreviewUrl(profile.latitude, profile.longitude)}
+                        className="w-full h-full"
+                        style={{ border: 0, pointerEvents: "none" }}
+                        scrolling="no"
+                        loading="lazy"
+                        title="Joylashuv"
+                      />
+                    </div>
+                    {profile.address && (
+                      <p className="text-xs text-muted-foreground px-0.5 flex items-center gap-1.5">
+                        <MapPin className="w-3 h-3 shrink-0 text-primary/60" />
+                        <span className="truncate">{profile.address}</span>
+                      </p>
+                    )}
+                    <a
+                      href={safeUrl(profile.mapLink) || `https://www.google.com/maps?q=${profile.latitude},${profile.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl bg-card border border-white/8 text-xs font-semibold text-primary hover:border-primary/30 transition-colors"
+                    >
+                      <MapPin className="w-3.5 h-3.5" /> Xaritada ochish
+                    </a>
+                  </div>
+                </div>
               ) : profile.address ? (
-                (() => {
-                  const href = safeUrl(profile.mapLink);
-                  const Tag = href ? "a" : "div";
-                  const extraProps = href ? { href, target: "_blank" as const, rel: "noopener noreferrer" } : {};
-                  return (
-                    <Tag {...extraProps} className="block bg-card border border-white/8 rounded-2xl overflow-hidden mb-4 hover:border-white/15 transition-colors">
-                      <div className="h-16 bg-zinc-900 relative overflow-hidden">
-                        <div className="absolute inset-0 opacity-15" style={{ backgroundImage: "linear-gradient(#4af 1px,transparent 1px),linear-gradient(90deg,#4af 1px,transparent 1px)", backgroundSize: "30px 30px" }} />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-5 h-5 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-white" /></div>
+                <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className="text-sm">📍</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Manzil</span>
+                    <div className="flex-1 h-px bg-white/6" />
+                  </div>
+                  {(() => {
+                    const href = safeUrl(profile.mapLink);
+                    const Tag = href ? "a" : "div";
+                    const extraProps = href ? { href, target: "_blank" as const, rel: "noopener noreferrer" } : {};
+                    return (
+                      <Tag {...extraProps} className="block bg-card border border-white/8 rounded-2xl overflow-hidden hover:border-white/15 transition-colors">
+                        <div className="h-16 bg-zinc-900 relative overflow-hidden">
+                          <div className="absolute inset-0 opacity-15" style={{ backgroundImage: "linear-gradient(#4af 1px,transparent 1px),linear-gradient(90deg,#4af 1px,transparent 1px)", backgroundSize: "30px 30px" }} />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="w-5 h-5 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-white" /></div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="px-4 py-3 flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-primary shrink-0" />
-                        <span className="text-sm text-foreground flex-1">{profile.address}</span>
-                        {href && <span className="text-xs text-primary font-semibold">Ko'rish →</span>}
-                      </div>
-                    </Tag>
-                  );
-                })()
+                        <div className="px-4 py-3 flex items-center gap-2">
+                          <MapPin className="w-4 h-4 text-primary shrink-0" />
+                          <span className="text-sm text-foreground flex-1">{profile.address}</span>
+                          {href && <span className="text-xs text-primary font-semibold">Ko'rish →</span>}
+                        </div>
+                      </Tag>
+                    );
+                  })()}
+                </div>
               ) : null}
+
+              {/* 🔗 Ijtimoiy tarmoqlar */}
               {(profile.telegram || profile.instagram) && (
-                <div className="mb-5 space-y-2">
-                  {profile.telegram && (
-                    <a href={`https://t.me/${profile.telegram.replace("@", "")}`} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#2AABEE]/10 border border-[#2AABEE]/25 text-[#2AABEE] text-sm font-medium hover:bg-[#2AABEE]/20 transition-colors">
-                      <Send className="w-3.5 h-3.5" /> {profile.telegram}
-                    </a>
-                  )}
-                  {profile.instagram && (
-                    <a href={`https://instagram.com/${profile.instagram.replace("@", "")}`} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gradient-to-r from-pink-500/10 to-violet-500/10 border border-pink-500/20 text-pink-400 text-sm font-medium hover:from-pink-500/20 hover:to-violet-500/20 transition-colors">
-                      <Instagram className="w-3.5 h-3.5" /> {profile.instagram}
-                    </a>
-                  )}
+                <div className="pb-2">
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className="text-sm">🔗</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Ijtimoiy tarmoqlar</span>
+                    <div className="flex-1 h-px bg-white/6" />
+                  </div>
+                  <div className="space-y-2">
+                    {profile.telegram && (
+                      <a href={`https://t.me/${profile.telegram.replace("@", "")}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#2AABEE]/10 border border-[#2AABEE]/25 text-[#2AABEE] text-sm font-medium hover:bg-[#2AABEE]/20 transition-colors">
+                        <Send className="w-3.5 h-3.5" /> {profile.telegram}
+                      </a>
+                    )}
+                    {profile.instagram && (
+                      <a href={`https://instagram.com/${profile.instagram.replace("@", "")}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gradient-to-r from-pink-500/10 to-violet-500/10 border border-pink-500/20 text-pink-400 text-sm font-medium hover:from-pink-500/20 hover:to-violet-500/20 transition-colors">
+                        <Instagram className="w-3.5 h-3.5" /> {profile.instagram}
+                      </a>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
