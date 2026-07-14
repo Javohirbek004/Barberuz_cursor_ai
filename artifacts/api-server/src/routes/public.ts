@@ -148,11 +148,16 @@ router.post("/sessions", async (req, res) => {
       return;
     }
 
+    const safeClientName = (typeof req.body.clientName === "string" && req.body.clientName.trim())
+      ? req.body.clientName.trim()
+      : null;
+
     await db.insert(bookingSessionsTable).values({
       sessionId,
       barberId,
       bookingData: JSON.stringify(bookingData),
       clientPhone: safeClientPhone,
+      clientName: safeClientName,
       status: "pending",
       expiresAt,
     });

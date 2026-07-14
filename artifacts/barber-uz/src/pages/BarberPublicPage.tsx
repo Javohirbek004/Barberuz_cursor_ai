@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Send, MapPin, Instagram, Phone } from "lucide-react";
+import { Clock, Send, MapPin, Instagram, Phone, X, ArrowLeft } from "lucide-react";
 
 interface BarberData {
   id: string;
@@ -71,6 +71,261 @@ function formatPrice(n: number) {
   return n.toLocaleString("uz-UZ") + " so'm";
 }
 
+function toMins(t: string): number {
+  const [h = 0, m = 0] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+function fmtTime(m: number): string {
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+function generatePublicSlots(duration: number, barber: BarberData): string[] {
+  const start = toMins(barber.workingHoursStart || "09:00");
+  const end = toMins(barber.workingHoursEnd || "20:00");
+  const busy: { s: number; e: number }[] = [];
+  if (barber.lunchBreakEnabled && barber.lunchBreakStart && barber.lunchBreakEnd) {
+    busy.push({ s: toMins(barber.lunchBreakStart), e: toMins(barber.lunchBreakEnd) });
+  }
+  const slots: string[] = [];
+  for (let t = start; t + duration <= end; t += 30) {
+    const slotEnd = t + duration;
+    if (!busy.some(b => t < b.e && slotEnd > b.s)) {
+      slots.push(fmtTime(t));
+    }
+  }
+  return slots;
+}
+
+type PubBookingStep = "time" | "name" | "confirm" | "verifying" | "done";
+
+function PublicBookingModal({
+  barber, selectedServices, totalDuration, totalPrice, onClose
+}: {
+  barber: BarberData;
+  selectedServices: BarberData["services"];
+  totalDuration: number;
+  totalPrice: number;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState<PubBookingStep>("time");
+  const [dateOpt, setDateOpt] = useState<"today" | "tomorrow">("today");
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [clientName, setClientName] = useState("");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [deepLink, setDeepLink] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+  }, []);
+  useEffect(() => () => stopPolling(), [stopPolling]);
+
+  const displayName = barber.brandName || barber.name;
+  const dateLabel = dateOpt === "today" ? "Bugun" : "Ertaga";
+  const slots = generatePublicSlots(totalDuration, barber);
+
+  async function handleConfirm() {
+    if (submitting || !selectedTime || !clientName.trim()) return;
+    setSubmitting(true);
+    try {
+      const services = selectedServices.map(s => ({ name: s.name, price: s.price, duration: s.duration }));
+      const pageLink = `${window.location.origin}/${barber.username}`;
+      const res = await fetch("/api/public/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          barberId: barber.id, barberName: displayName,
+          barberAddress: barber.address || "", mapLink: barber.mapLink || "",
+          barberPageLink: pageLink, isTeam: false, teamBarberName: null,
+          services, totalPrice, totalDuration, date: dateOpt, time: selectedTime,
+          clientName: clientName.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error("Session creation failed");
+      const data = await res.json();
+      setSessionId(data.sessionId);
+      setDeepLink(data.deepLink);
+      if (data.deepLink) window.open(data.deepLink, "_blank");
+      setStep("verifying");
+      setSubmitting(false);
+      pollingRef.current = setInterval(async () => {
+        try {
+          const poll = await fetch(`/api/public/sessions/${data.sessionId}`).then(r => r.json());
+          if (poll.status === "confirmed") { stopPolling(); setStep("done"); }
+          else if (poll.status === "expired") { stopPolling(); setStep("confirm"); }
+        } catch {}
+      }, 3000);
+    } catch { setSubmitting(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={step !== "done" ? onClose : undefined} />
+      <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 30, stiffness: 280 }}
+        className="relative w-full max-w-md bg-card rounded-t-3xl z-10 max-h-[92vh] flex flex-col"
+        onClick={e => e.stopPropagation()}>
+        <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 shrink-0" />
+        <div className="flex items-center gap-3 px-5 py-4 shrink-0 border-b border-white/6">
+          {(step === "name" || step === "confirm") && (
+            <button onClick={() => setStep(step === "confirm" ? "name" : "time")}
+              className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          )}
+          <div className="flex-1">
+            {step === "time" && <h2 className="font-bold text-base">Vaqt tanlash</h2>}
+            {step === "name" && <h2 className="font-bold text-base">✍️ Ismingizni kiriting</h2>}
+            {step === "confirm" && <h2 className="font-bold text-base">📌 Buyurtmani tasdiqlash</h2>}
+            {step === "verifying" && <h2 className="font-bold text-base text-[#2AABEE]">Tasdiq kutilmoqda...</h2>}
+            {step === "done" && <h2 className="font-bold text-base text-emerald-400">Bron tasdiqlandi! 🎉</h2>}
+          </div>
+          {step !== "done" && (
+            <button onClick={onClose}
+              className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <div className="overflow-y-auto flex-1 px-5 pb-8">
+          {step !== "done" && step !== "verifying" && (
+            <div className="bg-primary/6 border border-primary/12 rounded-2xl px-4 py-3 mt-4 mb-5 flex items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-1.5 flex-1">
+                {selectedServices.map(s => (
+                  <span key={s.id} className="text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20">{s.name}</span>
+                ))}
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-xs text-muted-foreground">{formatDur(totalDuration)}</p>
+                <p className="text-sm font-bold text-primary">{formatPrice(totalPrice)}</p>
+              </div>
+            </div>
+          )}
+          <AnimatePresence mode="wait">
+            {step === "time" && (
+              <motion.div key="time" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                <div className="flex gap-2 mb-5">
+                  {(["today", "tomorrow"] as const).map(d => (
+                    <button key={d} onClick={() => { setDateOpt(d); setSelectedTime(null); }}
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-all ${dateOpt === d ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground"}`}>
+                      {d === "today" ? "📅 Bugun" : "📅 Ertaga"}
+                    </button>
+                  ))}
+                </div>
+                {slots.length === 0 ? (
+                  <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">Bu kun bo'sh vaqt yo'q 😔</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {slots.map(slot => (
+                      <button key={slot} onClick={() => setSelectedTime(slot)}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all ${selectedTime === slot ? "border-primary bg-primary/20 text-primary" : "border-white/12 bg-background/50 text-muted-foreground hover:bg-white/8"}`}>
+                        {slot}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button onClick={() => selectedTime && setStep("name")} disabled={!selectedTime}
+                  className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base mt-6 disabled:opacity-30 shadow-lg shadow-primary/20">
+                  Davom etish →
+                </button>
+              </motion.div>
+            )}
+            {step === "name" && (
+              <motion.div key="name" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="pt-2">
+                <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-6 flex items-center gap-3">
+                  <Clock className="w-4 h-4 text-primary shrink-0" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Tanlangan vaqt</p>
+                    <p className="text-sm font-bold">{dateLabel}, soat {selectedTime}</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-muted-foreground block">Ismingiz *</label>
+                  <input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="masalan: Ali"
+                    autoFocus
+                    className="w-full h-12 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50" />
+                </div>
+                <button onClick={() => clientName.trim() && setStep("confirm")} disabled={!clientName.trim()}
+                  className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base mt-6 disabled:opacity-30 shadow-lg shadow-primary/20">
+                  Keyingi →
+                </button>
+              </motion.div>
+            )}
+            {step === "confirm" && (
+              <motion.div key="confirm" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="pt-2">
+                <div className="bg-white/4 border border-white/8 rounded-2xl p-4 space-y-3 mb-4">
+                  {([
+                    ["💇‍♂️", "Usta", displayName],
+                    ["🛠", "Xizmat", selectedServices.map(s => s.name).join(", ")],
+                    ["💸", "Narx", formatPrice(totalPrice)],
+                    ["📅", "Sana", dateLabel],
+                    ["⏰", "Vaqt", selectedTime || ""],
+                  ] as const).map(([icon, label, value]) => (
+                    <div key={label} className="flex items-center gap-3">
+                      <span className="text-base w-5 shrink-0">{icon}</span>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide font-semibold">{label}</p>
+                        <p className="text-sm font-semibold text-foreground">{value}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-[#2AABEE]/8 border border-[#2AABEE]/20 rounded-2xl px-4 py-3 mb-4">
+                  <p className="text-xs text-[#2AABEE]/80 leading-relaxed">💬 Navbatingizni ro'yxatga olish va eslatma yuborish uchun jarayonni Telegram botimizda yakunlang.</p>
+                </div>
+                <button onClick={handleConfirm} disabled={submitting}
+                  className="w-full py-3.5 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60 shadow-lg shadow-[#2AABEE]/20">
+                  {submitting
+                    ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Yuklanmoqda...</>
+                    : <><Send className="w-4 h-4" /> Telegram orqali tasdiqlash</>}
+                </button>
+              </motion.div>
+            )}
+            {step === "verifying" && (
+              <motion.div key="verifying" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-10">
+                <div className="w-20 h-20 rounded-3xl bg-[#2AABEE]/10 border border-[#2AABEE]/20 flex items-center justify-center text-4xl mx-auto mb-5">💬</div>
+                <h2 className="text-lg font-bold mb-1">Telegram bot kutilmoqda</h2>
+                <p className="text-sm text-muted-foreground mb-6">Botda <b>📱 Telefon raqamni yuborish</b> tugmasini bosing</p>
+                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-6">
+                  {[0, 0.2, 0.4].map((d, i) => (
+                    <span key={i} className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: `${d}s` }} />
+                  ))}
+                  <span className="ml-1">Tasdiq kutilmoqda</span>
+                </div>
+                {deepLink && (
+                  <button onClick={() => window.open(deepLink, "_blank")}
+                    className="w-full h-12 rounded-2xl bg-[#2AABEE]/15 border border-[#2AABEE]/30 text-[#2AABEE] font-semibold text-sm flex items-center justify-center gap-2 mb-3">
+                    <Send className="w-4 h-4" /> Telegram botni qayta ochish
+                  </button>
+                )}
+                <button onClick={() => { stopPolling(); setStep("confirm"); }}
+                  className="text-xs text-muted-foreground underline">Bekor qilish</button>
+              </motion.div>
+            )}
+            {step === "done" && (
+              <motion.div key="done" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-8">
+                <div className="w-24 h-24 rounded-3xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-5xl mx-auto mb-5">🎉</div>
+                <h2 className="text-xl font-bold mb-2">Navbat band qilindi!</h2>
+                <p className="text-sm text-muted-foreground mb-5">Barcha ma'lumotlar Telegram orqali yuborildi.</p>
+                <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-5 text-left space-y-1">
+                  <p className="text-sm font-semibold">{dateLabel}, soat {selectedTime}</p>
+                  <p className="text-xs text-muted-foreground">{selectedServices.map(s => s.name).join(", ")}</p>
+                  <p className="text-xs text-primary">{formatPrice(totalPrice)}</p>
+                </div>
+                <button onClick={onClose}
+                  className="w-full h-12 rounded-2xl bg-primary text-black font-bold shadow-lg shadow-primary/20">
+                  ✅ Yopish
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
 
 function GalleryStrip({ images }: { images: string[] }) {
   if (images.length === 0) return null;
@@ -99,6 +354,7 @@ const COVER_GRADS = ["from-primary/50 via-primary/20 to-transparent", "from-ambe
 function PublicView({ barber }: { barber: BarberData }) {
   const [tab, setTab] = useState<"asosiy" | "xizmatlar">("asosiy");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bookingOpen, setBookingOpen] = useState(false);
 
   const displayName = barber.brandName || barber.name;
   const specs = barber.specializations
@@ -396,16 +652,10 @@ function PublicView({ barber }: { barber: BarberData }) {
                   <p className="text-xs text-muted-foreground truncate">{selectedServices.map(s => s.name).join(", ")}</p>
                   <p className="text-sm font-bold text-foreground">{formatDur(totalDur)} · {formatPrice(totalPrice)}</p>
                 </div>
-                {telegramHandle ? (
-                  <a href={bronUrl(selectedServices.map(s => s.name)) || "#"} target="_blank" rel="noopener noreferrer"
-                    className="shrink-0 h-12 px-5 rounded-2xl bg-primary text-black font-bold text-sm shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all flex items-center">
-                    💈 Bron qilish
-                  </a>
-                ) : (
-                  <span className="shrink-0 h-12 px-5 rounded-2xl bg-white/8 border border-white/12 text-muted-foreground text-sm font-bold flex items-center">
-                    Bron qilish
-                  </span>
-                )}
+                <button onClick={() => setBookingOpen(true)}
+                  className="shrink-0 h-12 px-5 rounded-2xl bg-primary text-black font-bold text-sm shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all flex items-center">
+                  💈 Bron qilish
+                </button>
               </motion.div>
             ) : (
               <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -419,6 +669,19 @@ function PublicView({ barber }: { barber: BarberData }) {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Booking modal */}
+      <AnimatePresence>
+        {bookingOpen && (
+          <PublicBookingModal
+            barber={barber}
+            selectedServices={selectedServices}
+            totalDuration={totalDur}
+            totalPrice={totalPrice}
+            onClose={() => setBookingOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
