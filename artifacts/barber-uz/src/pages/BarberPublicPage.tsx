@@ -94,8 +94,11 @@ function GalleryStrip({ images }: { images: string[] }) {
   );
 }
 
+const COVER_GRADS = ["from-primary/50 via-primary/20 to-transparent", "from-amber-600/50 via-amber-600/20 to-transparent", "from-emerald-600/50 via-emerald-600/20 to-transparent", "from-violet-600/50 via-violet-600/20 to-transparent"];
+
 function PublicView({ barber }: { barber: BarberData }) {
   const [tab, setTab] = useState<"asosiy" | "xizmatlar">("asosiy");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const displayName = barber.brandName || barber.name;
   const specs = barber.specializations
@@ -108,45 +111,84 @@ function PublicView({ barber }: { barber: BarberData }) {
     try { return JSON.parse(barber.galleryImages || "[]"); } catch { return []; }
   })();
 
+  const coverImage = galleryImages[0] || "";
+  const gradIdx = displayName.charCodeAt(0) % COVER_GRADS.length;
+
   const workDays: string[] = (() => {
     try { return JSON.parse(barber.scheduleJson || "{}").workDays || []; } catch { return []; }
   })();
-
   const workDaysLabel = workDays.length > 0
     ? workDays.map(k => DAY_LABELS[k] || k).join(", ")
     : null;
 
   const hasInfo = !!(barber.bio || specs.length || barber.workingHoursStart || barber.address || telegramHandle || instagramHandle);
 
-  function bronUrl(serviceName?: string) {
+  const selectedServices = barber.services.filter(s => selectedIds.includes(s.id));
+  const totalDur = selectedServices.reduce((a, s) => a + s.duration, 0);
+  const totalPrice = selectedServices.reduce((a, s) => a + s.price, 0);
+
+  function toggleService(id: string) {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
+  function bronUrl(serviceNames?: string[]) {
     if (!telegramHandle) return null;
-    const text = serviceName ? `Assalomu alaykum! "${serviceName}" xizmatiga yozilmoqchiman.` : "Assalomu alaykum! Yozilmoqchiman.";
+    const text = serviceNames && serviceNames.length > 0
+      ? `Assalomu alaykum! ${serviceNames.map(n => `"${n}"`).join(", ")} xizmatiga yozilmoqchiman.`
+      : "Assalomu alaykum! Yozilmoqchiman.";
     return `https://t.me/${telegramHandle}?text=${encodeURIComponent(text)}`;
   }
 
   return (
-    <div className="pb-16 -mx-4">
-      {/* Gallery strip — hidden when empty */}
-      <GalleryStrip images={galleryImages} />
+    <div className="pb-28 -mx-4">
+      {/* Hero — cover image + profile avatar */}
+      <div className="relative">
+        <div className="w-full h-48 relative overflow-hidden">
+          {coverImage
+            ? <img src={coverImage} className="w-full h-full object-cover" alt="" />
+            : <div className="w-full h-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
+                <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(45deg,#ffffff08 0,#ffffff08 1px,transparent 0,transparent 50%)", backgroundSize: "20px 20px" }} />
+                <div className={`absolute inset-0 bg-gradient-to-br ${COVER_GRADS[gradIdx]}`} />
+              </div>
+          }
+          <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-background to-transparent" />
+        </div>
+        <div className="absolute bottom-0 left-4 translate-y-8">
+          <div className="w-20 h-20 rounded-full border-4 border-background overflow-hidden bg-gradient-to-br from-primary/40 to-primary/15 flex items-center justify-center shadow-2xl shadow-black/40">
+            {barber.avatarUrl
+              ? <img src={barber.avatarUrl} className="w-full h-full object-cover" alt="" />
+              : <span className="text-3xl font-bold text-primary uppercase">{displayName.charAt(0) || "?"}</span>
+            }
+          </div>
+        </div>
+      </div>
 
       {/* Name + bio */}
-      <div className="px-4 pt-3 pb-3">
+      <div className="px-4 pt-12 pb-3">
         <h1 className="text-2xl font-display font-bold text-foreground mb-1">{displayName}</h1>
         {barber.bio && <p className="text-sm text-muted-foreground leading-relaxed">{barber.bio}</p>}
       </div>
 
+      {/* Gallery strip (all images) */}
+      {galleryImages.length > 0 && (
+        <div className="overflow-x-auto scrollbar-hide pb-3">
+          <div className="flex gap-2.5 px-4">
+            {galleryImages.map((src, i) => (
+              <div key={i} className="relative shrink-0 w-40 h-28 rounded-2xl overflow-hidden border border-white/8">
+                <img src={src} className="w-full h-full object-cover" alt="" />
+                {i === 0 && <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-primary/80 text-black text-[9px] font-bold rounded-full">Muqova</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Tab bar */}
-      <div className="px-4 mb-1 mt-1">
+      <div className="px-4 mb-1">
         <div className="flex gap-1 bg-white/5 p-1 rounded-2xl">
           {(["asosiy", "xizmatlar"] as const).map(t => (
-            <motion.button
-              key={t}
-              onClick={() => setTab(t)}
-              whileTap={{ scale: 0.97 }}
-              className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${
-                tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
+            <motion.button key={t} onClick={() => setTab(t)} whileTap={{ scale: 0.97 }}
+              className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
               {t === "asosiy" ? "Asosiy" : "Xizmatlar"}
             </motion.button>
           ))}
@@ -298,26 +340,13 @@ function PublicView({ barber }: { barber: BarberData }) {
                   </div>
                 </div>
               )}
-
-              <div className="pt-1 pb-2">
-                {telegramHandle ? (
-                  <a href={bronUrl() || ""} target="_blank" rel="noopener noreferrer"
-                    className="block w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-sm text-center shadow-xl shadow-primary/25 hover:bg-primary/90 transition-all">
-                    💈 Bron qilish
-                  </a>
-                ) : (
-                  <div className="w-full py-3.5 rounded-2xl bg-white/5 border border-white/8 text-muted-foreground text-sm text-center">
-                    Bron qilish uchun Telegram orqali murojaat qiling
-                  </div>
-                )}
-              </div>
             </div>
           </motion.div>
         )}
 
         {tab === "xizmatlar" && (
           <motion.div key="xizmatlar" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.18 }}>
-            <div className="px-4 pt-4">
+            <div className="px-4 pt-4 pb-4">
               {barber.services.length === 0 ? (
                 <div className="text-center py-10 border border-dashed border-white/8 rounded-2xl">
                   <p className="text-3xl mb-2">✂️</p>
@@ -326,10 +355,12 @@ function PublicView({ barber }: { barber: BarberData }) {
               ) : (
                 <div className="space-y-3">
                   {barber.services.map(s => {
-                    const url = bronUrl(s.name);
+                    const selected = selectedIds.includes(s.id);
                     return (
-                      <div key={s.id} className="bg-card border border-white/6 rounded-2xl p-4 flex items-center gap-3">
-                        <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0 bg-white/5 border border-white/8">
+                      <div key={s.id}
+                        onClick={() => toggleService(s.id)}
+                        className={`bg-card border rounded-2xl p-4 flex items-center gap-3 cursor-pointer transition-all ${selected ? "border-primary/40 bg-primary/5" : "border-white/6 hover:border-white/12"}`}>
+                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0 border transition-all ${selected ? "bg-primary/15 border-primary/30" : "bg-white/5 border-white/8"}`}>
                           ✂️
                         </div>
                         <div className="flex-1 min-w-0">
@@ -338,40 +369,56 @@ function PublicView({ barber }: { barber: BarberData }) {
                             {formatDur(s.duration)} · <span className="text-foreground/80 font-medium">{formatPrice(s.price)}</span>
                           </p>
                         </div>
-                        {url ? (
-                          <a href={url} target="_blank" rel="noopener noreferrer"
-                            className="shrink-0 h-9 px-3.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-semibold flex items-center hover:bg-primary/20 transition-colors">
-                            Bron
-                          </a>
-                        ) : (
-                          <span className="shrink-0 h-9 px-3.5 rounded-xl bg-white/5 border border-white/8 text-muted-foreground/40 text-xs font-semibold flex items-center cursor-not-allowed">
-                            Bron
-                          </span>
-                        )}
+                        <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${selected ? "bg-primary border-primary text-black" : "bg-white/5 border-white/20 text-muted-foreground"}`}>
+                          {selected ? (
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
-                </div>
-              )}
-
-              {barber.services.length > 0 && (
-                <div className="mt-5 pb-4">
-                  {telegramHandle ? (
-                    <a href={bronUrl() || ""} target="_blank" rel="noopener noreferrer"
-                      className="block w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-sm text-center shadow-xl shadow-primary/25 hover:bg-primary/90 transition-all">
-                      💈 Bron qilish
-                    </a>
-                  ) : (
-                    <div className="w-full py-3.5 rounded-2xl bg-white/5 border border-white/8 text-muted-foreground text-sm text-center">
-                      Bron qilish uchun Telegram orqali murojaat qiling
-                    </div>
-                  )}
                 </div>
               )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Fixed bottom CTA */}
+      <div className="fixed bottom-0 left-0 right-0 z-40">
+        <div className="max-w-md mx-auto px-4 py-3 bg-card/95 backdrop-blur-xl border-t border-white/8">
+          <AnimatePresence mode="wait">
+            {selectedIds.length > 0 ? (
+              <motion.div key="selected" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground truncate">{selectedServices.map(s => s.name).join(", ")}</p>
+                  <p className="text-sm font-bold text-foreground">{formatDur(totalDur)} · {formatPrice(totalPrice)}</p>
+                </div>
+                {telegramHandle ? (
+                  <a href={bronUrl(selectedServices.map(s => s.name)) || "#"} target="_blank" rel="noopener noreferrer"
+                    className="shrink-0 h-12 px-5 rounded-2xl bg-primary text-black font-bold text-sm shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all flex items-center">
+                    💈 Bron qilish
+                  </a>
+                ) : (
+                  <span className="shrink-0 h-12 px-5 rounded-2xl bg-white/8 border border-white/12 text-muted-foreground text-sm font-bold flex items-center">
+                    Bron qilish
+                  </span>
+                )}
+              </motion.div>
+            ) : (
+              <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <button
+                  onClick={() => setTab("xizmatlar")}
+                  className="w-full h-12 rounded-2xl bg-white/6 border border-white/8 text-muted-foreground font-semibold text-sm hover:bg-white/10 hover:text-foreground transition-all">
+                  💈 Xizmat tanlash
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
     </div>
   );
 }
