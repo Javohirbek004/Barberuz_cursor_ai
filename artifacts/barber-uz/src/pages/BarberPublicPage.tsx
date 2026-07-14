@@ -127,6 +127,11 @@ function PublicBookingModal({
   async function handleConfirm() {
     if (submitting || !selectedTime || !clientName.trim()) return;
     setSubmitting(true);
+
+    // Open a blank window immediately (same user gesture) to bypass popup blockers,
+    // then redirect it to the deep link once we receive it from the server.
+    const tgWindow = window.open("", "_blank");
+
     try {
       const services = selectedServices.map(s => ({ name: s.name, price: s.price, duration: s.duration }));
       const pageLink = `${window.location.origin}/${barber.username}`;
@@ -145,7 +150,17 @@ function PublicBookingModal({
       const data = await res.json();
       setSessionId(data.sessionId);
       setDeepLink(data.deepLink);
-      if (data.deepLink) window.open(data.deepLink, "_blank");
+
+      if (data.deepLink) {
+        if (tgWindow && !tgWindow.closed) {
+          tgWindow.location.href = data.deepLink;
+        } else {
+          window.location.href = data.deepLink;
+        }
+      } else {
+        tgWindow?.close();
+      }
+
       setStep("verifying");
       setSubmitting(false);
       pollingRef.current = setInterval(async () => {
@@ -155,7 +170,10 @@ function PublicBookingModal({
           else if (poll.status === "expired") { stopPolling(); setStep("confirm"); }
         } catch {}
       }, 3000);
-    } catch { setSubmitting(false); }
+    } catch {
+      tgWindow?.close();
+      setSubmitting(false);
+    }
   }
 
   return (
