@@ -216,7 +216,7 @@ router.post("/generate-login-link", authenticate, async (req, res) => {
     const botUsername = process.env.TELEGRAM_BOT_USERNAME || "Barberuz_yordamchi_bot";
     const secureToken = randomBytes(16).toString("hex");
     storeLoginToken(secureToken, user.id, 5 * 60 * 1000); // 5 minutes
-    const deepLink = `https://t.me/${botUsername}?start=login_${secureToken}`;
+    const deepLink = `tg://resolve?domain=${botUsername}&start=login_${secureToken}`;
     console.log(`[Auth] login-link generated: userId=${user.id} token=${secureToken.slice(0, 8)}...`);
     res.json({ deepLink, expiresIn: 300 });
   } catch (err) {

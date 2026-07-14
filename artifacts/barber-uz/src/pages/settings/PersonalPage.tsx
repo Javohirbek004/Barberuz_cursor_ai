@@ -1596,7 +1596,7 @@ function BookingModal({ selectedServices, totalDuration, isTeam, barberId, profi
                   <span className="ml-1">Tasdiq kutilmoqda</span>
                 </div>
                 {sessionId && (
-                  <button onClick={() => window.open(`https://t.me/Barberuz_yordamchi_bot?start=booking_${sessionId}`, "_blank")}
+                  <button onClick={() => window.open(`tg://resolve?domain=Barberuz_yordamchi_bot&start=booking_${sessionId}`, "_blank")}
                     className="w-full h-12 rounded-2xl bg-[#2AABEE]/15 border border-[#2AABEE]/30 text-[#2AABEE] font-semibold text-sm flex items-center justify-center gap-2 mb-3">
                     <Send className="w-4 h-4" /> Telegram botni qayta ochish
                   </button>

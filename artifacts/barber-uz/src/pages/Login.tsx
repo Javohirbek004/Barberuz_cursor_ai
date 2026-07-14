@@ -121,7 +121,7 @@ export default function Login() {
     localStorage.setItem("telegram_auth_code_ts", String(Date.now()));
     setTgState("waiting");
 
-    const botUrl = `https://t.me/BARBERUZ_YORDAMCHI_BOT?start=auth_${code}_${lang}`;
+    const botUrl = `tg://resolve?domain=BARBERUZ_YORDAMCHI_BOT&start=auth_${code}_${lang}`;
     window.open(botUrl, "_blank", "noopener,noreferrer");
   }
 

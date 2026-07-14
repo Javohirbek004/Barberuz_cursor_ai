@@ -113,7 +113,7 @@ export default function BarberSetup() {
   function handleActivateTelegram() {
     setShowOnboarding(false);
     const userId = params.token || "unknown";
-    const botLink = `https://t.me/BARBERUZ_YORDAMCHI_BOT?start=barber_${userId}`;
+    const botLink = `tg://resolve?domain=BARBERUZ_YORDAMCHI_BOT&start=barber_${userId}`;
     window.open(botLink, "_blank");
     navigate("/dashboard");
   }

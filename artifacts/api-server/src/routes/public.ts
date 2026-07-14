@@ -163,7 +163,7 @@ router.post("/sessions", async (req, res) => {
     });
 
     const botUsername = getBotUsername();
-    const deepLink = `https://t.me/${botUsername}?start=booking_${sessionId}`;
+    const deepLink = `tg://resolve?domain=${botUsername}&start=booking_${sessionId}`;
 
     res.json({ sessionId, deepLink, status: "pending" });
   } catch (err) {
