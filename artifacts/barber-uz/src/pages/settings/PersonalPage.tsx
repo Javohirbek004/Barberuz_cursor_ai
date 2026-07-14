@@ -1627,14 +1627,15 @@ function BookingModal({ selectedServices, totalDuration, isTeam, barberId, profi
 // CUSTOMER VIEW — preview mode
 // ──────────────────────────────────────────────────────────────────────────────
 
-export function CustomerView({ profile, services, isTeam, barberId }: {
-  profile: ProfileData; services: ServiceItem[]; isTeam: boolean; barberId: string;
+export function CustomerView({ profile, services, isTeam, barberId, previewMode }: {
+  profile: ProfileData; services: ServiceItem[]; isTeam: boolean; barberId: string; previewMode?: boolean;
 }) {
   const [previewTab, setPreviewTab] = useState<"asosiy" | "xizmatlar">("asosiy");
   const [activeCat, setActiveCat] = useState("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bookingOpen, setBookingOpen] = useState(false);
   const [detailSvc, setDetailSvc] = useState<ServiceItem | null>(null);
+  const [previewWarn, setPreviewWarn] = useState(false);
 
   const visibleCats = ["all", ...Array.from(new Set(services.map(s => s.category)))];
   const catChips = DEFAULT_CATS.filter(c => visibleCats.includes(c.id));
@@ -1920,13 +1921,16 @@ export function CustomerView({ profile, services, isTeam, barberId }: {
                   <p className="text-xs text-muted-foreground">{selectedIds.length} xizmat · {formatDur(totalDur)}</p>
                   <p className="text-base font-bold text-foreground">{formatPrice(totalPrice)}</p>
                 </div>
-                <button onClick={() => setBookingOpen(true)} className="h-12 px-6 rounded-2xl bg-primary text-black font-bold text-sm shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all shrink-0">
+                <button
+                  onClick={() => previewMode ? setPreviewWarn(true) : setBookingOpen(true)}
+                  className="h-12 px-6 rounded-2xl bg-primary text-black font-bold text-sm shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all shrink-0">
                   Bron qilish →
                 </button>
               </motion.div>
             ) : (
               <motion.div key="inactive" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <button onClick={() => setPreviewTab("xizmatlar")}
+                <button
+                  onClick={() => previewMode ? setPreviewWarn(true) : setPreviewTab("xizmatlar")}
                   className="w-full h-12 rounded-2xl bg-white/6 border border-white/8 text-muted-foreground font-semibold text-sm hover:bg-white/10 hover:text-foreground transition-all">
                   💈 Xizmat tanlash
                 </button>
@@ -1935,6 +1939,33 @@ export function CustomerView({ profile, services, isTeam, barberId }: {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Preview mode warning popup */}
+      <AnimatePresence>
+        {previewWarn && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setPreviewWarn(false)} />
+            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 280 }}
+              className="relative w-full max-w-md bg-card rounded-t-3xl z-10 border-t border-white/8 px-5 py-6"
+              onClick={e => e.stopPropagation()}>
+              <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-5" />
+              <div className="flex flex-col items-center text-center gap-3">
+                <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center text-3xl">⚠️</div>
+                <h3 className="text-base font-bold text-foreground">Bu ko'rish rejimi</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  "Xizmatni tanlash" tugmasi faqat <span className="text-foreground font-semibold">mijozlaringiz uchun maxsus havola (link)</span> orqali kirganda ishlaydi.
+                </p>
+                <button onClick={() => setPreviewWarn(false)}
+                  className="mt-2 w-full py-3 rounded-2xl bg-white/8 border border-white/12 text-sm font-semibold text-foreground hover:bg-white/12 transition-colors">
+                  Tushunarli
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Service detail sheet */}
       <AnimatePresence>
@@ -2074,7 +2105,7 @@ export default function PersonalPage() {
             <p className="text-xs text-amber-400 font-semibold">👁 Ko'rish rejimi — mijoz qanday ko'radi</p>
             <button onClick={() => setPreview(false)} className="text-xs text-amber-300 font-bold underline underline-offset-2">← Tahrirlash</button>
           </div>
-          <CustomerView profile={profile} services={services} isTeam={isTeam} barberId={user?.id || ""} />
+          <CustomerView profile={profile} services={services} isTeam={isTeam} barberId={user?.id || ""} previewMode={true} />
         </>
       ) : (
         <>

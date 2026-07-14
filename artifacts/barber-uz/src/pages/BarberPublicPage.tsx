@@ -157,7 +157,7 @@ function PublicView({ barber }: { barber: BarberData }) {
       <AnimatePresence mode="wait">
         {tab === "asosiy" && (
           <motion.div key="asosiy" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.18 }}>
-            <div className="px-4 pt-4 space-y-4">
+            <div className="px-4 pt-4 space-y-5">
               {!hasInfo && (
                 <div className="text-center py-10 border border-dashed border-white/8 rounded-2xl">
                   <p className="text-3xl mb-2">✂️</p>
@@ -173,97 +173,129 @@ function PublicView({ barber }: { barber: BarberData }) {
                 </div>
               )}
 
+              {/* 🕐 Ish vaqti */}
               {(barber.workingHoursStart || workDaysLabel) && (
-                <div className="flex flex-wrap gap-2">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
-                    <Clock className="w-3.5 h-3.5 text-primary/70 shrink-0" />
-                    <span>
-                      {workDaysLabel ? `${workDaysLabel} · ` : ""}
-                      {barber.workingHoursStart || "09:00"}–{barber.workingHoursEnd || "20:00"}
-                    </span>
+                <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className="text-sm">🕐</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Ish vaqti</span>
+                    <div className="flex-1 h-px bg-white/6" />
+                  </div>
+                  <div className="flex items-center justify-between bg-white/4 border border-white/8 rounded-2xl px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <Clock className="w-4 h-4 text-primary/70 shrink-0" />
+                      <div>
+                        <p className="text-[10px] text-muted-foreground/50 mb-0.5">Kun</p>
+                        <p className="text-xs text-foreground font-medium">{workDaysLabel || "—"}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-muted-foreground/50 mb-0.5">Soat</p>
+                      <p className="text-xs text-foreground font-medium">{barber.workingHoursStart || "09:00"}–{barber.workingHoursEnd || "20:00"}</p>
+                    </div>
                   </div>
                   {barber.lunchBreakEnabled && barber.lunchBreakStart && barber.lunchBreakEnd && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-white/5 border border-white/8 w-fit px-3 py-2 rounded-full">
-                      <span>🍽</span>
-                      <span>Tushlik: {barber.lunchBreakStart}–{barber.lunchBreakEnd}</span>
+                    <div className="flex items-center gap-2 mt-2 px-4 py-2.5 bg-white/3 border border-white/6 rounded-2xl">
+                      <span className="text-sm">🍽</span>
+                      <span className="text-xs text-muted-foreground">Tushlik tanaffus: {barber.lunchBreakStart}–{barber.lunchBreakEnd}</span>
                     </div>
                   )}
                 </div>
               )}
 
+              {/* 📞 Aloqa */}
               {barber.phoneVisible && barber.phone && (
-                <a
-                  href={`tel:${barber.phone}`}
-                  className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-500/8 border border-emerald-500/20 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/15 transition-colors"
-                >
-                  <Phone className="w-4 h-4 shrink-0" />
-                  <span>Qo'ng'iroq qilish</span>
-                  <span className="ml-auto text-xs text-emerald-400/70">{barber.phone}</span>
-                </a>
-              )}
-
-              {(barber.latitude && barber.longitude) ? (
-                <div className="space-y-2">
-                  <div className="rounded-2xl overflow-hidden border border-white/8" style={{ height: 160 }}>
-                    <iframe
-                      src={osmEmbedUrl(barber.latitude, barber.longitude)}
-                      className="w-full h-full"
-                      style={{ border: 0, pointerEvents: "none" }}
-                      scrolling="no"
-                      loading="lazy"
-                      title="Joylashuv"
-                    />
+                <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className="text-sm">📞</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Aloqa</span>
+                    <div className="flex-1 h-px bg-white/6" />
                   </div>
-                  {barber.address && (
-                    <p className="text-sm text-muted-foreground px-0.5 flex items-start gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary/60" />
-                      <span className="truncate">{barber.address}</span>
-                    </p>
-                  )}
-                  <a
-                    href={mapsHref(barber.latitude, barber.longitude, barber.mapLink)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-card border border-white/8 text-sm font-semibold text-primary hover:border-primary/30 transition-colors"
-                  >
-                    <MapPin className="w-4 h-4" /> Xaritada ochish
+                  <a href={`tel:${barber.phone}`}
+                    className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-500/8 border border-emerald-500/20 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/15 transition-colors">
+                    <Phone className="w-4 h-4 shrink-0" />
+                    <span>Qo'ng'iroq qilish</span>
+                    <span className="ml-auto text-xs text-emerald-400/70">{barber.phone}</span>
                   </a>
                 </div>
+              )}
+
+              {/* 📍 Manzil */}
+              {(barber.latitude && barber.longitude) ? (
+                <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className="text-sm">📍</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Manzil</span>
+                    <div className="flex-1 h-px bg-white/6" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="rounded-2xl overflow-hidden border border-white/8" style={{ height: 160 }}>
+                      <iframe src={osmEmbedUrl(barber.latitude, barber.longitude)} className="w-full h-full" style={{ border: 0, pointerEvents: "none" }} scrolling="no" loading="lazy" title="Joylashuv" />
+                    </div>
+                    {barber.address && (
+                      <p className="text-sm text-muted-foreground px-0.5 flex items-start gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary/60" />
+                        <span className="truncate">{barber.address}</span>
+                      </p>
+                    )}
+                    <a href={mapsHref(barber.latitude, barber.longitude, barber.mapLink)} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-card border border-white/8 text-sm font-semibold text-primary hover:border-primary/30 transition-colors">
+                      <MapPin className="w-4 h-4" /> Xaritada ochish
+                    </a>
+                  </div>
+                </div>
               ) : barber.address ? (
-                (() => {
-                  const href = safeHref(barber.mapLink);
-                  const Tag = href ? "a" : "div";
-                  const extraProps = href ? { href, target: "_blank" as const, rel: "noopener noreferrer" } : {};
-                  return (
-                    <Tag {...extraProps} className="flex items-center gap-3 bg-card border border-white/8 rounded-2xl p-3.5 hover:border-white/15 transition-colors">
-                      <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                        <MapPin className="w-4 h-4 text-primary" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-foreground truncate">{barber.address}</p>
-                        {href && <p className="text-xs text-primary mt-0.5">Xaritada ko'rish →</p>}
-                      </div>
-                    </Tag>
-                  );
-                })()
+                <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className="text-sm">📍</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Manzil</span>
+                    <div className="flex-1 h-px bg-white/6" />
+                  </div>
+                  {(() => {
+                    const href = safeHref(barber.mapLink);
+                    const Tag = href ? "a" : "div";
+                    const extraProps = href ? { href, target: "_blank" as const, rel: "noopener noreferrer" } : {};
+                    return (
+                      <Tag {...extraProps} className="block bg-card border border-white/8 rounded-2xl overflow-hidden hover:border-white/15 transition-colors">
+                        <div className="h-16 bg-zinc-900 relative overflow-hidden">
+                          <div className="absolute inset-0 opacity-15" style={{ backgroundImage: "linear-gradient(#4af 1px,transparent 1px),linear-gradient(90deg,#4af 1px,transparent 1px)", backgroundSize: "30px 30px" }} />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="w-5 h-5 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-white" /></div>
+                          </div>
+                        </div>
+                        <div className="px-4 py-3 flex items-center gap-2">
+                          <MapPin className="w-4 h-4 text-primary shrink-0" />
+                          <span className="text-sm text-foreground flex-1">{barber.address}</span>
+                          {href && <span className="text-xs text-primary font-semibold">Ko'rish →</span>}
+                        </div>
+                      </Tag>
+                    );
+                  })()}
+                </div>
               ) : null}
 
+              {/* 🔗 Ijtimoiy tarmoqlar */}
               {(telegramHandle || instagramHandle) && (
-                <div className="space-y-2">
-                  {telegramHandle && (
-                    <a href={`https://t.me/${telegramHandle}`} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#2AABEE]/8 border border-[#2AABEE]/20 text-[#2AABEE] text-sm font-medium hover:bg-[#2AABEE]/15 transition-colors">
-                      <Send className="w-4 h-4 shrink-0" />
-                      <span>@{telegramHandle}</span>
-                    </a>
-                  )}
-                  {instagramHandle && (
-                    <a href={`https://instagram.com/${instagramHandle}`} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-pink-500/8 to-violet-500/8 border border-pink-500/15 text-pink-400 text-sm font-medium hover:from-pink-500/15 hover:to-violet-500/15 transition-colors">
-                      <Instagram className="w-4 h-4 shrink-0" />
-                      <span>@{instagramHandle}</span>
-                    </a>
-                  )}
+                <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className="text-sm">🔗</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Ijtimoiy tarmoqlar</span>
+                    <div className="flex-1 h-px bg-white/6" />
+                  </div>
+                  <div className="space-y-2">
+                    {telegramHandle && (
+                      <a href={`https://t.me/${telegramHandle}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-3 px-4 py-2.5 rounded-full bg-[#2AABEE]/10 border border-[#2AABEE]/25 text-[#2AABEE] text-sm font-medium hover:bg-[#2AABEE]/20 transition-colors">
+                        <Send className="w-3.5 h-3.5" /><span>@{telegramHandle}</span>
+                      </a>
+                    )}
+                    {instagramHandle && (
+                      <a href={`https://instagram.com/${instagramHandle}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-3 px-4 py-2.5 rounded-full bg-gradient-to-r from-pink-500/10 to-violet-500/10 border border-pink-500/20 text-pink-400 text-sm font-medium hover:from-pink-500/20 hover:to-violet-500/20 transition-colors">
+                        <Instagram className="w-3.5 h-3.5" /><span>@{instagramHandle}</span>
+                      </a>
+                    )}
+                  </div>
                 </div>
               )}
 
