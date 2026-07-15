@@ -3,7 +3,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { Layout } from "@/components/Layout";
 import { Link, useLocation } from "wouter";
-import { useGetProfile } from "@workspace/api-client-react";
 import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -739,18 +738,32 @@ export default function ProfileSettings() {
   const { t } = useTranslation();
   const isTeam = user?.mode === "team";
 
-  const { data: profileRaw, isLoading, isError } = useGetProfile();
-  const [localProfile, setLocalProfile] = useState<ProfileData | null>(null);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isError, setIsError] = useState(false);
   const [activeSection, setActiveSection] = useState<Section | null>(null);
 
   useEffect(() => {
-    if (profileRaw) setLocalProfile(profileRaw as ProfileData);
-  }, [profileRaw]);
-
-  const profile = localProfile ?? (profileRaw as ProfileData | null) ?? null;
+    const token = localStorage.getItem("barber_token") ?? "";
+    fetch("/api/settings/profile", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`${res.status}`);
+        return res.json();
+      })
+      .then((data: ProfileData) => {
+        setProfile(data);
+        setIsLoading(false);
+      })
+      .catch(() => {
+        setIsError(true);
+        setIsLoading(false);
+      });
+  }, []);
 
   function handleSaved(patch: Partial<ProfileData>) {
-    setLocalProfile(prev => prev ? { ...prev, ...patch } : prev);
+    setProfile(prev => prev ? { ...prev, ...patch } : prev);
   }
 
   if (isLoading) {
