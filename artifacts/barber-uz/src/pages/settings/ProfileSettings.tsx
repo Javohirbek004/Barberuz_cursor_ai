@@ -739,7 +739,7 @@ export default function ProfileSettings() {
   const { t } = useTranslation();
   const isTeam = user?.mode === "team";
 
-  const { data: profileRaw, isLoading } = useGetProfile();
+  const { data: profileRaw, isLoading, isError } = useGetProfile();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [activeSection, setActiveSection] = useState<Section | null>(null);
 
@@ -751,10 +751,28 @@ export default function ProfileSettings() {
     setProfile(prev => prev ? { ...prev, ...patch } : prev);
   }
 
-  if (isLoading || !profile) {
+  if (isLoading) {
     return (
       <Layout>
         <div className="py-20 text-center text-muted-foreground text-sm">{t("loading")}</div>
+      </Layout>
+    );
+  }
+
+  if (isError || !profile) {
+    return (
+      <Layout>
+        <div className="py-20 flex flex-col items-center gap-4">
+          <div className="text-4xl">⚠️</div>
+          <p className="text-foreground font-semibold text-sm">Profil yuklanmadi</p>
+          <p className="text-muted-foreground text-xs text-center">Internet aloqasini tekshiring va qayta urinib ko'ring</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-2 px-6 h-11 rounded-2xl bg-primary text-primary-foreground text-sm font-bold"
+          >
+            Qayta yuklash
+          </button>
+        </div>
       </Layout>
     );
   }
