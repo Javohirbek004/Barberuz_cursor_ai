@@ -1,28 +1,17 @@
 import { ReactNode, useEffect } from "react";
 import { BottomNav } from "./BottomNav";
 import { useLocation } from "wouter";
-
-function isTelegramConnected(): boolean {
-  try {
-    const u = JSON.parse(localStorage.getItem("barber_user") || "null");
-    return u?.telegramVerified === true;
-  } catch {
-    return false;
-  }
-}
-
-function isLoggedIn(): boolean {
-  return !!localStorage.getItem("barber_token");
-}
+import { useAuth } from "@/hooks/useAuth";
 
 export function Layout({ children, hideBottomNav }: { children: ReactNode; hideBottomNav?: boolean }) {
   const [location, navigate] = useLocation();
+  const { user, isLoading } = useAuth(false);
 
   useEffect(() => {
-    if (isLoggedIn() && !isTelegramConnected() && location !== "/verify-telegram") {
+    if (!isLoading && !!user && user?.telegramVerified !== true && location !== "/verify-telegram") {
       navigate("/verify-telegram");
     }
-  }, [location, navigate]);
+  }, [user, isLoading, location, navigate]);
 
   return (
     <div className={`min-h-screen bg-background relative ${hideBottomNav ? "pb-4" : "pb-28"}`}>
