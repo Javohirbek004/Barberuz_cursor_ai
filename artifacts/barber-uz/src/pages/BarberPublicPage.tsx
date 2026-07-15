@@ -128,10 +128,6 @@ function PublicBookingModal({
     if (submitting || !selectedTime || !clientName.trim()) return;
     setSubmitting(true);
 
-    // Open a blank window immediately (same user gesture) to bypass popup blockers,
-    // then redirect it to the deep link once we receive it from the server.
-    const tgWindow = window.open("", "_blank");
-
     try {
       const services = selectedServices.map(s => ({ name: s.name, price: s.price, duration: s.duration }));
       const pageLink = `${window.location.origin}/${barber.username}`;
@@ -152,13 +148,7 @@ function PublicBookingModal({
       setDeepLink(data.deepLink);
 
       if (data.deepLink) {
-        if (tgWindow && !tgWindow.closed) {
-          tgWindow.location.href = data.deepLink;
-        } else {
-          window.location.href = data.deepLink;
-        }
-      } else {
-        tgWindow?.close();
+        window.location.href = data.deepLink;
       }
 
       setStep("verifying");
@@ -313,7 +303,7 @@ function PublicBookingModal({
                   <span className="ml-1">Tasdiq kutilmoqda</span>
                 </div>
                 {deepLink && (
-                  <button onClick={() => window.open(deepLink, "_blank")}
+                  <button onClick={() => { window.location.href = deepLink; }}
                     className="w-full h-12 rounded-2xl bg-[#2AABEE]/15 border border-[#2AABEE]/30 text-[#2AABEE] font-semibold text-sm flex items-center justify-center gap-2 mb-3">
                     <Send className="w-4 h-4" /> Telegram botni qayta ochish
                   </button>

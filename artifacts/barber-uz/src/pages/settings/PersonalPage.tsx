@@ -1428,7 +1428,7 @@ function BookingModal({ selectedServices, totalDuration, isTeam, barberId, profi
       if (result.status === "confirmed") { setStep("done"); setSubmitting(false); return; }
 
       setSessionId(result.sessionId);
-      if (result.deepLink) window.open(result.deepLink, "_blank");
+      if (result.deepLink) window.location.href = result.deepLink;
       setStep("verifying"); setSubmitting(false);
       pollingRef.current = setInterval(async () => {
         try {
