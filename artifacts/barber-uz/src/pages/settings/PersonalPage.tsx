@@ -10,7 +10,7 @@ import {
   ChevronLeft, Copy, Check, Download, Share2, Eye,
   Plus, X, Pencil, Trash2, Clock, MapPin,
   Instagram, Camera, ArrowLeft, ExternalLink, Send, Tag,
-  Navigation, Save, Phone,
+  Navigation, Save, Phone, Star,
 } from "lucide-react";
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -325,16 +325,27 @@ function GalleryStripEdit({
                 <div className="w-36 h-28 rounded-2xl overflow-hidden border border-white/12">
                   <img src={src} className="w-full h-full object-cover" alt="" />
                 </div>
+                {/* O'chirish tugmasi */}
                 <button
                   onClick={() => onChange(images.filter((_, j) => j !== i))}
                   className="absolute top-1.5 right-1.5 w-6 h-6 bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
                 >
                   <X className="w-3 h-3 text-white" />
                 </button>
-                {i === 0 && (
-                  <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-primary/80 text-black text-[9px] font-bold rounded-full">
+                {/* Muqova badge yoki "Muqova qilish" tugmasi */}
+                {i === 0 ? (
+                  <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-primary/90 text-black text-[9px] font-bold rounded-full flex items-center gap-0.5">
+                    <Star className="w-2.5 h-2.5 fill-black" />
                     Muqova
                   </div>
+                ) : (
+                  <button
+                    onClick={() => onChange([images[i], ...images.filter((_, j) => j !== i)])}
+                    className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm text-white/80 text-[9px] font-medium rounded-full flex items-center gap-0.5 hover:bg-black/80 hover:text-white transition-colors"
+                  >
+                    <Star className="w-2.5 h-2.5" />
+                    Muqova qilish
+                  </button>
                 )}
               </div>
             ))}
