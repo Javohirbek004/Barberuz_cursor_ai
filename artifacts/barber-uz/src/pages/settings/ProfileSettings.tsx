@@ -740,15 +740,17 @@ export default function ProfileSettings() {
   const isTeam = user?.mode === "team";
 
   const { data: profileRaw, isLoading, isError } = useGetProfile();
-  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [localProfile, setLocalProfile] = useState<ProfileData | null>(null);
   const [activeSection, setActiveSection] = useState<Section | null>(null);
 
   useEffect(() => {
-    if (profileRaw) setProfile(profileRaw as ProfileData);
+    if (profileRaw) setLocalProfile(profileRaw as ProfileData);
   }, [profileRaw]);
 
+  const profile = localProfile ?? (profileRaw as ProfileData | null) ?? null;
+
   function handleSaved(patch: Partial<ProfileData>) {
-    setProfile(prev => prev ? { ...prev, ...patch } : prev);
+    setLocalProfile(prev => prev ? { ...prev, ...patch } : prev);
   }
 
   if (isLoading) {
