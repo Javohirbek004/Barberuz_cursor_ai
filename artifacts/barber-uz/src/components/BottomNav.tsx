@@ -52,7 +52,7 @@ export function BottomNav() {
 
   return (
     <>
-      <div className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-2 pointer-events-none">
+      <div id="bottom-nav-root" className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-2 pointer-events-none transition-opacity duration-200">
         <div className="mx-auto max-w-md pointer-events-auto">
           <div className="glass-panel rounded-3xl flex items-stretch px-2 relative" style={{ minHeight: 64 }}>
 

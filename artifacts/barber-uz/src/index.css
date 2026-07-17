@@ -144,3 +144,9 @@ html.light {
     @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:border-primary/30;
   }
 }
+
+body.sheet-open #bottom-nav-root {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}

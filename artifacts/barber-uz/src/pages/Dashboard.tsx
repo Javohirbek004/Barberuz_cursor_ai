@@ -202,12 +202,23 @@ function BookingDetailModal({
   const updateBookingMut = useUpdateBooking();
   const updateClientMut  = useUpdateClient();
 
+  // Lock body scroll + hide bottom nav while sheet is open
+  useEffect(() => {
+    document.body.classList.add("sheet-open");
+    return () => document.body.classList.remove("sheet-open");
+  }, []);
+
   useEffect(() => {
     if (clientData?.notes !== undefined) setNotesValue(clientData.notes ?? "");
   }, [clientData?.notes]);
 
   const handleSaveNotes = () => {
-    if (!booking.clientId) return;
+    if (!booking.clientId) {
+      // Demo mode — just show local feedback
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 2500);
+      return;
+    }
     updateClientMut.mutate(
       { clientId: booking.clientId, data: { notes: notesValue } },
       { onSuccess: () => { setNotesSaved(true); setTimeout(() => setNotesSaved(false), 2500); } },
