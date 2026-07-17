@@ -15,7 +15,7 @@ import { Card } from "@/components/ui/card";
 import {
   CalendarDays, Wallet, Timer, Clock,
   HardHat, Armchair, ChevronRight,
-  X, Phone, CheckCircle, XCircle, Save,
+  X, Phone, CheckCircle, XCircle, Save, AlertTriangle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -168,7 +168,19 @@ function StatCard({
   );
 }
 
-// ── Booking Detail Modal ──────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
+const UZ_SHORT_MONTHS = [
+  "Yan","Fev","Mar","Apr","May","Iyn","Iyl","Avg","Sen","Okt","Noy","Dek",
+];
+
+function formatBookingDate(dateStr: string): string {
+  const today = new Date().toISOString().split("T")[0];
+  if (dateStr === today) return "Bugun";
+  const d = new Date(dateStr);
+  return `${d.getDate()}-${UZ_SHORT_MONTHS[d.getMonth()]}`;
+}
+
+// ── Booking Bottom Sheet ──────────────────────────────────────────────────────
 function BookingDetailModal({
   booking,
   onClose,
@@ -178,40 +190,27 @@ function BookingDetailModal({
   onClose: () => void;
   onRefetch: () => void;
 }) {
-  const [notesValue, setNotesValue] = useState("");
-  const [notesSaved, setNotesSaved] = useState(false);
+  const [notesValue, setNotesValue]   = useState("");
+  const [notesSaved, setNotesSaved]   = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
-  const { data: clientData, isLoading: clientLoading } = useGetClient(
+  const { data: clientData } = useGetClient(
     booking.clientId ?? "",
     { query: { enabled: !!booking.clientId } },
   );
 
   const updateBookingMut = useUpdateBooking();
-  const updateClientMut = useUpdateClient();
+  const updateClientMut  = useUpdateClient();
 
   useEffect(() => {
-    if (clientData?.notes !== undefined) {
-      setNotesValue(clientData.notes ?? "");
-    }
+    if (clientData?.notes !== undefined) setNotesValue(clientData.notes ?? "");
   }, [clientData?.notes]);
 
   const handleSaveNotes = () => {
     if (!booking.clientId) return;
     updateClientMut.mutate(
       { clientId: booking.clientId, data: { notes: notesValue } },
-      {
-        onSuccess: () => {
-          setNotesSaved(true);
-          setTimeout(() => setNotesSaved(false), 2000);
-        },
-      },
-    );
-  };
-
-  const handleCancel = () => {
-    updateBookingMut.mutate(
-      { bookingId: booking.id, data: { status: "cancelled" } },
-      { onSuccess: () => { onRefetch(); onClose(); } },
+      { onSuccess: () => { setNotesSaved(true); setTimeout(() => setNotesSaved(false), 2500); } },
     );
   };
 
@@ -222,143 +221,220 @@ function BookingDetailModal({
     );
   };
 
-  const isBusy = updateBookingMut.isPending;
+  const handleConfirmCancel = () => {
+    updateBookingMut.mutate(
+      { bookingId: booking.id, data: { status: "cancelled" } },
+      { onSuccess: () => { onRefetch(); onClose(); } },
+    );
+  };
+
+  const isBusy   = updateBookingMut.isPending;
+  const isActive = booking.status !== "cancelled" && booking.status !== "completed";
+  const dateLabel = formatBookingDate(booking.date);
+  const phone = clientData?.phone;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 z-50 flex items-end">
       {/* Backdrop */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* Sheet */}
+      {/* Bottom sheet */}
       <motion.div
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
         exit={{ y: "100%" }}
-        transition={{ type: "spring", damping: 28, stiffness: 300 }}
-        className="relative w-full max-w-lg bg-card rounded-t-3xl border border-white/10 p-5 pb-8 z-10 max-h-[85vh] overflow-y-auto"
+        transition={{ type: "spring", damping: 30, stiffness: 320 }}
+        className="relative w-full bg-[#1a1a1f] rounded-t-3xl border-t border-x border-white/8 z-10 flex flex-col"
+        style={{ maxHeight: "70vh" }}
       >
-        {/* Handle */}
-        <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-5" />
-
-        {/* Header */}
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-foreground">Bron tafsilotlari</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
-          >
-            <X className="w-4 h-4 text-muted-foreground" />
-          </button>
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+          <div className="w-10 h-1 bg-white/20 rounded-full" />
         </div>
 
-        {/* Info rows */}
-        <div className="space-y-3 mb-5">
-          <InfoRow label="Mijoz" value={booking.clientName} />
-          <InfoRow label="Xizmat" value={booking.serviceName ?? "—"} />
-          <InfoRow
-            label="Narx"
-            value={`${booking.price.toLocaleString()} so'm`}
-            valueClass="text-primary font-bold"
-          />
-          <InfoRow label="Vaqt" value={`${booking.startTime.slice(0, 5)} – ${booking.endTime.slice(0, 5)}`} />
+        {/* Scrollable content */}
+        <div className="overflow-y-auto flex-1 px-5 pb-6">
 
-          {/* Phone */}
-          {clientLoading ? (
-            <InfoRow label="Telefon" value="..." />
-          ) : clientData?.phone ? (
-            <div className="flex items-center justify-between py-2 border-b border-white/5">
-              <span className="text-xs text-muted-foreground">Telefon</span>
-              <a
-                href={`tel:${clientData.phone}`}
-                className="flex items-center gap-1.5 text-sm font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
-              >
-                <Phone className="w-3.5 h-3.5" />
-                {clientData.phone}
-              </a>
+          {/* ── Section 1: Customer header ── */}
+          <div className="flex items-center justify-between pt-3 pb-5 border-b border-white/8">
+            <div className="flex-1 min-w-0 pr-3">
+              <p className="text-[11px] text-muted-foreground mb-0.5 uppercase tracking-widest font-medium">Mijoz</p>
+              <h2 className="text-xl font-bold text-foreground leading-tight truncate">
+                {booking.clientName}
+              </h2>
             </div>
-          ) : null}
-        </div>
-
-        {/* Notes */}
-        {booking.clientId && (
-          <div className="mb-5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Mijoz tavsifi
-              </span>
-              {notesSaved && (
-                <span className="text-[10px] text-emerald-400 font-medium">✓ Saqlandi</span>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {phone ? (
+                <a
+                  href={`tel:${phone}`}
+                  className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center hover:bg-emerald-500/25 active:scale-95 transition-all"
+                >
+                  <Phone className="w-5 h-5 text-emerald-400" />
+                </a>
+              ) : (
+                <div className="w-11 h-11 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center opacity-40">
+                  <Phone className="w-5 h-5 text-muted-foreground" />
+                </div>
               )}
+              <button
+                onClick={onClose}
+                className="w-9 h-9 rounded-xl bg-white/8 flex items-center justify-center hover:bg-white/15 active:scale-95 transition-all"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+          </div>
+
+          {/* ── Section 2: Info grid ── */}
+          <div className="py-4 space-y-0 border-b border-white/8">
+            <SheetRow label="Xizmat" value={booking.serviceName ?? "—"} />
+            <SheetRow
+              label="Vaqt va Sana"
+              value={`${dateLabel} • ${booking.startTime.slice(0, 5)} – ${booking.endTime.slice(0, 5)}`}
+            />
+            <div className="flex items-center justify-between py-3">
+              <span className="text-sm text-muted-foreground">Narxi</span>
+              <span className="text-xl font-bold text-primary">
+                {booking.price.toLocaleString()} so'm
+              </span>
+            </div>
+            {/* Status badge */}
+            <div className="flex items-center justify-between py-1">
+              <span className="text-sm text-muted-foreground">Holat</span>
+              <span className={`text-[11px] px-3 py-1 rounded-full font-bold uppercase tracking-wide ${
+                booking.status === "confirmed"  ? "bg-emerald-500/12 text-emerald-400 border border-emerald-500/20" :
+                booking.status === "pending"    ? "bg-amber-500/12 text-amber-400 border border-amber-500/20" :
+                booking.status === "completed"  ? "bg-blue-500/12 text-blue-400 border border-blue-500/20" :
+                                                   "bg-red-500/12 text-red-400 border border-red-500/20"
+              }`}>
+                {booking.status === "confirmed" ? "Tasdiqlangan" :
+                 booking.status === "pending"   ? "Kutilmoqda" :
+                 booking.status === "completed" ? "Yakunlangan" : "Bekor qilingan"}
+              </span>
+            </div>
+          </div>
+
+          {/* ── Section 3: Notes ── */}
+          <div className="py-4 border-b border-white/8">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold text-foreground">Mijoz haqida eslatma</p>
+              <AnimatePresence>
+                {notesSaved && (
+                  <motion.span
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" /> Eslatma saqlandi
+                  </motion.span>
+                )}
+              </AnimatePresence>
             </div>
             <textarea
               value={notesValue}
               onChange={(e) => setNotesValue(e.target.value)}
-              placeholder="Mijoz haqida eslatma (har doim saqlanadi)..."
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none focus:border-primary/50 transition-colors"
+              placeholder={booking.clientId
+                ? "Soch uzunligi, rang xohishi, maxsus talablar..."
+                : "Mijoz profili yo'q — eslatma saqlanmaydi"}
+              disabled={!booking.clientId}
+              className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/35 resize-none focus:outline-none focus:border-primary/40 focus:bg-white/7 transition-all disabled:opacity-40"
               rows={3}
             />
-            <button
-              onClick={handleSaveNotes}
-              disabled={updateClientMut.isPending}
-              className="mt-2 flex items-center gap-1.5 text-xs text-primary font-medium hover:text-primary/80 transition-colors disabled:opacity-40"
-            >
-              <Save className="w-3.5 h-3.5" />
-              {updateClientMut.isPending ? "Saqlanmoqda..." : "Saqlash"}
-            </button>
+            {booking.clientId && (
+              <button
+                onClick={handleSaveNotes}
+                disabled={updateClientMut.isPending}
+                className="mt-2.5 w-full py-2.5 rounded-xl bg-white/6 border border-white/10 text-sm font-semibold text-foreground hover:bg-white/10 active:scale-[0.98] transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                <Save className="w-4 h-4 text-primary" />
+                {updateClientMut.isPending ? "Saqlanmoqda..." : "Saqlash"}
+              </button>
+            )}
           </div>
-        )}
 
-        {/* Action buttons */}
-        {booking.status !== "cancelled" && booking.status !== "completed" && (
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={handleCancel}
-              disabled={isBusy}
-              className="flex items-center justify-center gap-2 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-semibold hover:bg-red-500/20 transition-colors disabled:opacity-40"
-            >
-              <XCircle className="w-4 h-4" />
-              Bekor qilish
-            </button>
-            <button
-              onClick={handleComplete}
-              disabled={isBusy}
-              className="flex items-center justify-center gap-2 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/20 transition-colors disabled:opacity-40"
-            >
-              <CheckCircle className="w-4 h-4" />
-              Yakunlash
-            </button>
-          </div>
-        )}
+          {/* ── Section 4: Action buttons ── */}
+          {isActive && !confirmCancel && (
+            <div className="pt-4 grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setConfirmCancel(true)}
+                disabled={isBusy}
+                className="flex items-center justify-center gap-2 py-3.5 rounded-2xl border border-red-500/30 text-red-400 text-sm font-semibold hover:bg-red-500/10 active:scale-[0.98] transition-all disabled:opacity-40"
+              >
+                <XCircle className="w-4 h-4" />
+                Bekor qilish
+              </button>
+              <button
+                onClick={handleComplete}
+                disabled={isBusy}
+                className="flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/25 active:scale-[0.98] transition-all disabled:opacity-40"
+              >
+                <CheckCircle className="w-4 h-4" />
+                {isBusy ? "..." : "Yakunlash"}
+              </button>
+            </div>
+          )}
 
-        {(booking.status === "cancelled" || booking.status === "completed") && (
-          <div className={`text-center text-sm font-semibold py-2 rounded-xl ${booking.status === "cancelled" ? "bg-red-500/10 text-red-400" : "bg-emerald-500/10 text-emerald-400"}`}>
-            {booking.status === "cancelled" ? "Bekor qilingan" : "Yakunlangan"}
-          </div>
-        )}
+          {/* Cancel confirmation */}
+          {isActive && confirmCancel && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="pt-4"
+            >
+              <div className="bg-red-500/8 border border-red-500/20 rounded-2xl p-4 mb-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                  <p className="text-sm font-semibold text-red-400">Bronni bekor qilasizmi?</p>
+                </div>
+                <p className="text-xs text-muted-foreground pl-6">
+                  {booking.clientName} uchun {booking.startTime.slice(0,5)} da belgilangan bron o'chiriladi.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setConfirmCancel(false)}
+                  className="py-3.5 rounded-2xl bg-white/8 border border-white/10 text-sm font-semibold text-foreground hover:bg-white/12 active:scale-[0.98] transition-all"
+                >
+                  Qaytish
+                </button>
+                <button
+                  onClick={handleConfirmCancel}
+                  disabled={isBusy}
+                  className="py-3.5 rounded-2xl bg-red-500/15 border border-red-500/25 text-red-400 text-sm font-semibold hover:bg-red-500/25 active:scale-[0.98] transition-all disabled:opacity-40"
+                >
+                  {isBusy ? "..." : "Ha, bekor qilish"}
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {!isActive && (
+            <div className={`mt-4 text-center text-sm font-semibold py-3 rounded-2xl ${
+              booking.status === "cancelled"
+                ? "bg-red-500/10 text-red-400 border border-red-500/15"
+                : "bg-blue-500/10 text-blue-400 border border-blue-500/15"
+            }`}>
+              {booking.status === "cancelled" ? "✕  Bekor qilingan" : "✓  Yakunlangan"}
+            </div>
+          )}
+        </div>
       </motion.div>
     </div>
   );
 }
 
-function InfoRow({
-  label,
-  value,
-  valueClass = "text-sm font-medium text-foreground",
-}: {
-  label: string;
-  value: string;
-  valueClass?: string;
-}) {
+function SheetRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b border-white/5">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={valueClass}>{value}</span>
+    <div className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
+      <span className="text-sm text-muted-foreground flex-shrink-0 mr-4">{label}</span>
+      <span className="text-sm font-medium text-foreground text-right">{value}</span>
     </div>
   );
 }
