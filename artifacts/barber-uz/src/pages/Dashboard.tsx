@@ -234,7 +234,7 @@ function BookingDetailModal({
   const phone = clientData?.phone;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end">
+    <div className="fixed inset-0 z-[200] flex items-end">
       {/* Backdrop */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -269,26 +269,12 @@ function BookingDetailModal({
                 {booking.clientName}
               </h2>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {phone ? (
-                <a
-                  href={`tel:${phone}`}
-                  className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center hover:bg-emerald-500/25 active:scale-95 transition-all"
-                >
-                  <Phone className="w-5 h-5 text-emerald-400" />
-                </a>
-              ) : (
-                <div className="w-11 h-11 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center opacity-40">
-                  <Phone className="w-5 h-5 text-muted-foreground" />
-                </div>
-              )}
-              <button
-                onClick={onClose}
-                className="w-9 h-9 rounded-xl bg-white/8 flex items-center justify-center hover:bg-white/15 active:scale-95 transition-all"
-              >
-                <X className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </div>
+            <button
+              onClick={onClose}
+              className="w-9 h-9 rounded-xl bg-white/8 flex items-center justify-center hover:bg-white/15 active:scale-95 transition-all flex-shrink-0"
+            >
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
           </div>
 
           {/* ── Section 2: Info grid ── */}
@@ -298,14 +284,30 @@ function BookingDetailModal({
               label="Vaqt va Sana"
               value={`${dateLabel} • ${booking.startTime.slice(0, 5)} – ${booking.endTime.slice(0, 5)}`}
             />
-            <div className="flex items-center justify-between py-3">
+            {/* Phone row */}
+            <div className="flex items-center justify-between py-3 border-b border-white/5">
+              <span className="text-sm text-muted-foreground">Telefon raqami</span>
+              {phone ? (
+                <a
+                  href={`tel:${phone}`}
+                  className="flex items-center gap-2 text-emerald-400 font-semibold text-sm hover:text-emerald-300 active:opacity-70 transition-all"
+                >
+                  <Phone className="w-4 h-4" />
+                  {phone}
+                </a>
+              ) : (
+                <span className="text-sm text-muted-foreground/40">—</span>
+              )}
+            </div>
+            {/* Price */}
+            <div className="flex items-center justify-between py-3 border-b border-white/5">
               <span className="text-sm text-muted-foreground">Narxi</span>
               <span className="text-xl font-bold text-primary">
                 {booking.price.toLocaleString()} so'm
               </span>
             </div>
             {/* Status badge */}
-            <div className="flex items-center justify-between py-1">
+            <div className="flex items-center justify-between py-2">
               <span className="text-sm text-muted-foreground">Holat</span>
               <span className={`text-[11px] px-3 py-1 rounded-full font-bold uppercase tracking-wide ${
                 booking.status === "confirmed"  ? "bg-emerald-500/12 text-emerald-400 border border-emerald-500/20" :
@@ -340,14 +342,11 @@ function BookingDetailModal({
             <textarea
               value={notesValue}
               onChange={(e) => setNotesValue(e.target.value)}
-              placeholder={booking.clientId
-                ? "Soch uzunligi, rang xohishi, maxsus talablar..."
-                : "Mijoz profili yo'q — eslatma saqlanmaydi"}
-              disabled={!booking.clientId}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/35 resize-none focus:outline-none focus:border-primary/40 focus:bg-white/7 transition-all disabled:opacity-40"
+              placeholder="Soch uzunligi, rang xohishi, maxsus talablar..."
+              className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/35 resize-none focus:outline-none focus:border-primary/40 focus:bg-white/[0.07] transition-all"
               rows={3}
             />
-            {booking.clientId && (
+            {booking.clientId ? (
               <button
                 onClick={handleSaveNotes}
                 disabled={updateClientMut.isPending}
@@ -356,6 +355,10 @@ function BookingDetailModal({
                 <Save className="w-4 h-4 text-primary" />
                 {updateClientMut.isPending ? "Saqlanmoqda..." : "Saqlash"}
               </button>
+            ) : (
+              <p className="mt-2 text-[11px] text-muted-foreground/50 text-center">
+                Demo bron — eslatma saqlanmaydi
+              </p>
             )}
           </div>
 
