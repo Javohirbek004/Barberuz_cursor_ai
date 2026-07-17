@@ -55,7 +55,7 @@ function calcTotalDuration(bookings: Booking[]): string {
   }
   const h = Math.floor(total / 60);
   const m = total % 60;
-  return `• ${h}s ${m}d`;
+  return `Bandlik • ${h}s ${m}d`;
 }
 
 function calcNextBookingInfo(
@@ -71,10 +71,9 @@ function calcNextBookingInfo(
     }
     if (start > nowMins) {
       const diff = start - nowMins;
-      const main =
-        diff >= 60
-          ? `${Math.floor(diff / 60)} soat${diff % 60 > 0 ? ` ${diff % 60} daqiqa` : ""} keyin`
-          : `${diff} daqiqa keyin`;
+      const h = Math.floor(diff / 60);
+      const m = diff % 60;
+      const main = h > 0 ? `${h}s ${m}d keyin` : `${m}d keyin`;
       return { main, sub: b.startTime.slice(0, 5), nextId: b.id };
     }
   }
@@ -158,7 +157,7 @@ function StatCard({
           </div>
           <h3 className="text-xs font-medium text-muted-foreground leading-tight">{label}</h3>
         </div>
-        <div className="text-2xl font-display font-bold text-foreground">
+        <div className={`font-display font-bold text-foreground leading-tight ${String(value).length > 10 ? "text-lg" : "text-2xl"}`}>
           {loading ? <span className="text-muted-foreground text-base">...</span> : value}
         </div>
         {subtext && !loading && (
