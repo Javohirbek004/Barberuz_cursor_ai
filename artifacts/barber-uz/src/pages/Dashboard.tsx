@@ -206,10 +206,15 @@ function BookingDetailModal({
   const updateBookingMut = useUpdateBooking();
   const updateClientMut  = useUpdateClient();
 
-  // Lock body scroll + hide bottom nav while sheet is open
+  // Hide bottom nav while sheet is open — visibility:hidden blocks all descendants
   useEffect(() => {
     document.body.classList.add("sheet-open");
-    return () => document.body.classList.remove("sheet-open");
+    const nav = document.getElementById("bottom-nav-root");
+    if (nav) nav.style.visibility = "hidden";
+    return () => {
+      document.body.classList.remove("sheet-open");
+      if (nav) nav.style.visibility = "";
+    };
   }, []);
 
   useEffect(() => {
