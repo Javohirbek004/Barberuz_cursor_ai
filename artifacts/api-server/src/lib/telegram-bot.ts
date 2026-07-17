@@ -20,7 +20,7 @@
  */
 
 import { randomBytes } from "crypto";
-import { db, usersTable, bookingSessionsTable, bookingsTable } from "@workspace/db";
+import { db, usersTable, bookingSessionsTable, bookingsTable, clientsTable } from "@workspace/db";
 import { eq, and, isNull, desc } from "drizzle-orm";
 import { generateToken } from "./auth";
 
@@ -1293,11 +1293,44 @@ async function confirmBookingSession(
     clientPhone: effectivePhone,
   }).where(eq(bookingSessionsTable.sessionId, sessionId));
 
+  // Upsert client record so phone/name are always linked to bookings
+  let clientId: string | null = null;
+  try {
+    const [existing] = await db
+      .select()
+      .from(clientsTable)
+      .where(and(eq(clientsTable.barberId, session.barberId), eq(clientsTable.telegramId, tgUserId)))
+      .limit(1);
+
+    if (existing) {
+      await db.update(clientsTable)
+        .set({
+          name: firstName,
+          ...(effectivePhone && { phone: effectivePhone }),
+          updatedAt: new Date(),
+        })
+        .where(eq(clientsTable.id, existing.id));
+      clientId = existing.id;
+    } else {
+      const [newClient] = await db.insert(clientsTable).values({
+        barberId: session.barberId,
+        name: firstName,
+        phone: effectivePhone || null,
+        telegramId: tgUserId,
+        status: "new",
+      }).returning();
+      clientId = newClient.id;
+    }
+  } catch (err) {
+    console.warn("[Bot] client upsert skipped:", (err as Error).message);
+  }
+
   // Insert into bookings table
   try {
     const totalDur = data.services.reduce((a, s) => a + (s.duration || 0), 0);
     await db.insert(bookingsTable).values({
       barberId: session.barberId,
+      clientId: clientId || null,
       clientName: firstName,
       serviceName: data.services.map(s => s.name).join(", "),
       date: toISODate(data.date),
