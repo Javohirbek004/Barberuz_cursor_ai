@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 import {
   useGetDashboardStats,
   useListBookings,
@@ -185,11 +186,14 @@ function BookingDetailModal({
   booking,
   onClose,
   onRefetch,
+  onRefetchStats,
 }: {
   booking: Booking;
   onClose: () => void;
   onRefetch: () => void;
+  onRefetchStats: () => void;
 }) {
+  const { toast } = useToast();
   const [notesValue, setNotesValue]   = useState("");
   const [notesSaved, setNotesSaved]   = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -228,14 +232,31 @@ function BookingDetailModal({
   const handleComplete = () => {
     updateBookingMut.mutate(
       { bookingId: booking.id, data: { status: "completed" } },
-      { onSuccess: () => { onRefetch(); onClose(); } },
+      {
+        onSuccess: () => {
+          onClose();
+          onRefetch();
+          onRefetchStats();
+          toast({
+            title: "✓ Muvaffaqiyatli yakunlandi",
+            description: `${booking.clientName} — ${booking.price.toLocaleString()} so'm daromadga qo'shildi`,
+            duration: 3000,
+          });
+        },
+      },
     );
   };
 
   const handleConfirmCancel = () => {
     updateBookingMut.mutate(
       { bookingId: booking.id, data: { status: "cancelled" } },
-      { onSuccess: () => { onRefetch(); onClose(); } },
+      {
+        onSuccess: () => {
+          onClose();
+          onRefetch();
+          onRefetchStats();
+        },
+      },
     );
   };
 
@@ -458,7 +479,7 @@ function IndividualDashboard() {
   const { t } = useTranslation();
   const [, navigate] = useLocation();
 
-  const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
+  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useGetDashboardStats();
   const today = new Date().toISOString().split("T")[0];
   const { data: bookingsData, isLoading: bookingsLoading, refetch } = useListBookings({ date: today });
 
@@ -641,6 +662,7 @@ function IndividualDashboard() {
             booking={selectedBooking}
             onClose={() => setSelectedBooking(null)}
             onRefetch={refetch}
+            onRefetchStats={refetchStats}
           />
         )}
       </AnimatePresence>
