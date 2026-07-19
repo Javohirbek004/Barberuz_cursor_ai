@@ -2,6 +2,7 @@ import { pgTable, text, integer, numeric, boolean, timestamp, uuid, index } from
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
+import { serviceCategoriesTable } from "./service-categories";
 
 export const servicesTable = pgTable(
   "services",
@@ -10,6 +11,7 @@ export const servicesTable = pgTable(
     barberId: uuid("barber_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     nameRu: text("name_ru"),
+    categoryId: uuid("category_id").references(() => serviceCategoriesTable.id, { onDelete: "set null" }),
     duration: integer("duration").notNull().default(30),
     price: numeric("price", { precision: 10, scale: 2 }).notNull().default("0"),
     isActive: boolean("is_active").notNull().default(true),

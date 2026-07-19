@@ -19,6 +19,7 @@ import {
   Clock,
   Plus,
   AlertTriangle,
+  Check,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -34,6 +35,11 @@ import {
 import type { Service } from "@workspace/api-client-react";
 import { ServiceForm } from "@/components/ServiceForm";
 import type { ServiceFormData } from "@/components/ServiceForm";
+import {
+  useListCategories,
+  useCreateCategory,
+  type ServiceCategory,
+} from "@/hooks/useCategories";
 
 // ── Phone masking ─────────────────────────────────────────────────────────────
 function applyPhoneMask(raw: string): string {
@@ -244,12 +250,53 @@ function ServicePicker({
   onChange: (id: string) => void;
   onAddNew: () => void;
 }) {
+  const [activeCat, setActiveCat] = useState<string | null>(null);
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [catCreating, setCatCreating] = useState(false);
+
+  const { data: categories = [] } = useListCategories();
+  const createCatMut = useCreateCategory();
+
+  async function handleCreateCat() {
+    const trimmed = newCatName.trim();
+    if (!trimmed) return;
+    setCatCreating(true);
+    try {
+      const created = await createCatMut.mutateAsync(trimmed);
+      setActiveCat(created.id);
+      setShowNewCat(false);
+      setNewCatName("");
+    } finally {
+      setCatCreating(false);
+    }
+  }
+
+  const filtered =
+    activeCat === null
+      ? services
+      : services.filter(
+          (s) => (s as Service & { categoryId?: string | null }).categoryId === activeCat,
+        );
+
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-2">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-16 rounded-2xl bg-white/5 animate-pulse" />
-        ))}
+      <div
+        className="overflow-x-auto scrollbar-hide"
+        style={{ height: 160 }}
+      >
+        <div
+          className="grid gap-2 pb-1"
+          style={{
+            gridTemplateRows: "repeat(2, 72px)",
+            gridAutoFlow: "column",
+            gridAutoColumns: "calc(50% - 4px)",
+          }}
+        >
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-full rounded-2xl bg-white/5 animate-pulse" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -257,9 +304,7 @@ function ServicePicker({
   if (services.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 py-6 border border-dashed border-white/10 rounded-2xl">
-        <p className="text-sm text-muted-foreground">
-          Hali xizmatlar qo'shilmagan
-        </p>
+        <p className="text-sm text-muted-foreground">Hali xizmatlar qo'shilmagan</p>
         <button
           type="button"
           onClick={onAddNew}
@@ -273,33 +318,111 @@ function ServicePicker({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {services.map((s) => (
+    <div>
+      {/* Category bubble filter row */}
+      <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-2.5 mb-2">
         <button
-          key={s.id}
           type="button"
-          onClick={() => onChange(s.id)}
-          className={`flex flex-col items-start p-3 rounded-2xl border transition-all text-left ${
-            value === s.id
-              ? "border-primary/60 bg-primary/10 text-foreground"
-              : "border-white/10 bg-background/40 text-muted-foreground hover:bg-white/5"
-          }`}
+          onClick={() => setActiveCat(null)}
+          className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${activeCat === null ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground hover:text-foreground"}`}
         >
-          <span className="text-sm font-semibold leading-tight">{s.name}</span>
-          <span className="text-xs mt-1 opacity-60">
-            {s.duration} daqiqa • {s.price.toLocaleString()} so'm
-          </span>
+          Hammasi
         </button>
-      ))}
-      {/* Inline "add" tile */}
-      <button
-        type="button"
-        onClick={onAddNew}
-        className="flex flex-col items-center justify-center gap-1 p-3 rounded-2xl border border-dashed border-white/15 text-muted-foreground/50 hover:border-primary/35 hover:text-primary hover:bg-primary/5 transition-all"
-      >
-        <Plus className="w-4 h-4" />
-        <span className="text-xs font-medium">Qo'shish</span>
-      </button>
+        {categories.map((c: ServiceCategory) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => setActiveCat(c.id === activeCat ? null : c.id)}
+            className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${activeCat === c.id ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground hover:text-foreground"}`}
+          >
+            {c.name}
+          </button>
+        ))}
+        {showNewCat ? (
+          <div className="flex items-center gap-1 shrink-0">
+            <input
+              autoFocus
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreateCat()}
+              placeholder="Yangi kategoriya"
+              className="h-7 w-28 px-2 rounded-full text-xs bg-white/5 border border-white/15 focus:outline-none focus:border-primary/50"
+            />
+            <button
+              type="button"
+              onClick={handleCreateCat}
+              disabled={catCreating || !newCatName.trim()}
+              className="h-7 w-7 rounded-full bg-primary/15 border border-primary/30 text-primary flex items-center justify-center disabled:opacity-40"
+            >
+              {catCreating ? (
+                <span className="w-3 h-3 border border-primary/40 border-t-primary rounded-full animate-spin" />
+              ) : (
+                <Check className="w-3 h-3" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowNewCat(false); setNewCatName(""); }}
+              className="h-7 w-7 rounded-full bg-white/5 border border-white/10 text-muted-foreground flex items-center justify-center"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowNewCat(true)}
+            className="shrink-0 h-7 px-2.5 rounded-full text-xs font-semibold border border-dashed border-white/15 text-muted-foreground/60 hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-all flex items-center gap-0.5"
+          >
+            <Plus className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+
+      {/* 2-row horizontal scroll grid */}
+      {filtered.length === 0 ? (
+        <div className="text-center py-6 border border-dashed border-white/8 rounded-2xl text-sm text-muted-foreground">
+          Bu kategoriyada xizmat yo'q
+        </div>
+      ) : (
+        <div className="overflow-x-auto scrollbar-hide">
+          <div
+            className="grid gap-2 pb-1"
+            style={{
+              gridTemplateRows: "repeat(2, auto)",
+              gridAutoFlow: "column",
+              gridAutoColumns: "calc(50vw - 52px)",
+            }}
+          >
+            {filtered.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => onChange(s.id)}
+                className={`flex flex-col items-start p-3 rounded-2xl border transition-all text-left min-w-0 ${
+                  value === s.id
+                    ? "border-primary/60 bg-primary/10 text-foreground"
+                    : "border-white/10 bg-background/40 text-muted-foreground hover:bg-white/5"
+                }`}
+              >
+                <span className="text-sm font-semibold leading-tight truncate w-full">{s.name}</span>
+                <span className="text-xs mt-1 opacity-60 truncate w-full">
+                  {s.duration} daqiqa • {s.price.toLocaleString()} so'm
+                </span>
+              </button>
+            ))}
+            {/* Inline add tile */}
+            <button
+              type="button"
+              onClick={onAddNew}
+              className="flex flex-col items-center justify-center gap-1 p-3 rounded-2xl border border-dashed border-white/15 text-muted-foreground/50 hover:border-primary/35 hover:text-primary hover:bg-primary/5 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="text-xs font-medium">Qo'shish</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -726,10 +849,10 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
       {
         data: {
           name: data.name,
-          nameRu: data.category,
+          nameRu: data.categoryId || undefined,
           duration: data.duration,
           price: data.price,
-        },
+        } as Parameters<typeof createSvcMut.mutate>[0]["data"],
       },
       {
         onSuccess: async (newSvc) => {

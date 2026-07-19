@@ -11,6 +11,7 @@ function formatService(s: typeof servicesTable.$inferSelect) {
     barberId: s.barberId,
     name: s.name,
     nameRu: s.nameRu,
+    categoryId: s.categoryId ?? null,
     duration: s.duration,
     price: Number(s.price),
     isActive: s.isActive,
@@ -33,7 +34,7 @@ router.get("/", authenticate, async (req, res) => {
 router.post("/", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
-    const { name, nameRu, duration, price } = req.body;
+    const { name, nameRu, categoryId, duration, price } = req.body;
     if (!name || !duration || price === undefined) {
       res.status(400).json({ error: "validation", message: "Missing required fields" });
       return;
@@ -42,6 +43,7 @@ router.post("/", authenticate, async (req, res) => {
       barberId: user.id,
       name,
       nameRu: nameRu || null,
+      categoryId: categoryId || null,
       duration,
       price: price.toString(),
     }).returning();
@@ -54,11 +56,12 @@ router.post("/", authenticate, async (req, res) => {
 router.put("/:serviceId", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
-    const { name, nameRu, duration, price, isActive } = req.body;
+    const { name, nameRu, categoryId, duration, price, isActive } = req.body;
     const [service] = await db.update(servicesTable)
       .set({
         ...(name !== undefined && { name }),
         ...(nameRu !== undefined && { nameRu }),
+        ...(categoryId !== undefined && { categoryId: categoryId || null }),
         ...(duration !== undefined && { duration }),
         ...(price !== undefined && { price: price.toString() }),
         ...(isActive !== undefined && { isActive }),

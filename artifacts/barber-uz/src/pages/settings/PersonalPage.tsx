@@ -3,6 +3,12 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { APP_ORIGIN, APP_DISPLAY_HOST } from "@/lib/config";
 import { ServiceForm } from "@/components/ServiceForm";
 import type { ServiceFormData } from "@/components/ServiceForm";
+import {
+  useListCategories,
+  useUpdateCategory,
+  useDeleteCategory,
+  type ServiceCategory,
+} from "@/hooks/useCategories";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
@@ -46,7 +52,8 @@ export interface ProfileData {
 
 export interface ServiceItem {
   id: string;
-  category: string;
+  category: string;      // legacy nameRu slug (kept for CustomerView emoji)
+  categoryId: string | null;
   name: string;
   duration: number;
   price: number;
@@ -273,6 +280,7 @@ function apiToService(s: Record<string, unknown>): ServiceItem {
     id: s.id as string,
     name: s.name as string,
     category: (s.nameRu as string) || "soch",
+    categoryId: (s.categoryId as string | null) ?? null,
     duration: s.duration as number,
     price: Number(s.price),
     description: "",
@@ -989,29 +997,33 @@ function AsosiyTab({
 
 function XizmatlarTab({
   services,
-  customCats,
   onReload,
-  onAddCat,
 }: {
   services: ServiceItem[];
-  customCats: string[];
   onReload: () => void;
-  onAddCat: (c: string) => void;
 }) {
-  const [activeCat, setActiveCat] = useState("all");
+  const [activeCat, setActiveCat] = useState<string | null>(null);
   const [addingOrEditing, setAddingOrEditing] = useState<"new" | string | null>(null);
-  const [newCat, setNewCat] = useState("");
-  const [showNewCat, setShowNewCat] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [renameCat, setRenameCat] = useState<ServiceCategory | null>(null);
+  const [renameVal, setRenameVal] = useState("");
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [deleteCat, setDeleteCat] = useState<ServiceCategory | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const allCats = [...DEFAULT_CATS, ...customCats.map(c => ({ id: c, label: c }))];
-  const filtered = activeCat === "all" ? services : services.filter(s => s.category === activeCat);
+  const { data: categories = [], isLoading: catsLoading } = useListCategories();
+  const updateCatMut = useUpdateCategory();
+  const deleteCatMut = useDeleteCategory();
+
+  const filtered = activeCat === null
+    ? services
+    : services.filter(s => s.categoryId === activeCat);
 
   async function handleSave(item: ServiceFormData) {
     setSaving(true); setError("");
     try {
-      const body = { name: item.name, nameRu: item.category, duration: item.duration, price: item.price };
+      const body = { name: item.name, categoryId: item.categoryId || null, duration: item.duration, price: item.price };
       if (item.id) { await apiPut(`/api/services/${item.id}`, body); }
       else { await apiPost("/api/services", body); }
       setAddingOrEditing(null);
@@ -1025,18 +1037,33 @@ function XizmatlarTab({
     catch { setError("O'chirishda xatolik yuz berdi."); }
   }
 
-  function handleAddCat() {
-    const cat = newCat.trim();
-    if (!cat || customCats.includes(cat)) { setShowNewCat(false); setNewCat(""); return; }
-    onAddCat(cat); setShowNewCat(false); setNewCat("");
+  async function handleRename() {
+    if (!renameCat || !renameVal.trim()) return;
+    setRenameLoading(true);
+    try { await updateCatMut.mutateAsync({ id: renameCat.id, name: renameVal.trim() }); setRenameCat(null); }
+    finally { setRenameLoading(false); }
+  }
+
+  async function handleDeleteCat() {
+    if (!deleteCat) return;
+    setDeleteLoading(true);
+    try {
+      await deleteCatMut.mutateAsync(deleteCat.id);
+      if (activeCat === deleteCat.id) setActiveCat(null);
+      setDeleteCat(null);
+      onReload();
+    } finally { setDeleteLoading(false); }
   }
 
   if (addingOrEditing !== null) {
     const editing = addingOrEditing !== "new" ? services.find(s => s.id === addingOrEditing) : undefined;
+    const initial: Partial<ServiceFormData> | undefined = editing
+      ? { id: editing.id, name: editing.name, categoryId: editing.categoryId, duration: editing.duration, price: editing.price, description: editing.description }
+      : undefined;
     return (
       <>
         {error && <p className="text-xs text-destructive bg-destructive/10 rounded-xl px-3 py-2 mb-3">{error}</p>}
-        <ServiceForm customCats={customCats} initial={editing} onSave={handleSave} onCancel={() => setAddingOrEditing(null)} saving={saving} />
+        <ServiceForm initial={initial} onSave={handleSave} onCancel={() => setAddingOrEditing(null)} saving={saving} />
       </>
     );
   }
@@ -1045,27 +1072,33 @@ function XizmatlarTab({
     <div className="pb-10">
       {error && <p className="text-xs text-destructive bg-destructive/10 rounded-xl px-3 py-2 mb-3">{error}</p>}
 
-      <div className="flex gap-2 overflow-x-auto pb-3 mb-4 scrollbar-hide">
-        {allCats.map(c => (
-          <button key={c.id} onClick={() => setActiveCat(c.id)}
-            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${activeCat === c.id ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground"}`}>
-            {c.label}
+      {/* Category filter row */}
+      {!catsLoading && (
+        <div className="flex gap-1.5 overflow-x-auto pb-3 mb-4 scrollbar-hide">
+          <button onClick={() => setActiveCat(null)}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${activeCat === null ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground"}`}>
+            Hammasi
           </button>
-        ))}
-        {showNewCat ? (
-          <div className="flex items-center gap-1 shrink-0">
-            <input autoFocus value={newCat} onChange={e => setNewCat(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddCat()}
-              placeholder="Kategoriya nomi" className="h-8 px-2 w-28 rounded-full text-xs bg-white/5 border border-white/15 focus:outline-none focus:border-primary/50" />
-            <button onClick={handleAddCat} className="h-8 w-8 rounded-full bg-primary/15 border border-primary/30 text-primary flex items-center justify-center shrink-0"><Check className="w-3.5 h-3.5" /></button>
-            <button onClick={() => { setShowNewCat(false); setNewCat(""); }} className="h-8 w-8 rounded-full bg-white/5 border border-white/10 text-muted-foreground flex items-center justify-center shrink-0"><X className="w-3.5 h-3.5" /></button>
-          </div>
-        ) : (
-          <button onClick={() => setShowNewCat(true)}
-            className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border border-dashed border-white/15 text-muted-foreground hover:text-foreground hover:border-white/30 transition-all flex items-center gap-1">
-            <Plus className="w-3 h-3" /> Yangi
-          </button>
-        )}
-      </div>
+          {categories.map((c: ServiceCategory) => (
+            <div key={c.id} className="shrink-0 flex items-center gap-0.5">
+              <button onClick={() => setActiveCat(c.id === activeCat ? null : c.id)}
+                className={`px-3 py-1.5 rounded-l-full text-xs font-semibold border border-r-0 transition-all ${activeCat === c.id ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground"}`}>
+                {c.name}
+              </button>
+              <div className={`flex items-center border transition-all rounded-r-full overflow-hidden ${activeCat === c.id ? "border-primary/30 bg-primary/15" : "border-white/8 bg-white/4"}`}>
+                <button onClick={() => { setRenameCat(c); setRenameVal(c.name); }}
+                  className="w-6 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+                  <Pencil className="w-2.5 h-2.5" />
+                </button>
+                <button onClick={() => setDeleteCat(c)}
+                  className="w-6 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors">
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="space-y-2.5 mb-4">
         <AnimatePresence>
@@ -1075,7 +1108,12 @@ function XizmatlarTab({
                 <div className="w-11 h-11 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center text-xl shrink-0">{catEmoji(s.category)}</div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm text-foreground truncate">{s.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatDur(s.duration)} · <span className="text-foreground/70">{formatPriceShort(s.price)} so'm</span></p>
+                  <p className="text-xs text-muted-foreground">
+                    {s.categoryId && categories.find((c: ServiceCategory) => c.id === s.categoryId)?.name
+                      ? <span className="text-primary/70 mr-1">{categories.find((c: ServiceCategory) => c.id === s.categoryId)?.name} ·</span>
+                      : null}
+                    {formatDur(s.duration)} · <span className="text-foreground/70">{formatPriceShort(s.price)} so'm</span>
+                  </p>
                 </div>
                 <div className="flex gap-1.5 shrink-0">
                   <button onClick={() => setAddingOrEditing(s.id)} className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors text-muted-foreground hover:text-foreground"><Pencil className="w-3.5 h-3.5" /></button>
@@ -1098,6 +1136,54 @@ function XizmatlarTab({
         className="w-full h-12 rounded-2xl border border-dashed border-white/15 text-muted-foreground hover:text-foreground hover:border-white/25 hover:bg-white/3 transition-all flex items-center justify-center gap-2 text-sm font-semibold">
         <Plus className="w-4 h-4" /> Xizmat qo'shish
       </button>
+
+      {/* Rename category modal */}
+      <AnimatePresence>
+        {renameCat && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setRenameCat(null)} />
+            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 280 }}
+              className="relative w-full max-w-md bg-card rounded-t-3xl z-10 border-t border-white/8 px-5 py-6" onClick={e => e.stopPropagation()}>
+              <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-5" />
+              <h3 className="text-base font-bold text-foreground mb-4">Kategoriyani nomlash</h3>
+              <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)} onKeyDown={e => e.key === "Enter" && handleRename()}
+                className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50 mb-4" />
+              <div className="flex gap-3">
+                <button onClick={() => setRenameCat(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/8 text-sm font-semibold text-muted-foreground">Bekor</button>
+                <button onClick={handleRename} disabled={!renameVal.trim() || renameLoading}
+                  className="flex-1 h-11 rounded-2xl bg-primary text-black text-sm font-bold disabled:opacity-40 flex items-center justify-center">
+                  {renameLoading ? <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> : "Saqlash"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete category confirm modal */}
+      <AnimatePresence>
+        {deleteCat && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteCat(null)} />
+            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 280 }}
+              className="relative w-full max-w-md bg-card rounded-t-3xl z-10 border-t border-white/8 px-5 py-6" onClick={e => e.stopPropagation()}>
+              <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-5" />
+              <div className="flex flex-col items-center text-center gap-3 mb-6">
+                <div className="w-14 h-14 rounded-2xl bg-destructive/15 border border-destructive/25 flex items-center justify-center text-3xl">🗑️</div>
+                <h3 className="text-base font-bold text-foreground">"{deleteCat.name}" o'chirilsinmi?</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">Bu kategoriya o'chiriladi. Unga bog'liq xizmatlar kategoriyasiz qoladi (o'chirilmaydi).</p>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setDeleteCat(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/8 text-sm font-semibold text-muted-foreground">Bekor</button>
+                <button onClick={handleDeleteCat} disabled={deleteLoading}
+                  className="flex-1 h-11 rounded-2xl bg-destructive text-white text-sm font-bold disabled:opacity-40 flex items-center justify-center">
+                  {deleteLoading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "O'chirish"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1561,9 +1647,10 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
   const [detailSvc, setDetailSvc] = useState<ServiceItem | null>(null);
   const [previewWarn, setPreviewWarn] = useState(false);
 
-  const visibleCats = ["all", ...Array.from(new Set(services.map(s => s.category)))];
-  const catChips = DEFAULT_CATS.filter(c => visibleCats.includes(c.id));
-  const filtered = activeCat === "all" ? services : services.filter(s => s.category === activeCat);
+  const visibleCatIds = new Set(services.map(s => s.categoryId).filter(Boolean));
+  const { data: cvCategories = [] } = useListCategories();
+  const catChips = [{ id: "all", label: "Hammasi" }, ...cvCategories.filter((c: ServiceCategory) => visibleCatIds.has(c.id)).map((c: ServiceCategory) => ({ id: c.id, label: c.name }))];
+  const filtered = activeCat === "all" ? services : services.filter(s => s.categoryId === activeCat);
   const selectedServices = services.filter(s => selectedIds.includes(s.id));
 
   function calcTotal() {
@@ -1941,7 +2028,6 @@ export default function PersonalPage() {
   const [preview, setPreview] = useState(false);
   const [profile, setProfile] = useState<ProfileData>(EMPTY_PROFILE);
   const [services, setServices] = useState<ServiceItem[]>([]);
-  const [customCats, setCustomCats] = useState<string[]>([]);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [loadingServices, setLoadingServices] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -2066,7 +2152,7 @@ export default function PersonalPage() {
               <motion.div key="xizmatlar" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
                 {loadingServices
                   ? <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
-                  : <XizmatlarTab services={services} customCats={customCats} onReload={reloadServices} onAddCat={c => setCustomCats(prev => [...prev, c])} />
+                  : <XizmatlarTab services={services} onReload={reloadServices} />
                 }
               </motion.div>
             )}
