@@ -11,6 +11,11 @@ export interface ServiceCategory {
 
 export const CATEGORIES_KEY = ["categories"] as const;
 
+export interface SeedCategoriesResult {
+  seeded: boolean;
+  categories: ServiceCategory[];
+}
+
 export function useListCategories() {
   return useQuery({
     queryKey: CATEGORIES_KEY,
@@ -49,6 +54,15 @@ export function useDeleteCategory() {
   return useMutation<unknown, Error, string>({
     mutationFn: (id: string) =>
       customFetch(`/api/categories/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: CATEGORIES_KEY }),
+  });
+}
+
+export function useSeedCategories() {
+  const qc = useQueryClient();
+  return useMutation<SeedCategoriesResult, Error, void>({
+    mutationFn: () =>
+      customFetch<SeedCategoriesResult>("/api/categories/seed", { method: "POST" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: CATEGORIES_KEY }),
   });
 }

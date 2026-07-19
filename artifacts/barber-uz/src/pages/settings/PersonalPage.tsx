@@ -5,8 +5,10 @@ import { ServiceForm } from "@/components/ServiceForm";
 import type { ServiceFormData } from "@/components/ServiceForm";
 import {
   useListCategories,
+  useCreateCategory,
   useUpdateCategory,
   useDeleteCategory,
+  useSeedCategories,
   type ServiceCategory,
 } from "@/hooks/useCategories";
 import { useAuth } from "@/hooks/useAuth";
@@ -1013,8 +1015,35 @@ function XizmatlarTab({
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const { data: categories = [], isLoading: catsLoading } = useListCategories();
+  const createCatMut = useCreateCategory();
   const updateCatMut = useUpdateCategory();
   const deleteCatMut = useDeleteCategory();
+  const seedMut = useSeedCategories();
+
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [catCreating, setCatCreating] = useState(false);
+
+  // Auto-seed default categories on first load when list is empty
+  useEffect(() => {
+    if (!catsLoading && categories.length === 0 && !seedMut.isPending) {
+      seedMut.mutate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catsLoading]);
+
+  async function handleCreateCat() {
+    const trimmed = newCatName.trim();
+    if (!trimmed) return;
+    setCatCreating(true);
+    try {
+      await createCatMut.mutateAsync(trimmed);
+      setShowNewCat(false);
+      setNewCatName("");
+    } finally {
+      setCatCreating(false);
+    }
+  }
 
   const filtered = activeCat === null
     ? services
@@ -1097,6 +1126,31 @@ function XizmatlarTab({
               </div>
             </div>
           ))}
+
+          {/* Add category inline */}
+          {showNewCat ? (
+            <div className="flex items-center gap-1 shrink-0">
+              <input autoFocus value={newCatName} onChange={e => setNewCatName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleCreateCat()}
+                placeholder="Kategoriya nomi"
+                className="h-8 px-2 w-28 rounded-full text-xs bg-white/5 border border-white/15 focus:outline-none focus:border-primary/50" />
+              <button onClick={handleCreateCat} disabled={catCreating || !newCatName.trim()}
+                className="h-8 w-8 rounded-full bg-primary/15 border border-primary/30 text-primary flex items-center justify-center shrink-0 disabled:opacity-40">
+                {catCreating
+                  ? <span className="w-3 h-3 border border-primary/40 border-t-primary rounded-full animate-spin" />
+                  : <Check className="w-3.5 h-3.5" />}
+              </button>
+              <button onClick={() => { setShowNewCat(false); setNewCatName(""); }}
+                className="h-8 w-8 rounded-full bg-white/5 border border-white/10 text-muted-foreground flex items-center justify-center shrink-0">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setShowNewCat(true)}
+              className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border border-dashed border-white/15 text-muted-foreground hover:text-foreground hover:border-white/30 transition-all flex items-center gap-1">
+              <Plus className="w-3 h-3" /> Yangi
+            </button>
+          )}
         </div>
       )}
 

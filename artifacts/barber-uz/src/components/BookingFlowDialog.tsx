@@ -847,12 +847,13 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
     setSvcSaving(true);
     createSvcMut.mutate(
       {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         data: {
           name: data.name,
-          nameRu: data.categoryId || undefined,
           duration: data.duration,
           price: data.price,
-        } as Parameters<typeof createSvcMut.mutate>[0]["data"],
+          ...(data.categoryId ? { categoryId: data.categoryId } : {}),
+        } as any,
       },
       {
         onSuccess: async (newSvc) => {
