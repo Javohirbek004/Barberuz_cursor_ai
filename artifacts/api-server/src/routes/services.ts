@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, servicesTable } from "@workspace/db";
+import { db, servicesTable, serviceCategoriesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 
@@ -31,12 +31,28 @@ router.get("/", authenticate, async (req, res) => {
   }
 });
 
+async function validateCategoryOwnership(
+  categoryId: string | undefined | null,
+  barberId: string,
+): Promise<boolean> {
+  if (!categoryId) return true;
+  const rows = await db
+    .select({ id: serviceCategoriesTable.id })
+    .from(serviceCategoriesTable)
+    .where(and(eq(serviceCategoriesTable.id, categoryId), eq(serviceCategoriesTable.barberId, barberId)));
+  return rows.length > 0;
+}
+
 router.post("/", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
     const { name, nameRu, categoryId, duration, price } = req.body;
     if (!name || !duration || price === undefined) {
       res.status(400).json({ error: "validation", message: "Missing required fields" });
+      return;
+    }
+    if (categoryId && !(await validateCategoryOwnership(categoryId, user.id))) {
+      res.status(400).json({ error: "validation", message: "Invalid categoryId" });
       return;
     }
     const [service] = await db.insert(servicesTable).values({
@@ -57,6 +73,10 @@ router.put("/:serviceId", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
     const { name, nameRu, categoryId, duration, price, isActive } = req.body;
+    if (categoryId && !(await validateCategoryOwnership(categoryId, user.id))) {
+      res.status(400).json({ error: "validation", message: "Invalid categoryId" });
+      return;
+    }
     const [service] = await db.update(servicesTable)
       .set({
         ...(name !== undefined && { name }),

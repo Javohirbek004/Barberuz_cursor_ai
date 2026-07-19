@@ -8,6 +8,13 @@
       "when": 1778062929286,
       "tag": "0000_rainy_rawhide_kid",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1753000000000,
+      "tag": "0002_service_categories",
+      "breakpoints": true
     }
   ]
 }
