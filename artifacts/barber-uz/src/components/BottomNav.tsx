@@ -3,7 +3,6 @@ import { useTranslation } from "@/i18n/LanguageContext";
 import { Home, Calendar, Users, Settings, Plus } from "lucide-react";
 import { useState } from "react";
 import { BookingFlowDialog } from "./BookingFlowDialog";
-import { bookingStore } from "@/stores/bookingStore";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -87,7 +86,6 @@ export function BottomNav() {
         open={isAddOpen}
         onOpenChange={setIsAddOpen}
         isTeam={isTeam}
-        onBookingAdded={(b) => bookingStore.add(b)}
       />
     </>
   );

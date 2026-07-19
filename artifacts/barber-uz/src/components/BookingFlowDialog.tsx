@@ -1,80 +1,61 @@
 /**
  * BookingFlowDialog
- * Central (+) button booking flow for both Individual and Team modes.
+ * Central (+) button booking flow — Individual mode.
  *
- * Individual: single-step form modal
- * Team: step 1 → barber selection, step 2 → booking form
+ * Features:
+ *  - Dynamic services from API (empty state → inline add form)
+ *  - Phone masking: +998 (XX) XXX-XX-XX
+ *  - Standard + after-hours slot generation from barber profile
+ *  - Soft override warning before saving after-hours bookings
+ *  - Real API save + React Query cache invalidation (Calendar + Dashboard)
  */
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowLeft,
   X,
   CheckCircle2,
   Loader2,
   Calendar,
   Clock,
+  Plus,
+  AlertTriangle,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useListServices,
+  useCreateService,
+  useCreateBooking,
+  useListBookings,
+  useGetProfile,
+  getListBookingsQueryKey,
+  getGetDashboardStatsQueryKey,
+  getListServicesQueryKey,
+} from "@workspace/api-client-react";
+import type { Service } from "@workspace/api-client-react";
+import { ServiceForm } from "@/components/ServiceForm";
+import type { ServiceFormData } from "@/components/ServiceForm";
 
-// ── Data ──────────────────────────────────────────────────────────────────────
-export interface Service {
-  id: string;
-  label: string;
-  duration: number;
+// ── Phone masking ─────────────────────────────────────────────────────────────
+function applyPhoneMask(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  const withoutCountry = digits.startsWith("998") ? digits.slice(3) : digits;
+  const d = withoutCountry.slice(0, 9);
+
+  let result = "+998";
+  if (d.length === 0) return result;
+  result += " (" + d.slice(0, Math.min(2, d.length));
+  if (d.length < 2) return result;
+  result += ") " + d.slice(2, Math.min(5, d.length));
+  if (d.length < 5) return result;
+  result += "-" + d.slice(5, Math.min(7, d.length));
+  if (d.length < 7) return result;
+  result += "-" + d.slice(7, 9);
+  return result;
 }
 
-export const SERVICES: Service[] = [
-  { id: "fade",    label: "Fade",          duration: 45 },
-  { id: "soch",    label: "Soch oldirish", duration: 30 },
-  { id: "soqol",   label: "Soqol",         duration: 20 },
-  { id: "kompleks",label: "Kompleks",      duration: 60 },
-];
-
-interface Barber {
-  id: string;
-  name: string;
-  bookings: number;
-  totalSlots: number;
-  busy: { start: string; duration: number }[];
-}
-
-const BARBERS: Barber[] = [
-  {
-    id: "sardor", name: "Sardor", bookings: 5, totalSlots: 3,
-    busy: [
-      { start: "09:00", duration: 45 }, { start: "10:00", duration: 30 },
-      { start: "11:00", duration: 30 }, { start: "12:00", duration: 45 },
-      { start: "14:00", duration: 45 },
-    ],
-  },
-  {
-    id: "jasur", name: "Jasur", bookings: 3, totalSlots: 5,
-    busy: [
-      { start: "10:30", duration: 45 }, { start: "13:00", duration: 60 },
-      { start: "16:00", duration: 20 },
-    ],
-  },
-  {
-    id: "ali", name: "Ali", bookings: 0, totalSlots: 8,
-    busy: [],
-  },
-  {
-    id: "kamol", name: "Kamol", bookings: 2, totalSlots: 6,
-    busy: [
-      { start: "11:30", duration: 30 }, { start: "15:30", duration: 45 },
-    ],
-  },
-];
-
-const INDIVIDUAL_BUSY = [
-  { start: "14:00", duration: 45 },
-  { start: "15:00", duration: 30 },
-  { start: "17:00", duration: 20 },
-];
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Time helpers ──────────────────────────────────────────────────────────────
 function toMins(t: string): number {
-  const [h, m] = t.split(":").map(Number);
+  const [h = 0, m = 0] = t.split(":").map(Number);
   return h * 60 + m;
 }
 
@@ -84,52 +65,28 @@ function fmtMins(total: number): string {
   ).padStart(2, "0")}`;
 }
 
+function todayStr(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
 function generateSlots(
   duration: number,
-  busy: { start: string; duration: number }[]
+  busy: { startTime: string; endTime: string }[],
+  rangeStart: number,
+  rangeEnd: number
 ): string[] {
-  const START = 9 * 60;
-  const END = 20 * 60;
   const slots: string[] = [];
-  for (let t = START; t + duration <= END; t += 30) {
+  for (let t = rangeStart; t + duration <= rangeEnd; t += 30) {
     const end = t + duration;
     const free = !busy.some((b) => {
-      const bs = toMins(b.start);
-      const be = bs + b.duration;
+      const bs = toMins(b.startTime);
+      const be = toMins(b.endTime);
       return t < be && end > bs;
     });
     if (free) slots.push(fmtMins(t));
   }
   return slots;
 }
-
-function todayStr(): string {
-  return new Date().toISOString().split("T")[0];
-}
-
-function barberStatus(b: Barber): "green" | "yellow" | "red" {
-  if (b.bookings === 0) return "green";
-  if (b.bookings <= 2) return "yellow";
-  return "red";
-}
-
-const STATUS_DOT: Record<string, string> = {
-  green: "bg-green-500",
-  yellow: "bg-yellow-400",
-  red: "bg-red-500",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  green: "Bo'sh",
-  yellow: "Band bo'lmoqda",
-  red: "Band",
-};
-
-const STATUS_TEXT: Record<string, string> = {
-  green: "text-green-400",
-  yellow: "text-yellow-400",
-  red: "text-red-400",
-};
 
 // ── Form state ────────────────────────────────────────────────────────────────
 interface FormState {
@@ -150,7 +107,7 @@ const EMPTY_FORM: FormState = {
   notes: "",
 };
 
-// ── Sheet wrapper ─────────────────────────────────────────────────────────────
+// ── Bottom-sheet wrapper ──────────────────────────────────────────────────────
 function Sheet({
   children,
   onClose,
@@ -158,6 +115,15 @@ function Sheet({
   children: React.ReactNode;
   onClose: () => void;
 }) {
+  // Hide bottom nav while sheet is open
+  useEffect(() => {
+    const nav = document.getElementById("bottom-nav-root");
+    if (nav) nav.style.visibility = "hidden";
+    return () => {
+      if (nav) nav.style.visibility = "";
+    };
+  }, []);
+
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -173,12 +139,10 @@ function Sheet({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
-      {/* Backdrop */}
       <motion.div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-      {/* Panel */}
       <motion.div
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
@@ -186,7 +150,6 @@ function Sheet({
         transition={{ type: "spring", damping: 28, stiffness: 260 }}
         className="relative w-full max-w-md bg-card rounded-t-3xl z-10 max-h-[92vh] flex flex-col"
       >
-        {/* Handle */}
         <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-1 shrink-0" />
         <div className="overflow-y-auto flex-1 px-5 pb-10">{children}</div>
       </motion.div>
@@ -194,8 +157,71 @@ function Sheet({
   );
 }
 
-// ── Field components ──────────────────────────────────────────────────────────
-function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
+// ── After-hours warning dialog ────────────────────────────────────────────────
+function AfterHoursWarning({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <motion.div
+      className="fixed inset-0 z-[200] flex items-center justify-center px-5"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.div
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={onCancel}
+      />
+      <motion.div
+        initial={{ scale: 0.94, y: 16 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.94, y: 16 }}
+        transition={{ type: "spring", damping: 24, stiffness: 280 }}
+        className="relative w-full max-w-sm bg-[#18181d] rounded-3xl border border-white/8 p-6 z-10 shadow-2xl"
+      >
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-2xl bg-amber-500/15 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-amber-400" />
+          </div>
+          <h3 className="font-bold text-foreground text-base leading-snug">
+            Ish vaqtidan tashqari
+          </h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
+          Siz ish vaqtidan tashqari vaqtga bron qo'shmoqdasiz. Baribir davom
+          ettirasizmi?
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={onCancel}
+            className="py-3 rounded-2xl bg-white/6 border border-white/10 text-sm font-semibold text-foreground hover:bg-white/10 transition-all"
+          >
+            Bekor qilish
+          </button>
+          <button
+            onClick={onConfirm}
+            className="py-3 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 text-sm font-semibold hover:bg-amber-500/25 transition-all"
+          >
+            Ha, davom etish
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ── Field helpers ─────────────────────────────────────────────────────────────
+function FieldLabel({
+  children,
+  required,
+}: {
+  children: React.ReactNode;
+  required?: boolean;
+}) {
   return (
     <label className="block text-sm font-medium text-muted-foreground mb-1.5">
       {children}
@@ -204,39 +230,51 @@ function FieldLabel({ children, required }: { children: React.ReactNode; require
   );
 }
 
-function TextInput({
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  type?: string;
-}) {
-  return (
-    <input
-      type={type}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm"
-    />
-  );
-}
-
 // ── Service picker ────────────────────────────────────────────────────────────
 function ServicePicker({
+  services,
+  loading,
   value,
   onChange,
+  onAddNew,
 }: {
+  services: Service[];
+  loading: boolean;
   value: string;
   onChange: (id: string) => void;
+  onAddNew: () => void;
 }) {
+  if (loading) {
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-16 rounded-2xl bg-white/5 animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (services.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-6 border border-dashed border-white/10 rounded-2xl">
+        <p className="text-sm text-muted-foreground">
+          Hali xizmatlar qo'shilmagan
+        </p>
+        <button
+          type="button"
+          onClick={onAddNew}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/15 border border-primary/30 text-primary text-sm font-semibold hover:bg-primary/25 transition-all"
+        >
+          <Plus className="w-4 h-4" />
+          Yangi xizmat qo'shish
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-2 gap-2">
-      {SERVICES.map((s) => (
+      {services.map((s) => (
         <button
           key={s.id}
           type="button"
@@ -247,111 +285,181 @@ function ServicePicker({
               : "border-white/10 bg-background/40 text-muted-foreground hover:bg-white/5"
           }`}
         >
-          <span className="text-sm font-semibold">{s.label}</span>
-          <span className="text-xs mt-0.5 opacity-70">{s.duration} daqiqa</span>
+          <span className="text-sm font-semibold leading-tight">{s.name}</span>
+          <span className="text-xs mt-1 opacity-60">
+            {s.duration} daqiqa • {s.price.toLocaleString()} so'm
+          </span>
         </button>
       ))}
+      {/* Inline "add" tile */}
+      <button
+        type="button"
+        onClick={onAddNew}
+        className="flex flex-col items-center justify-center gap-1 p-3 rounded-2xl border border-dashed border-white/15 text-muted-foreground/50 hover:border-primary/35 hover:text-primary hover:bg-primary/5 transition-all"
+      >
+        <Plus className="w-4 h-4" />
+        <span className="text-xs font-medium">Qo'shish</span>
+      </button>
     </div>
   );
 }
 
 // ── Time slot picker ──────────────────────────────────────────────────────────
 function TimePicker({
-  slots,
+  standardSlots,
+  afterSlots,
+  showAfterHours,
+  onToggleAfterHours,
   value,
   onChange,
+  workEndStr,
 }: {
-  slots: string[];
+  standardSlots: string[];
+  afterSlots: string[];
+  showAfterHours: boolean;
+  onToggleAfterHours: () => void;
   value: string;
   onChange: (t: string) => void;
+  workEndStr: string;
 }) {
-  if (slots.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground py-2 text-center">
-        Bu kun bo'sh vaqt qolmadi
-      </p>
-    );
-  }
+  const hasStandard = standardSlots.length > 0;
+  const hasAfter = afterSlots.length > 0;
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {slots.map((s) => (
-        <button
-          key={s}
-          type="button"
-          onClick={() => onChange(s)}
-          className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-all ${
-            value === s
-              ? "border-primary/60 bg-primary/15 text-primary"
-              : "border-white/10 bg-background/40 text-muted-foreground hover:bg-white/5"
+    <div>
+      {!hasStandard && !showAfterHours && (
+        <p className="text-sm text-muted-foreground py-2 text-center">
+          Ish vaqtida bo'sh joy qolmadi
+        </p>
+      )}
+
+      {hasStandard && (
+        <div className="flex flex-wrap gap-2">
+          {standardSlots.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => onChange(s)}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-all tabular-nums ${
+                value === s
+                  ? "border-primary/60 bg-primary/15 text-primary"
+                  : "border-white/10 bg-background/40 text-muted-foreground hover:bg-white/5"
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* After-hours slots */}
+      {showAfterHours && (
+        <div className={`flex flex-wrap gap-2 ${hasStandard ? "mt-2 pt-2 border-t border-white/5" : ""}`}>
+          {hasAfter ? (
+            afterSlots.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onChange(s)}
+                className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-all tabular-nums ${
+                  value === s
+                    ? "border-amber-400/60 bg-amber-400/15 text-amber-400"
+                    : "border-amber-400/20 bg-amber-400/5 text-amber-400/70 hover:bg-amber-400/10"
+                }`}
+              >
+                {s}
+              </button>
+            ))
+          ) : (
+            <p className="text-xs text-muted-foreground/60 py-1">
+              {workEndStr} dan keyin bo'sh joy yo'q
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Toggle button */}
+      <button
+        type="button"
+        onClick={onToggleAfterHours}
+        className={`mt-3 flex items-center gap-1.5 text-xs font-semibold transition-all px-3 py-2 rounded-xl ${
+          showAfterHours
+            ? "text-amber-400 bg-amber-400/8 border border-amber-400/20"
+            : "text-muted-foreground hover:text-foreground border border-transparent hover:bg-white/5"
+        }`}
+      >
+        <Plus
+          className={`w-3.5 h-3.5 transition-transform duration-200 ${
+            showAfterHours ? "rotate-45" : ""
           }`}
-        >
-          {s}
-        </button>
-      ))}
+        />
+        {showAfterHours
+          ? "Ish vaqtidan tashqarini yashirish"
+          : "+ Ish vaqtidan tashqari xizmat"}
+      </button>
     </div>
   );
 }
 
-// ── Booking form (shared by individual & team step 2) ─────────────────────────
-function BookingForm({
+// ── Main booking form ─────────────────────────────────────────────────────────
+function BookingFormContent({
   form,
   onChange,
-  busySlots,
-  onBack,
-  onSave,
+  services,
+  svcLoading,
+  selectedSvc,
+  standardSlots,
+  afterSlots,
+  showAfterHours,
+  onToggleAfterHours,
+  workEndStr,
+  isValid,
   saving,
   saved,
-  barberName,
+  onSave,
+  onClose,
+  onAddService,
 }: {
   form: FormState;
   onChange: (patch: Partial<FormState>) => void;
-  busySlots: { start: string; duration: number }[];
-  onBack: () => void;
-  onSave: () => void;
+  services: Service[];
+  svcLoading: boolean;
+  selectedSvc: Service | undefined;
+  standardSlots: string[];
+  afterSlots: string[];
+  showAfterHours: boolean;
+  onToggleAfterHours: () => void;
+  workEndStr: string;
+  isValid: boolean;
   saving: boolean;
   saved: boolean;
-  barberName?: string;
+  onSave: () => void;
+  onClose: () => void;
+  onAddService: () => void;
 }) {
-  const service = SERVICES.find((s) => s.id === form.serviceId);
-  const slots = service ? generateSlots(service.duration, busySlots) : [];
-
-  const isValid =
-    form.name.trim().length > 0 &&
-    form.phone.trim().length > 4 &&
-    form.serviceId !== "" &&
-    form.time !== "";
-
   return (
     <div className="space-y-4 pt-3">
       {/* Header */}
       <div className="flex items-center gap-3">
         <button
           type="button"
-          onClick={onBack}
+          onClick={onClose}
           className="p-2 rounded-xl hover:bg-white/5 text-muted-foreground transition-colors -ml-1"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <X className="w-5 h-5" />
         </button>
-        <div>
-          <h2 className="text-xl font-display font-bold text-foreground">
-            Tezkor mijoz qo'shish
-          </h2>
-          {barberName && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Barber: <span className="text-primary font-semibold">{barberName}</span>
-            </p>
-          )}
-        </div>
+        <h2 className="text-xl font-display font-bold text-foreground">
+          Tezkor mijoz qo'shish
+        </h2>
       </div>
 
-      {/* Saved state */}
+      {/* Saved banner */}
       <AnimatePresence>
         {saved && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={{ opacity: 0, scale: 0.92 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
+            exit={{ opacity: 0 }}
             className="flex items-center gap-3 bg-green-500/10 border border-green-500/30 rounded-2xl p-4"
           >
             <CheckCircle2 className="w-6 h-6 text-green-400 shrink-0" />
@@ -363,21 +471,24 @@ function BookingForm({
       {/* 1. Ism */}
       <div>
         <FieldLabel required>Ism</FieldLabel>
-        <TextInput
+        <input
           value={form.name}
-          onChange={(v) => onChange({ name: v })}
+          onChange={(e) => onChange({ name: e.target.value })}
           placeholder="Aziz"
+          className="w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm"
         />
       </div>
 
       {/* 2. Telefon */}
       <div>
         <FieldLabel required>Telefon raqam</FieldLabel>
-        <TextInput
+        <input
           value={form.phone}
-          onChange={(v) => onChange({ phone: v })}
-          placeholder="+998 90 123 45 67"
+          onChange={(e) => onChange({ phone: applyPhoneMask(e.target.value) })}
+          placeholder="+998 (90) 123-45-67"
           type="tel"
+          inputMode="numeric"
+          className="w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm"
         />
       </div>
 
@@ -385,8 +496,11 @@ function BookingForm({
       <div>
         <FieldLabel required>Xizmat turi</FieldLabel>
         <ServicePicker
+          services={services}
+          loading={svcLoading}
           value={form.serviceId}
           onChange={(id) => onChange({ serviceId: id, time: "" })}
+          onAddNew={onAddService}
         />
       </div>
 
@@ -394,7 +508,7 @@ function BookingForm({
       <div>
         <FieldLabel>Sana</FieldLabel>
         <div className="relative">
-          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           <input
             type="date"
             value={form.date}
@@ -404,24 +518,26 @@ function BookingForm({
         </div>
       </div>
 
-      {/* 5. Vaqt (dynamic — only shown after service selected) */}
-      {form.serviceId && (
+      {/* 5. Vaqt (only shown after service selected) */}
+      {selectedSvc && (
         <div>
           <FieldLabel required>
             <span className="flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5" />
               Vaqt
-              {service && (
-                <span className="text-xs text-primary ml-1">
-                  ({service.duration} daqiqa)
-                </span>
-              )}
+              <span className="text-xs text-primary ml-1">
+                ({selectedSvc.duration} daqiqa)
+              </span>
             </span>
           </FieldLabel>
           <TimePicker
-            slots={slots}
+            standardSlots={standardSlots}
+            afterSlots={afterSlots}
+            showAfterHours={showAfterHours}
+            onToggleAfterHours={onToggleAfterHours}
             value={form.time}
             onChange={(t) => onChange({ time: t })}
+            workEndStr={workEndStr}
           />
         </div>
       )}
@@ -433,7 +549,7 @@ function BookingForm({
           value={form.notes}
           onChange={(e) => onChange({ notes: e.target.value })}
           placeholder="Qo'shimcha ma'lumotlar..."
-          rows={3}
+          rows={2}
           className="w-full px-4 py-3 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm resize-none"
         />
       </div>
@@ -445,7 +561,7 @@ function BookingForm({
         disabled={!isValid || saving || saved}
         className={`w-full h-14 rounded-2xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
           isValid && !saving && !saved
-            ? "bg-green-500 hover:bg-green-400 text-white shadow-lg shadow-green-500/30 hover:shadow-green-500/50 hover:-translate-y-0.5"
+            ? "bg-green-500 hover:bg-green-400 text-white shadow-lg shadow-green-500/25 hover:-translate-y-0.5"
             : "bg-green-500/20 text-green-500/50 cursor-not-allowed"
         }`}
       >
@@ -467,187 +583,223 @@ function BookingForm({
   );
 }
 
-// ── Team barber selector (step 1) ─────────────────────────────────────────────
-function BarberSelector({
-  onSelect,
-  onClose,
-}: {
-  onSelect: (b: Barber) => void;
-  onClose: () => void;
-}) {
-  return (
-    <div className="space-y-4 pt-3">
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onClose}
-          className="p-2 rounded-xl hover:bg-white/5 text-muted-foreground transition-colors -ml-1"
-        >
-          <X className="w-5 h-5" />
-        </button>
-        <h2 className="text-xl font-display font-bold text-foreground">
-          Qaysi ustaga mijoz qo'shasiz?
-        </h2>
-      </div>
-
-      <div className="space-y-2">
-        {BARBERS.map((barber) => {
-          const st = barberStatus(barber);
-          return (
-            <motion.button
-              key={barber.id}
-              type="button"
-              whileTap={{ scale: 0.98 }}
-              onClick={() => onSelect(barber)}
-              className="w-full flex items-center gap-4 p-4 rounded-2xl bg-background/40 border border-white/8 hover:bg-white/5 hover:border-primary/20 transition-all text-left"
-            >
-              {/* Avatar */}
-              <div className="w-12 h-12 rounded-2xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
-                <span className="font-display font-bold text-primary text-lg">
-                  {barber.name[0]}
-                </span>
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-foreground text-base">{barber.name}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  {barber.bookings} ta bron • {barber.totalSlots} bo'sh joy
-                </div>
-              </div>
-
-              {/* Status */}
-              <div className="flex flex-col items-end gap-1.5 shrink-0">
-                <div className={`w-2.5 h-2.5 rounded-full ${STATUS_DOT[st]}`} />
-                <span className={`text-xs font-semibold ${STATUS_TEXT[st]}`}>
-                  {STATUS_LABEL[st]}
-                </span>
-              </div>
-            </motion.button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Main dialog ───────────────────────────────────────────────────────────────
+// ── Props ─────────────────────────────────────────────────────────────────────
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isTeam?: boolean;
-  onBookingAdded?: (booking: {
-    time: string;
-    client: string;
-    phone: string;
-    service: string;
-    barber?: string;
-  }) => void;
 }
 
-type Step = "team_select" | "form";
+// ── Main dialog export ────────────────────────────────────────────────────────
+export function BookingFlowDialog({ open, onOpenChange }: Props) {
+  const queryClient = useQueryClient();
 
-export function BookingFlowDialog({
-  open,
-  onOpenChange,
-  isTeam = false,
-  onBookingAdded,
-}: Props) {
-  const [step, setStep] = useState<Step>(isTeam ? "team_select" : "form");
-  const [selectedBarber, setSelectedBarber] = useState<Barber | null>(null);
+  // ── Profile (working hours) ───────────────────────────────────────────────
+  const { data: profile } = useGetProfile();
+  const workStartStr = profile?.workingHoursStart ?? "09:00";
+  const workEndStr = profile?.workingHoursEnd ?? "20:00";
+  const workStart = toMins(workStartStr);
+  const workEnd = toMins(workEndStr);
+
+  // ── Services ──────────────────────────────────────────────────────────────
+  const {
+    data: svcData,
+    refetch: refetchServices,
+    isLoading: svcLoading,
+  } = useListServices();
+  const services: Service[] = (svcData?.services ?? []).filter(
+    (s) => s.isActive
+  );
+  const createSvcMut = useCreateService();
+
+  // ── Form state ────────────────────────────────────────────────────────────
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [showAddService, setShowAddService] = useState(false);
+  const [svcSaving, setSvcSaving] = useState(false);
+  const [showAfterHours, setShowAfterHours] = useState(false);
+  const [pendingAfterHours, setPendingAfterHours] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Reset on open/close
-  useEffect(() => {
-    if (open) {
-      setStep(isTeam ? "team_select" : "form");
-      setSelectedBarber(null);
-      setForm(EMPTY_FORM);
-      setSaving(false);
-      setSaved(false);
-    }
-  }, [open, isTeam]);
+  // ── Existing bookings (conflict detection) ────────────────────────────────
+  const { data: bookingsData } = useListBookings({ date: form.date });
+  const busy = (bookingsData?.bookings ?? []).filter(
+    (b) => b.status !== "cancelled"
+  );
+
+  // ── Create booking ────────────────────────────────────────────────────────
+  const createBookingMut = useCreateBooking();
 
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
 
-  const busySlots = selectedBarber
-    ? selectedBarber.busy
-    : INDIVIDUAL_BUSY;
+  useEffect(() => {
+    if (open) {
+      setForm(EMPTY_FORM);
+      setShowAddService(false);
+      setShowAfterHours(false);
+      setPendingAfterHours(false);
+      setSaving(false);
+      setSaved(false);
+    }
+  }, [open]);
+
+  const selectedSvc = services.find((s) => s.id === form.serviceId);
+  const duration = selectedSvc?.duration ?? 0;
+
+  const standardSlots =
+    duration > 0 ? generateSlots(duration, busy, workStart, workEnd) : [];
+  const afterSlots =
+    duration > 0
+      ? generateSlots(duration, busy, workEnd, 23 * 60 + 30)
+      : [];
+
+  const isAfterHoursTime =
+    form.time !== "" && toMins(form.time) >= workEnd;
+
+  const phoneDigits = form.phone.replace(/\D/g, "");
+  const isValid =
+    form.name.trim().length > 0 &&
+    phoneDigits.length >= 12 &&
+    form.serviceId !== "" &&
+    form.time !== "";
 
   function handleSave() {
-    setSaving(true);
-    setTimeout(() => {
-      setSaving(false);
-      setSaved(true);
-      const service = SERVICES.find((s) => s.id === form.serviceId);
-      onBookingAdded?.({
-        time: form.time,
-        client: form.name,
-        phone: form.phone,
-        service: service?.label ?? form.serviceId,
-        barber: selectedBarber?.name,
-      });
-      setTimeout(() => {
-        close();
-      }, 1000);
-    }, 1200);
-  }
-
-  function handleBarberSelect(barber: Barber) {
-    setSelectedBarber(barber);
-    setStep("form");
-  }
-
-  function handleBack() {
-    if (isTeam && step === "form") {
-      setStep("team_select");
-      setSelectedBarber(null);
-      setForm((f) => ({ ...f, time: "" }));
-    } else {
-      close();
+    if (!isValid || saving || saved) return;
+    if (isAfterHoursTime) {
+      setPendingAfterHours(true);
+      return;
     }
+    doSave();
+  }
+
+  function doSave() {
+    setPendingAfterHours(false);
+    setSaving(true);
+    const endMins = toMins(form.time) + (selectedSvc?.duration ?? 30);
+
+    createBookingMut.mutate(
+      {
+        data: {
+          clientName: form.name.trim(),
+          serviceId: form.serviceId || null,
+          date: form.date,
+          startTime: form.time,
+          endTime: fmtMins(endMins),
+          price: selectedSvc?.price ?? 0,
+          notes: form.notes.trim() || null,
+        },
+      },
+      {
+        onSuccess: () => {
+          setSaving(false);
+          setSaved(true);
+          // Invalidate so Calendar + Dashboard auto-refresh
+          queryClient.invalidateQueries({
+            queryKey: getListBookingsQueryKey({ date: form.date }),
+          });
+          queryClient.invalidateQueries({
+            queryKey: getListBookingsQueryKey(),
+          });
+          queryClient.invalidateQueries({
+            queryKey: getGetDashboardStatsQueryKey(),
+          });
+          setTimeout(() => close(), 1200);
+        },
+        onError: () => setSaving(false),
+      }
+    );
+  }
+
+  async function handleAddService(data: ServiceFormData) {
+    setSvcSaving(true);
+    createSvcMut.mutate(
+      {
+        data: {
+          name: data.name,
+          nameRu: data.category,
+          duration: data.duration,
+          price: data.price,
+        },
+      },
+      {
+        onSuccess: async (newSvc) => {
+          await refetchServices();
+          queryClient.invalidateQueries({
+            queryKey: getListServicesQueryKey(),
+          });
+          setForm((f) => ({ ...f, serviceId: newSvc.id, time: "" }));
+          setShowAddService(false);
+          setSvcSaving(false);
+        },
+        onError: () => setSvcSaving(false),
+      }
+    );
   }
 
   return (
-    <AnimatePresence>
-      {open && (
-        <Sheet onClose={close}>
-          <AnimatePresence mode="wait">
-            {step === "team_select" ? (
-              <motion.div
-                key="team_select"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.18 }}
-              >
-                <BarberSelector onSelect={handleBarberSelect} onClose={close} />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="form"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ duration: 0.18 }}
-              >
-                <BookingForm
-                  form={form}
-                  onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
-                  busySlots={busySlots}
-                  onBack={handleBack}
-                  onSave={handleSave}
-                  saving={saving}
-                  saved={saved}
-                  barberName={selectedBarber?.name}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </Sheet>
-      )}
-    </AnimatePresence>
+    <>
+      <AnimatePresence>
+        {open && (
+          <Sheet onClose={close}>
+            <AnimatePresence mode="wait">
+              {showAddService ? (
+                <motion.div
+                  key="svc-form"
+                  initial={{ opacity: 0, x: 24 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 24 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <div className="pt-3">
+                    <ServiceForm
+                      onSave={handleAddService}
+                      onCancel={() => setShowAddService(false)}
+                      saving={svcSaving}
+                    />
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="booking-form"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <BookingFormContent
+                    form={form}
+                    onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+                    services={services}
+                    svcLoading={svcLoading}
+                    selectedSvc={selectedSvc}
+                    standardSlots={standardSlots}
+                    afterSlots={afterSlots}
+                    showAfterHours={showAfterHours}
+                    onToggleAfterHours={() => setShowAfterHours((v) => !v)}
+                    workEndStr={workEndStr}
+                    isValid={isValid}
+                    saving={saving}
+                    saved={saved}
+                    onSave={handleSave}
+                    onClose={close}
+                    onAddService={() => setShowAddService(true)}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </Sheet>
+        )}
+      </AnimatePresence>
+
+      {/* After-hours confirmation overlay */}
+      <AnimatePresence>
+        {pendingAfterHours && open && (
+          <AfterHoursWarning
+            onConfirm={doSave}
+            onCancel={() => setPendingAfterHours(false)}
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 }
