@@ -13,6 +13,19 @@ const UZ_SHORT_MONTHS = [
   "Yan","Fev","Mar","Apr","May","Iyn","Iyl","Avg","Sen","Okt","Noy","Dek",
 ];
 
+// Extracts `Tel: +998...` prefix written by BookingFlowDialog
+function parseBookingNotes(raw: string | null): { phone: string | null; userNotes: string } {
+  if (!raw) return { phone: null, userNotes: "" };
+  const lines = raw.split("\n");
+  if (lines[0].startsWith("Tel: ")) {
+    return {
+      phone: lines[0].slice(5).trim(),
+      userNotes: lines.slice(1).join("\n").trim(),
+    };
+  }
+  return { phone: null, userNotes: raw.trim() };
+}
+
 function formatBookingDate(dateStr: string): string {
   const today = new Date().toISOString().split("T")[0];
   if (dateStr === today) return "Bugun";
@@ -113,7 +126,10 @@ export function BookingDetailModal({
   const isBusy = updateBookingMut.isPending;
   const isActive = booking.status !== "cancelled" && booking.status !== "completed";
   const dateLabel = formatBookingDate(booking.date);
-  const phone = clientData?.phone;
+
+  // For quick bookings without a clientId, phone + notes are encoded in booking.notes
+  const { phone: parsedPhone, userNotes } = parseBookingNotes(booking.notes ?? null);
+  const phone = clientData?.phone ?? parsedPhone;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-end">
@@ -194,41 +210,54 @@ export function BookingDetailModal({
 
           {/* ── Section 3: Notes ── */}
           <div className="py-4 border-b border-white/8">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-foreground">Mijoz haqida eslatma</p>
-              <AnimatePresence>
-                {notesSaved && (
-                  <motion.span
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1"
-                  >
-                    <CheckCircle className="w-3.5 h-3.5" /> Eslatma saqlandi
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </div>
-            <textarea
-              value={notesValue}
-              onChange={(e) => setNotesValue(e.target.value)}
-              placeholder="Soch uzunligi, rang xohishi, maxsus talablar..."
-              className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/35 resize-none focus:outline-none focus:border-primary/40 focus:bg-white/[0.07] transition-all"
-              rows={3}
-            />
             {booking.clientId ? (
-              <button
-                onClick={handleSaveNotes}
-                disabled={updateClientMut.isPending}
-                className="mt-2.5 w-full py-2.5 rounded-xl bg-white/6 border border-white/10 text-sm font-semibold text-foreground hover:bg-white/10 active:scale-[0.98] transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-              >
-                <Save className="w-4 h-4 text-primary" />
-                {updateClientMut.isPending ? "Saqlanmoqda..." : "Saqlash"}
-              </button>
+              /* Registered client — editable persistent notes */
+              <>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-foreground">Mijoz haqida eslatma</p>
+                  <AnimatePresence>
+                    {notesSaved && (
+                      <motion.span
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1"
+                      >
+                        <CheckCircle className="w-3.5 h-3.5" /> Eslatma saqlandi
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </div>
+                <textarea
+                  value={notesValue}
+                  onChange={(e) => setNotesValue(e.target.value)}
+                  placeholder="Soch uzunligi, rang xohishi, maxsus talablar..."
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/35 resize-none focus:outline-none focus:border-primary/40 focus:bg-white/[0.07] transition-all"
+                  rows={3}
+                />
+                <button
+                  onClick={handleSaveNotes}
+                  disabled={updateClientMut.isPending}
+                  className="mt-2.5 w-full py-2.5 rounded-xl bg-white/6 border border-white/10 text-sm font-semibold text-foreground hover:bg-white/10 active:scale-[0.98] transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  <Save className="w-4 h-4 text-primary" />
+                  {updateClientMut.isPending ? "Saqlanmoqda..." : "Saqlash"}
+                </button>
+              </>
             ) : (
-              <p className="mt-2 text-[11px] text-muted-foreground/50 text-center">
-                Demo bron — eslatma saqlanmaydi
-              </p>
+              /* Quick booking — show booking-level notes read-only */
+              <>
+                <p className="text-sm font-semibold text-foreground mb-3">Bron eslatmasi</p>
+                {userNotes ? (
+                  <p className="text-sm text-muted-foreground bg-white/4 border border-white/8 rounded-2xl px-4 py-3 leading-relaxed whitespace-pre-wrap">
+                    {userNotes}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground/40 text-center py-2">
+                    Eslatma qo'shilmagan
+                  </p>
+                )}
+              </>
             )}
           </div>
 

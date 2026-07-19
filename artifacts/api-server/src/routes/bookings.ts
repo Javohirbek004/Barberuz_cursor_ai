@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, bookingsTable, clientsTable } from "@workspace/db";
+import { db, bookingsTable, clientsTable, servicesTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 
@@ -55,11 +55,24 @@ router.post("/", authenticate, async (req, res) => {
       res.status(400).json({ error: "validation", message: "Missing required fields" });
       return;
     }
+
+    // Auto-resolve service name from serviceId
+    let resolvedServiceName: string | null = null;
+    if (serviceId) {
+      const [svc] = await db
+        .select({ name: servicesTable.name })
+        .from(servicesTable)
+        .where(eq(servicesTable.id, serviceId))
+        .limit(1);
+      resolvedServiceName = svc?.name ?? null;
+    }
+
     const [booking] = await db.insert(bookingsTable).values({
       barberId: user.id,
       clientId: clientId || null,
       clientName,
       serviceId: serviceId || null,
+      serviceName: resolvedServiceName,
       date,
       startTime,
       endTime,

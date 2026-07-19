@@ -677,6 +677,16 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
     setSaving(true);
     const endMins = toMins(form.time) + (selectedSvc?.duration ?? 30);
 
+    // Encode phone in notes so BookingDetailModal can display it
+    const phoneDigitsLocal = form.phone.replace(/\D/g, "").slice(3); // remove 998
+    const hasValidPhone = phoneDigitsLocal.length >= 9;
+    const encodedNotes = [
+      hasValidPhone ? `Tel: ${form.phone}` : null,
+      form.notes.trim() || null,
+    ]
+      .filter(Boolean)
+      .join("\n") || null;
+
     createBookingMut.mutate(
       {
         data: {
@@ -686,7 +696,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
           startTime: form.time,
           endTime: fmtMins(endMins),
           price: selectedSvc?.price ?? 0,
-          notes: form.notes.trim() || null,
+          notes: encodedNotes,
         },
       },
       {
