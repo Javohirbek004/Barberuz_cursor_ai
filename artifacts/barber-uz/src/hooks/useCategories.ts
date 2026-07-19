@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { customFetch } from "@workspace/api-client-react";
+import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
 export interface ServiceCategory {
   id: string;
