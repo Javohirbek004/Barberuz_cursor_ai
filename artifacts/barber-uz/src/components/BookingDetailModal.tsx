@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, PhoneCall, Check, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
+import { X, PhoneCall, Check, CheckCircle, XCircle, AlertTriangle, Pencil } from "lucide-react";
 import {
   useGetClient,
   useUpdateBooking,
@@ -54,18 +54,19 @@ export function BookingDetailModal({
 }) {
   const { toast } = useToast();
 
-  // ── Note state ────────────────────────────────────────────────
-  // clientNote: for registered-client bookings
+  // ── Client note (registered-client bookings) ──────────────────
   const [clientNote, setClientNote] = useState("");
+  const [clientNoteEditing, setClientNoteEditing] = useState(false);
   const [clientNoteSaved, setClientNoteSaved] = useState(false);
-  const [clientNoteDirty, setClientNoteDirty] = useState(false);
-  const clientNoteBase = useRef(""); // last-saved value for revert
+  const clientNoteBase = useRef("");
+  const clientTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // bookingNote: for quick (no-clientId) bookings
+  // ── Booking note (quick / no-clientId bookings) ───────────────
   const [bookingNote, setBookingNote] = useState("");
+  const [bookingNoteEditing, setBookingNoteEditing] = useState(false);
   const [bookingNoteSaved, setBookingNoteSaved] = useState(false);
-  const [bookingNoteDirty, setBookingNoteDirty] = useState(false);
-  const bookingNoteBase = useRef(""); // last-saved value for revert
+  const bookingNoteBase = useRef("");
+  const bookingTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [confirmCancel, setConfirmCancel] = useState(false);
 
@@ -88,32 +89,38 @@ export function BookingDetailModal({
     };
   }, []);
 
-  // Init client note once when clientData arrives (or booking changes)
+  // Init client note once when data arrives
   useEffect(() => {
     if (clientData?.notes !== undefined) {
       const val = clientData.notes ?? "";
       setClientNote(val);
-      setClientNoteDirty(false);
+      setClientNoteEditing(false);
       clientNoteBase.current = val;
     }
   }, [clientData?.notes]);
 
-  // Init booking note only when the booking ID changes (prevents stale overwrite)
+  // Init booking note only when booking ID changes (no stale overwrite)
   useEffect(() => {
     const { userNotes } = parseBookingNotes(booking.notes ?? null);
     setBookingNote(userNotes);
-    setBookingNoteDirty(false);
+    setBookingNoteEditing(false);
     bookingNoteBase.current = userNotes;
-  }, [booking.id]); // ← key fix: id, NOT booking.notes
+  }, [booking.id]);
 
   const { phone: parsedPhone } = parseBookingNotes(booking.notes ?? null);
 
-  // ── Note handlers ─────────────────────────────────────────────
-  const handleClientNoteChange = (val: string) => {
-    setClientNote(val);
-    setClientNoteDirty(val !== clientNoteBase.current);
+  // ── Edit-mode entry (auto-focus textarea) ─────────────────────
+  const enterClientEdit = () => {
+    setClientNoteEditing(true);
+    setTimeout(() => clientTextareaRef.current?.focus(), 60);
   };
 
+  const enterBookingEdit = () => {
+    setBookingNoteEditing(true);
+    setTimeout(() => bookingTextareaRef.current?.focus(), 60);
+  };
+
+  // ── Save / revert handlers ────────────────────────────────────
   const handleClientNoteSave = () => {
     if (!booking.clientId) return;
     updateClientMut.mutate(
@@ -121,7 +128,7 @@ export function BookingDetailModal({
       {
         onSuccess: () => {
           clientNoteBase.current = clientNote;
-          setClientNoteDirty(false);
+          setClientNoteEditing(false);
           setClientNoteSaved(true);
           setTimeout(() => setClientNoteSaved(false), 2500);
           onRefetch();
@@ -132,12 +139,7 @@ export function BookingDetailModal({
 
   const handleClientNoteRevert = () => {
     setClientNote(clientNoteBase.current);
-    setClientNoteDirty(false);
-  };
-
-  const handleBookingNoteChange = (val: string) => {
-    setBookingNote(val);
-    setBookingNoteDirty(val !== bookingNoteBase.current);
+    setClientNoteEditing(false);
   };
 
   const handleBookingNoteSave = () => {
@@ -149,7 +151,7 @@ export function BookingDetailModal({
       {
         onSuccess: () => {
           bookingNoteBase.current = bookingNote;
-          setBookingNoteDirty(false);
+          setBookingNoteEditing(false);
           setBookingNoteSaved(true);
           setTimeout(() => setBookingNoteSaved(false), 2500);
           onRefetch();
@@ -160,10 +162,10 @@ export function BookingDetailModal({
 
   const handleBookingNoteRevert = () => {
     setBookingNote(bookingNoteBase.current);
-    setBookingNoteDirty(false);
+    setBookingNoteEditing(false);
   };
 
-  // ── Booking actions ───────────────────────────────────────────
+  // ── Booking status actions ─────────────────────────────────────
   const handleComplete = () => {
     updateBookingMut.mutate(
       { bookingId: booking.id, data: { status: "completed" } },
@@ -200,69 +202,132 @@ export function BookingDetailModal({
   const dateLabel = formatBookingDate(booking.date);
   const phone = clientData?.phone ?? parsedPhone;
 
-  // ── Shared sub-components ─────────────────────────────────────
-  const SavedBadge = ({ visible }: { visible: boolean }) => (
-    <AnimatePresence>
-      {visible && (
-        <motion.span
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0 }}
-          className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1"
-        >
-          <CheckCircle className="w-3.5 h-3.5" /> Saqlandi
-        </motion.span>
-      )}
-    </AnimatePresence>
-  );
-
-  const NoteActions = ({
-    dirty,
-    saving,
+  // ── Reusable note section renderer ───────────────────────────
+  const NoteSection = ({
+    label,
+    value,
+    isEditing,
+    isSaving,
+    isSaved,
+    textareaRef,
+    placeholder,
+    onEditEnter,
+    onChange,
     onSave,
     onRevert,
   }: {
-    dirty: boolean;
-    saving: boolean;
+    label: string;
+    value: string;
+    isEditing: boolean;
+    isSaving: boolean;
+    isSaved: boolean;
+    textareaRef: React.RefObject<HTMLTextAreaElement>;
+    placeholder: string;
+    onEditEnter: () => void;
+    onChange: (v: string) => void;
     onSave: () => void;
     onRevert: () => void;
   }) => (
-    <AnimatePresence>
-      {dirty && (
-        <motion.div
-          initial={{ opacity: 0, y: -6, height: 0 }}
-          animate={{ opacity: 1, y: 0, height: "auto" }}
-          exit={{ opacity: 0, y: -6, height: 0 }}
-          transition={{ duration: 0.18 }}
-          className="overflow-hidden"
-        >
-          <div className="flex items-center justify-end gap-2 mb-2">
-            <span className="text-[11px] text-muted-foreground/60 mr-auto">
-              Saqlash yoki bekor qilish
-            </span>
-            <button
-              onClick={onRevert}
-              disabled={saving}
-              className="w-8 h-8 rounded-xl bg-white/8 border border-white/12 flex items-center justify-center hover:bg-white/14 active:scale-95 transition-all disabled:opacity-40"
-              aria-label="Bekor qilish"
+    <div className="py-4 border-b border-white/8">
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-semibold text-foreground">{label}</p>
+
+        <AnimatePresence mode="wait">
+          {isSaved ? (
+            /* "Saqlandi ✓" flash */
+            <motion.span
+              key="saved"
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.85 }}
+              className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1"
             >
-              <X className="w-4 h-4 text-muted-foreground" />
-            </button>
-            <button
-              onClick={onSave}
-              disabled={saving}
-              className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center hover:bg-emerald-500/25 active:scale-95 transition-all disabled:opacity-40"
-              aria-label="Saqlash"
+              <CheckCircle className="w-3.5 h-3.5" /> Saqlandi
+            </motion.span>
+          ) : isEditing ? (
+            /* ✓ / X action buttons */
+            <motion.div
+              key="actions"
+              initial={{ opacity: 0, x: 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 8 }}
+              transition={{ duration: 0.15 }}
+              className="flex items-center gap-1.5"
             >
-              {saving
-                ? <span className="w-3 h-3 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
-                : <Check className="w-4 h-4 text-emerald-400" />
-              }
-            </button>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+              <button
+                onClick={onRevert}
+                disabled={isSaving}
+                className="w-8 h-8 rounded-xl bg-white/8 border border-white/12 flex items-center justify-center hover:bg-white/14 active:scale-95 transition-all disabled:opacity-40"
+                aria-label="Bekor qilish"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <button
+                onClick={onSave}
+                disabled={isSaving}
+                className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center hover:bg-emerald-500/25 active:scale-95 transition-all disabled:opacity-40"
+                aria-label="Saqlash"
+              >
+                {isSaving
+                  ? <span className="w-3 h-3 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+                  : <Check className="w-4 h-4 text-emerald-400" />
+                }
+              </button>
+            </motion.div>
+          ) : (
+            /* "Tahrirlash ✏️" button */
+            <motion.button
+              key="edit-btn"
+              initial={{ opacity: 0, x: 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 8 }}
+              transition={{ duration: 0.15 }}
+              onClick={onEditEnter}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/6 border border-white/10 hover:bg-white/10 active:scale-95 transition-all"
+            >
+              <Pencil className="w-3 h-3 text-muted-foreground" />
+              <span className="text-[11px] text-muted-foreground font-medium">Tahrirlash</span>
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Body: view text OR editable textarea */}
+      <AnimatePresence mode="wait">
+        {isEditing ? (
+          <motion.textarea
+            key="textarea"
+            ref={textareaRef}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            rows={3}
+            className="w-full bg-white/5 border border-primary/40 bg-white/[0.07] rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/35 resize-none focus:outline-none focus:border-primary/60 transition-all"
+          />
+        ) : (
+          <motion.div
+            key="view"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            onClick={onEditEnter}
+            className="w-full min-h-[72px] bg-white/4 border border-white/8 rounded-2xl px-4 py-3 cursor-text"
+          >
+            {value ? (
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{value}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground/40">{placeholder}</p>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 
   return (
@@ -348,52 +413,36 @@ export function BookingDetailModal({
             </div>
           </div>
 
-          {/* ── Section 3: Notes ── */}
-          <div className="py-4 border-b border-white/8">
-            {booking.clientId ? (
-              /* Registered client note */
-              <>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-semibold text-foreground">Mijoz haqida eslatma</p>
-                  <SavedBadge visible={clientNoteSaved} />
-                </div>
-                <NoteActions
-                  dirty={clientNoteDirty}
-                  saving={updateClientMut.isPending}
-                  onSave={handleClientNoteSave}
-                  onRevert={handleClientNoteRevert}
-                />
-                <textarea
-                  value={clientNote}
-                  onChange={(e) => handleClientNoteChange(e.target.value)}
-                  placeholder="Soch uzunligi, rang xohishi, maxsus talablar..."
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/35 resize-none focus:outline-none focus:border-primary/40 focus:bg-white/[0.07] transition-all"
-                  rows={3}
-                />
-              </>
-            ) : (
-              /* Quick booking note */
-              <>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-semibold text-foreground">Bron eslatmasi</p>
-                  <SavedBadge visible={bookingNoteSaved} />
-                </div>
-                <NoteActions
-                  dirty={bookingNoteDirty}
-                  saving={updateBookingMut.isPending}
-                  onSave={handleBookingNoteSave}
-                  onRevert={handleBookingNoteRevert}
-                />
-                <textarea
-                  value={bookingNote}
-                  onChange={(e) => handleBookingNoteChange(e.target.value)}
-                  placeholder="Maxsus talablar, eslatmalar..."
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/35 resize-none focus:outline-none focus:border-primary/40 focus:bg-white/[0.07] transition-all"
-                  rows={3}
-                />
-              </>
-            )}
-          </div>
+          {/* ── Section 3: Note (view/edit toggle) ── */}
+          {booking.clientId ? (
+            <NoteSection
+              label="Mijoz haqida eslatma"
+              value={clientNote}
+              isEditing={clientNoteEditing}
+              isSaving={updateClientMut.isPending}
+              isSaved={clientNoteSaved}
+              textareaRef={clientTextareaRef}
+              placeholder="Soch uzunligi, rang xohishi, maxsus talablar..."
+              onEditEnter={enterClientEdit}
+              onChange={setClientNote}
+              onSave={handleClientNoteSave}
+              onRevert={handleClientNoteRevert}
+            />
+          ) : (
+            <NoteSection
+              label="Bron eslatmasi"
+              value={bookingNote}
+              isEditing={bookingNoteEditing}
+              isSaving={updateBookingMut.isPending}
+              isSaved={bookingNoteSaved}
+              textareaRef={bookingTextareaRef}
+              placeholder="Maxsus talablar, eslatmalar..."
+              onEditEnter={enterBookingEdit}
+              onChange={setBookingNote}
+              onSave={handleBookingNoteSave}
+              onRevert={handleBookingNoteRevert}
+            />
+          )}
 
           {/* ── Section 4: Action buttons ── */}
           {isActive && !confirmCancel && (
