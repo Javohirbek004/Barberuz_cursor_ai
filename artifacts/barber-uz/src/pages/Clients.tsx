@@ -3,23 +3,44 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { Layout } from "@/components/Layout";
 import { useListClients } from "@workspace/api-client-react";
-import { Search, ChevronRight, Phone, Users } from "lucide-react";
-import { motion } from "framer-motion";
+import { Search, ChevronRight, Phone, Users, UserX } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
-import { MOCK_CLIENTS, SEGMENT_META, type Segment, type MockClient } from "@/data/mockClients";
+import { SEGMENT_META, type Segment } from "@/data/mockClients";
 
 type SegmentFilter = "all" | Segment;
 
-// ── Team barbers ──────────────────────────────────────────────────────────────
 const TEAM_BARBER_NAMES = ["Sardor", "Jasur", "Ali", "Kamol"] as const;
 
-// ── Client card ───────────────────────────────────────────────────────────────
+interface ClientItem {
+  id: string;
+  name: string;
+  phone: string;
+  lastVisit: string | null;
+  visitCount: number;
+  segment: Segment;
+  barber: string;
+}
+
+function formatLastVisit(isoDate: string | null | undefined): string {
+  if (!isoDate) return "—";
+  const date = new Date(isoDate);
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / 86400000);
+  if (diffDays === 0) return "Bugun";
+  if (diffDays === 1) return "Kecha";
+  if (diffDays < 7) return `${diffDays} kun oldin`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} hafta oldin`;
+  if (diffDays < 365) return `${Math.floor(diffDays / 30)} oy oldin`;
+  return `${Math.floor(diffDays / 365)} yil oldin`;
+}
+
 function ClientCard({
   client,
   showBarber,
   index,
 }: {
-  client: MockClient;
+  client: ClientItem;
   showBarber: boolean;
   index: number;
 }) {
@@ -34,13 +55,11 @@ function ClientCard({
       transition={{ delay: index * 0.04 }}
     >
       <Link href={`/client/${client.id}`}>
-        <div className="bg-card border border-white/5 p-4 rounded-2xl flex items-center gap-4 hover:bg-white/3 hover:border-white/10 transition-all cursor-pointer group">
-          {/* Avatar */}
+        <div className="bg-card border border-white/5 p-4 rounded-2xl flex items-center gap-4 hover:bg-white/[0.03] hover:border-white/10 transition-all cursor-pointer group">
           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/20 font-display font-bold text-primary text-lg uppercase shrink-0">
             {client.name.charAt(0)}
           </div>
 
-          {/* Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
               <span className="font-bold text-foreground text-base truncate">
@@ -52,17 +71,23 @@ function ClientCard({
             </div>
 
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Phone className="w-3 h-3" />
-                {client.phone}
-              </span>
+              {client.phone && (
+                <span className="flex items-center gap-1">
+                  <Phone className="w-3 h-3" />
+                  {client.phone}
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-              <span>{t("clients.last_visit")} {client.lastVisit}</span>
-              <span>•</span>
+              {client.lastVisit && (
+                <>
+                  <span>{t("clients.last_visit")} {client.lastVisit}</span>
+                  <span>•</span>
+                </>
+              )}
               <span className="text-primary/80 font-medium">{client.visitCount} {t("clients.visits")}</span>
-              {showBarber && (
+              {showBarber && client.barber !== "—" && (
                 <>
                   <span>•</span>
                   <span className="text-muted-foreground">{client.barber} {t("clients.barber_suffix")}</span>
@@ -71,7 +96,6 @@ function ClientCard({
             </div>
           </div>
 
-          {/* Chevron */}
           <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
         </div>
       </Link>
@@ -79,12 +103,11 @@ function ClientCard({
   );
 }
 
-// ── Search bar ────────────────────────────────────────────────────────────────
 function SearchBar({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { t } = useTranslation();
   return (
     <div className="relative mb-5">
-      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-muted-foreground" />
+      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
       <input
         type="search"
         value={value}
@@ -96,7 +119,6 @@ function SearchBar({ value, onChange }: { value: string; onChange: (v: string) =
   );
 }
 
-// ── Segment chips ─────────────────────────────────────────────────────────────
 function SegmentChips({
   value,
   onChange,
@@ -132,53 +154,59 @@ function SegmentChips({
   );
 }
 
-// ── Merge API + mock data ─────────────────────────────────────────────────────
-function useMergedClients(search: string, segment: SegmentFilter) {
+function EmptyState({ isSearch }: { isSearch: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col items-center justify-center py-16 text-center"
+    >
+      <div className="w-20 h-20 rounded-3xl bg-muted/30 border border-white/5 flex items-center justify-center mb-5">
+        <UserX className="w-9 h-9 text-muted-foreground/50" />
+      </div>
+      <p className="text-base font-semibold text-foreground/70">
+        {isSearch ? t("clients.not_found") : t("clients.empty")}
+      </p>
+      <p className="text-sm text-muted-foreground/50 mt-1 max-w-[220px]">
+        {isSearch ? t("clients.not_found_hint") : t("clients.empty_hint")}
+      </p>
+    </motion.div>
+  );
+}
+
+function useClients(search: string, segment: SegmentFilter) {
   const { data: apiData, isLoading } = useListClients({
     filter: segment !== "all" ? segment : undefined,
     search: search || undefined,
   });
 
-  const apiClients: MockClient[] = (apiData?.clients ?? []).map((c) => ({
+  const clients: ClientItem[] = (apiData?.clients ?? []).map((c) => ({
     id: c.id,
     name: c.name,
     phone: c.phone ?? "",
-    lastVisit: c.lastVisit ?? "—",
+    lastVisit: c.lastVisit ? formatLastVisit(c.lastVisit) : null,
     visitCount: c.visitCount,
     segment: (c.status as Segment) ?? "new",
     barber: "—",
-    notes: c.notes ?? "",
-    bookingHistory: [],
   }));
 
-  const base = apiClients.length > 0 ? apiClients : MOCK_CLIENTS;
-
-  const filtered = base.filter((c) => {
-    const matchSegment = segment === "all" || c.segment === segment;
-    const matchSearch =
-      !search ||
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.phone.includes(search);
-    return matchSegment && matchSearch;
-  });
-
-  return { clients: filtered, isLoading };
+  return { clients, isLoading, total: apiData?.total ?? 0 };
 }
 
-// ── Individual view ───────────────────────────────────────────────────────────
 function IndividualView() {
   const { t } = useTranslation();
   const [segment, setSegment] = useState<SegmentFilter>("all");
   const [search, setSearch] = useState("");
 
-  const { clients, isLoading } = useMergedClients(search, segment);
+  const { clients, isLoading, total } = useClients(search, segment);
 
   return (
     <>
       <div className="mb-5">
         <h1 className="text-2xl font-display font-bold text-foreground">{t("nav.clients")}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          {clients.length} {t("clients.count")}
+          {total} {t("clients.count")}
         </p>
       </div>
 
@@ -189,28 +217,33 @@ function IndividualView() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">{t("clients.loading")}</div>
-      ) : clients.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">{t("clients.not_found")}</div>
-      ) : (
         <div className="space-y-3">
-          {clients.map((c, i) => (
-            <ClientCard key={c.id} client={c} showBarber={false} index={i} />
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-20 rounded-2xl bg-card border border-white/5 animate-pulse" />
           ))}
         </div>
+      ) : clients.length === 0 ? (
+        <EmptyState isSearch={!!(search || segment !== "all")} />
+      ) : (
+        <AnimatePresence mode="popLayout">
+          <div className="space-y-3">
+            {clients.map((c, i) => (
+              <ClientCard key={c.id} client={c} showBarber={false} index={i} />
+            ))}
+          </div>
+        </AnimatePresence>
       )}
     </>
   );
 }
 
-// ── Team view ─────────────────────────────────────────────────────────────────
 function TeamView() {
   const { t } = useTranslation();
   const [segment, setSegment] = useState<SegmentFilter>("all");
   const [barber, setBarber] = useState<string>("__all__");
   const [search, setSearch] = useState("");
 
-  const { clients: allClients, isLoading } = useMergedClients(search, segment);
+  const { clients: allClients, isLoading, total } = useClients(search, segment);
 
   const clients = allClients.filter(
     (c) => barber === "__all__" || c.barber === barber
@@ -226,52 +259,55 @@ function TeamView() {
           <Users className="w-5 h-5 text-primary" />
           <h1 className="text-2xl font-display font-bold text-foreground">{t("nav.clients")}</h1>
         </div>
-        <p className="text-sm text-muted-foreground mt-0.5">{t("clients.all_shop")} • {clients.length} {t("clients.count")}</p>
+        <p className="text-sm text-muted-foreground mt-0.5">{t("clients.all_shop")} • {total} {t("clients.count")}</p>
       </div>
 
       <SearchBar value={search} onChange={setSearch} />
 
-      {/* Layer 1: Segment */}
       <div className="mb-3">
         <SegmentChips value={segment} onChange={setSegment} />
       </div>
 
-      {/* Layer 2: Barber */}
       <div className="flex gap-2 overflow-x-auto pb-1 mb-4 scrollbar-none">
         {barberList.map((b) => {
           const id = b === allBarberLabel ? "__all__" : b;
           return (
-          <button
-            key={id}
-            onClick={() => setBarber(id)}
-            className={`shrink-0 px-3.5 py-2 rounded-2xl text-sm font-medium border transition-all ${
-              barber === id
-                ? "bg-foreground/10 border-foreground/20 text-foreground"
-                : "bg-card border-white/5 text-muted-foreground hover:bg-white/5"
-            }`}
-          >
-            {b}
-          </button>
+            <button
+              key={id}
+              onClick={() => setBarber(id)}
+              className={`shrink-0 px-3.5 py-2 rounded-2xl text-sm font-medium border transition-all ${
+                barber === id
+                  ? "bg-foreground/10 border-foreground/20 text-foreground"
+                  : "bg-card border-white/5 text-muted-foreground hover:bg-white/5"
+              }`}
+            >
+              {b}
+            </button>
           );
         })}
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">{t("clients.loading")}</div>
-      ) : clients.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">{t("clients.not_found")}</div>
-      ) : (
         <div className="space-y-3">
-          {clients.map((c, i) => (
-            <ClientCard key={c.id} client={c} showBarber={true} index={i} />
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-20 rounded-2xl bg-card border border-white/5 animate-pulse" />
           ))}
         </div>
+      ) : clients.length === 0 ? (
+        <EmptyState isSearch={!!(search || segment !== "all")} />
+      ) : (
+        <AnimatePresence mode="popLayout">
+          <div className="space-y-3">
+            {clients.map((c, i) => (
+              <ClientCard key={c.id} client={c} showBarber={true} index={i} />
+            ))}
+          </div>
+        </AnimatePresence>
       )}
     </>
   );
 }
 
-// ── Root ──────────────────────────────────────────────────────────────────────
 export default function Clients() {
   const { user } = useAuth();
   return (

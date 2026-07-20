@@ -89,13 +89,22 @@ export function BookingDetailModal({
     };
   }, []);
 
-  // Init client note once when data arrives
+  // Init client note value when data first arrives or after a confirmed save.
+  // Do NOT reset clientNoteEditing here — editing state is managed exclusively
+  // by enterClientEdit / handleClientNoteSave / handleClientNoteRevert so that
+  // background refetches (triggered by onRefetch()) can't kill a mid-edit session.
+  const clientNoteInitialized = useRef(false);
   useEffect(() => {
     if (clientData?.notes !== undefined) {
       const val = clientData.notes ?? "";
-      setClientNote(val);
-      setClientNoteEditing(false);
       clientNoteBase.current = val;
+      if (!clientNoteInitialized.current) {
+        // First load: seed the textarea value
+        setClientNote(val);
+        clientNoteInitialized.current = true;
+      }
+      // Subsequent refetches (e.g. after onRefetch()): only update base snapshot so
+      // revert works correctly, but leave any in-progress textarea content alone.
     }
   }, [clientData?.notes]);
 
@@ -211,6 +220,7 @@ export function BookingDetailModal({
     isSaved,
     textareaRef,
     placeholder,
+    emptyLabel = "Eslatma qo'shilmagan",
     onEditEnter,
     onChange,
     onSave,
@@ -221,8 +231,9 @@ export function BookingDetailModal({
     isEditing: boolean;
     isSaving: boolean;
     isSaved: boolean;
-    textareaRef: React.RefObject<HTMLTextAreaElement>;
+    textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     placeholder: string;
+    emptyLabel?: string;
     onEditEnter: () => void;
     onChange: (v: string) => void;
     onSave: () => void;
@@ -322,7 +333,7 @@ export function BookingDetailModal({
             {value ? (
               <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{value}</p>
             ) : (
-              <p className="text-sm text-muted-foreground/40">{placeholder}</p>
+              <p className="text-sm text-muted-foreground/40 italic">{emptyLabel}</p>
             )}
           </motion.div>
         )}

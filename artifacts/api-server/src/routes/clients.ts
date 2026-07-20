@@ -1,9 +1,19 @@
 import { Router } from "express";
-import { db, clientsTable } from "@workspace/db";
-import { eq, and, ilike, count } from "drizzle-orm";
+import { db, clientsTable, bookingsTable } from "@workspace/db";
+import { eq, and, ilike, count, or, sql, isNull, desc } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 
 const router = Router();
+
+function computeStatus(c: typeof clientsTable.$inferSelect): "regular" | "new" | "lost" {
+  const now = new Date();
+  if (c.lastVisit) {
+    const daysSince = (now.getTime() - new Date(c.lastVisit).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSince > 30) return "lost";
+  }
+  if (c.visitCount >= 5) return "regular";
+  return "new";
+}
 
 function formatClient(c: typeof clientsTable.$inferSelect) {
   return {
@@ -13,10 +23,10 @@ function formatClient(c: typeof clientsTable.$inferSelect) {
     phone: c.phone,
     telegramId: c.telegramId,
     notes: c.notes,
-    status: c.status,
+    status: computeStatus(c),
     visitCount: c.visitCount,
     totalSpent: Number(c.totalSpent),
-    lastVisit: c.lastVisit,
+    lastVisit: c.lastVisit ? c.lastVisit.toISOString() : null,
     createdAt: c.createdAt,
   };
 }
@@ -29,18 +39,33 @@ router.get("/", authenticate, async (req, res) => {
     const limitNum = parseInt(limit) || 20;
     const offset = (pageNum - 1) * limitNum;
 
-    const conditions = [eq(clientsTable.barberId, user.id)];
+    const conditions: any[] = [eq(clientsTable.barberId, user.id)];
+
     if (filter && filter !== "all") {
-      conditions.push(eq(clientsTable.status, filter as any));
+      if (filter === "lost") {
+        conditions.push(sql`${clientsTable.lastVisit} < NOW() - INTERVAL '30 days'`);
+      } else if (filter === "regular") {
+        conditions.push(sql`${clientsTable.visitCount} >= 5`);
+        conditions.push(sql`(${clientsTable.lastVisit} IS NULL OR ${clientsTable.lastVisit} >= NOW() - INTERVAL '30 days')`);
+      } else if (filter === "new") {
+        conditions.push(sql`${clientsTable.visitCount} < 5`);
+        conditions.push(sql`(${clientsTable.lastVisit} IS NULL OR ${clientsTable.lastVisit} >= NOW() - INTERVAL '30 days')`);
+      }
     }
+
     if (search) {
-      conditions.push(ilike(clientsTable.name, `%${search}%`));
+      conditions.push(
+        or(
+          ilike(clientsTable.name, `%${search}%`),
+          ilike(clientsTable.phone, `%${search}%`)
+        )
+      );
     }
 
     const where = and(...conditions);
     const clients = await db.select().from(clientsTable)
       .where(where)
-      .orderBy(clientsTable.createdAt)
+      .orderBy(desc(clientsTable.lastVisit), desc(clientsTable.createdAt))
       .limit(limitNum)
       .offset(offset);
 
@@ -75,6 +100,45 @@ router.post("/", authenticate, async (req, res) => {
   }
 });
 
+router.get("/:clientId/bookings", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const [client] = await db.select({ id: clientsTable.id }).from(clientsTable)
+      .where(and(eq(clientsTable.id, req.params.clientId), eq(clientsTable.barberId, user.id)))
+      .limit(1);
+    if (!client) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    const bookings = await db.select({
+      id: bookingsTable.id,
+      date: bookingsTable.date,
+      serviceName: bookingsTable.serviceName,
+      price: bookingsTable.price,
+      status: bookingsTable.status,
+    }).from(bookingsTable)
+      .where(and(
+        eq(bookingsTable.clientId, req.params.clientId),
+        eq(bookingsTable.barberId, user.id),
+        isNull(bookingsTable.deletedAt),
+      ))
+      .orderBy(desc(bookingsTable.date))
+      .limit(50);
+    res.json({
+      bookings: bookings.map((b) => ({
+        id: b.id,
+        date: b.date,
+        serviceName: b.serviceName ?? "—",
+        price: Number(b.price),
+        status: b.status,
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
 router.get("/:clientId", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
@@ -102,6 +166,29 @@ router.put("/:clientId", authenticate, async (req, res) => {
         ...(telegramId !== undefined && { telegramId }),
         ...(notes !== undefined && { notes }),
         ...(status !== undefined && { status }),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(clientsTable.id, req.params.clientId), eq(clientsTable.barberId, user.id)))
+      .returning();
+    if (!client) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    res.json(formatClient(client));
+  } catch (err) {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+router.patch("/:clientId", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const { name, phone, notes } = req.body;
+    const [client] = await db.update(clientsTable)
+      .set({
+        ...(name !== undefined && { name }),
+        ...(phone !== undefined && { phone }),
+        ...(notes !== undefined && { notes }),
         updatedAt: new Date(),
       })
       .where(and(eq(clientsTable.id, req.params.clientId), eq(clientsTable.barberId, user.id)))
