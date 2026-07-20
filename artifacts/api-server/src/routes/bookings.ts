@@ -143,6 +143,34 @@ router.put("/:bookingId", authenticate, async (req, res) => {
   }
 });
 
+router.patch("/:bookingId", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const { clientName, serviceId, date, startTime, endTime, price, status, notes } = req.body;
+    const [booking] = await db.update(bookingsTable)
+      .set({
+        ...(clientName !== undefined && { clientName }),
+        ...(serviceId !== undefined && { serviceId }),
+        ...(date !== undefined && { date }),
+        ...(startTime !== undefined && { startTime }),
+        ...(endTime !== undefined && { endTime }),
+        ...(price !== undefined && { price: price.toString() }),
+        ...(status !== undefined && { status }),
+        ...(notes !== undefined && { notes }),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(bookingsTable.id, req.params.bookingId), eq(bookingsTable.barberId, user.id)))
+      .returning();
+    if (!booking) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    res.json(formatBooking(booking));
+  } catch (err) {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
 router.delete("/:bookingId", authenticate, async (req, res) => {
   try {
     const user = getUser(req);

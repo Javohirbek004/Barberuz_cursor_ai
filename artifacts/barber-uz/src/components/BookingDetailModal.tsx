@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, PhoneCall, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
+import { X, PhoneCall, Check, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 import {
   useGetClient,
   useUpdateBooking,
@@ -13,7 +13,6 @@ const UZ_SHORT_MONTHS = [
   "Yan","Fev","Mar","Apr","May","Iyn","Iyl","Avg","Sen","Okt","Noy","Dek",
 ];
 
-// Extracts `Tel: +998...` prefix written by BookingFlowDialog
 function parseBookingNotes(raw: string | null): { phone: string | null; userNotes: string } {
   if (!raw) return { phone: null, userNotes: "" };
   const lines = raw.split("\n");
@@ -55,15 +54,18 @@ export function BookingDetailModal({
 }) {
   const { toast } = useToast();
 
-  // Client-level notes (registered clients)
-  const [clientNoteValue, setClientNoteValue] = useState("");
+  // ── Note state ────────────────────────────────────────────────
+  // clientNote: for registered-client bookings
+  const [clientNote, setClientNote] = useState("");
   const [clientNoteSaved, setClientNoteSaved] = useState(false);
-  const clientNoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [clientNoteDirty, setClientNoteDirty] = useState(false);
+  const clientNoteBase = useRef(""); // last-saved value for revert
 
-  // Booking-level notes (quick bookings)
-  const [bookingNoteValue, setBookingNoteValue] = useState("");
+  // bookingNote: for quick (no-clientId) bookings
+  const [bookingNote, setBookingNote] = useState("");
   const [bookingNoteSaved, setBookingNoteSaved] = useState(false);
-  const bookingNoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [bookingNoteDirty, setBookingNoteDirty] = useState(false);
+  const bookingNoteBase = useRef(""); // last-saved value for revert
 
   const [confirmCancel, setConfirmCancel] = useState(false);
 
@@ -75,6 +77,7 @@ export function BookingDetailModal({
   const updateBookingMut = useUpdateBooking();
   const updateClientMut = useUpdateClient();
 
+  // Hide bottom nav while sheet is open
   useEffect(() => {
     document.body.classList.add("sheet-open");
     const nav = document.getElementById("bottom-nav-root");
@@ -82,63 +85,85 @@ export function BookingDetailModal({
     return () => {
       document.body.classList.remove("sheet-open");
       if (nav) nav.style.visibility = "";
-      if (clientNoteTimer.current) clearTimeout(clientNoteTimer.current);
-      if (bookingNoteTimer.current) clearTimeout(bookingNoteTimer.current);
     };
   }, []);
 
-  // Sync client notes from fetched data
+  // Init client note once when clientData arrives (or booking changes)
   useEffect(() => {
-    if (clientData?.notes !== undefined) setClientNoteValue(clientData.notes ?? "");
+    if (clientData?.notes !== undefined) {
+      const val = clientData.notes ?? "";
+      setClientNote(val);
+      setClientNoteDirty(false);
+      clientNoteBase.current = val;
+    }
   }, [clientData?.notes]);
 
-  // Sync booking-level notes from booking prop
+  // Init booking note only when the booking ID changes (prevents stale overwrite)
   useEffect(() => {
     const { userNotes } = parseBookingNotes(booking.notes ?? null);
-    setBookingNoteValue(userNotes);
-  }, [booking.notes]);
+    setBookingNote(userNotes);
+    setBookingNoteDirty(false);
+    bookingNoteBase.current = userNotes;
+  }, [booking.id]); // ← key fix: id, NOT booking.notes
 
-  // Auto-save: registered client notes (debounced 800 ms)
-  const handleClientNoteChange = (val: string) => {
-    setClientNoteValue(val);
-    if (clientNoteTimer.current) clearTimeout(clientNoteTimer.current);
-    clientNoteTimer.current = setTimeout(() => {
-      if (!booking.clientId) return;
-      updateClientMut.mutate(
-        { clientId: booking.clientId, data: { notes: val } },
-        {
-          onSuccess: () => {
-            setClientNoteSaved(true);
-            setTimeout(() => setClientNoteSaved(false), 2500);
-          },
-        },
-      );
-    }, 800);
-  };
-
-  // Auto-save: quick booking notes (debounced 800 ms)
   const { phone: parsedPhone } = parseBookingNotes(booking.notes ?? null);
 
-  const handleBookingNoteChange = (val: string) => {
-    setBookingNoteValue(val);
-    if (bookingNoteTimer.current) clearTimeout(bookingNoteTimer.current);
-    bookingNoteTimer.current = setTimeout(() => {
-      // Re-encode the Tel: prefix if present
-      const encoded = parsedPhone
-        ? `Tel: ${parsedPhone}\n${val}`.trim()
-        : val.trim() || null;
-      updateBookingMut.mutate(
-        { bookingId: booking.id, data: { notes: encoded } },
-        {
-          onSuccess: () => {
-            setBookingNoteSaved(true);
-            setTimeout(() => setBookingNoteSaved(false), 2500);
-          },
-        },
-      );
-    }, 800);
+  // ── Note handlers ─────────────────────────────────────────────
+  const handleClientNoteChange = (val: string) => {
+    setClientNote(val);
+    setClientNoteDirty(val !== clientNoteBase.current);
   };
 
+  const handleClientNoteSave = () => {
+    if (!booking.clientId) return;
+    updateClientMut.mutate(
+      { clientId: booking.clientId, data: { notes: clientNote } },
+      {
+        onSuccess: () => {
+          clientNoteBase.current = clientNote;
+          setClientNoteDirty(false);
+          setClientNoteSaved(true);
+          setTimeout(() => setClientNoteSaved(false), 2500);
+          onRefetch();
+        },
+      },
+    );
+  };
+
+  const handleClientNoteRevert = () => {
+    setClientNote(clientNoteBase.current);
+    setClientNoteDirty(false);
+  };
+
+  const handleBookingNoteChange = (val: string) => {
+    setBookingNote(val);
+    setBookingNoteDirty(val !== bookingNoteBase.current);
+  };
+
+  const handleBookingNoteSave = () => {
+    const encoded = parsedPhone
+      ? `Tel: ${parsedPhone}\n${bookingNote}`.trim()
+      : bookingNote.trim() || null;
+    updateBookingMut.mutate(
+      { bookingId: booking.id, data: { notes: encoded } },
+      {
+        onSuccess: () => {
+          bookingNoteBase.current = bookingNote;
+          setBookingNoteDirty(false);
+          setBookingNoteSaved(true);
+          setTimeout(() => setBookingNoteSaved(false), 2500);
+          onRefetch();
+        },
+      },
+    );
+  };
+
+  const handleBookingNoteRevert = () => {
+    setBookingNote(bookingNoteBase.current);
+    setBookingNoteDirty(false);
+  };
+
+  // ── Booking actions ───────────────────────────────────────────
   const handleComplete = () => {
     updateBookingMut.mutate(
       { bookingId: booking.id, data: { status: "completed" } },
@@ -173,10 +198,10 @@ export function BookingDetailModal({
   const isBusy = updateBookingMut.isPending;
   const isActive = booking.status !== "cancelled" && booking.status !== "completed";
   const dateLabel = formatBookingDate(booking.date);
-
   const phone = clientData?.phone ?? parsedPhone;
 
-  const savedBadge = (visible: boolean) => (
+  // ── Shared sub-components ─────────────────────────────────────
+  const SavedBadge = ({ visible }: { visible: boolean }) => (
     <AnimatePresence>
       {visible && (
         <motion.span
@@ -187,6 +212,55 @@ export function BookingDetailModal({
         >
           <CheckCircle className="w-3.5 h-3.5" /> Saqlandi
         </motion.span>
+      )}
+    </AnimatePresence>
+  );
+
+  const NoteActions = ({
+    dirty,
+    saving,
+    onSave,
+    onRevert,
+  }: {
+    dirty: boolean;
+    saving: boolean;
+    onSave: () => void;
+    onRevert: () => void;
+  }) => (
+    <AnimatePresence>
+      {dirty && (
+        <motion.div
+          initial={{ opacity: 0, y: -6, height: 0 }}
+          animate={{ opacity: 1, y: 0, height: "auto" }}
+          exit={{ opacity: 0, y: -6, height: 0 }}
+          transition={{ duration: 0.18 }}
+          className="overflow-hidden"
+        >
+          <div className="flex items-center justify-end gap-2 mb-2">
+            <span className="text-[11px] text-muted-foreground/60 mr-auto">
+              Saqlash yoki bekor qilish
+            </span>
+            <button
+              onClick={onRevert}
+              disabled={saving}
+              className="w-8 h-8 rounded-xl bg-white/8 border border-white/12 flex items-center justify-center hover:bg-white/14 active:scale-95 transition-all disabled:opacity-40"
+              aria-label="Bekor qilish"
+            >
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <button
+              onClick={onSave}
+              disabled={saving}
+              className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center hover:bg-emerald-500/25 active:scale-95 transition-all disabled:opacity-40"
+              aria-label="Saqlash"
+            >
+              {saving
+                ? <span className="w-3 h-3 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+                : <Check className="w-4 h-4 text-emerald-400" />
+              }
+            </button>
+          </div>
+        </motion.div>
       )}
     </AnimatePresence>
   );
@@ -237,7 +311,7 @@ export function BookingDetailModal({
               value={`${dateLabel} • ${booking.startTime.slice(0, 5)} – ${booking.endTime.slice(0, 5)}`}
             />
 
-            {/* Phone call button */}
+            {/* Phone call pill */}
             <div className="flex items-center justify-between py-3 border-b border-white/5">
               <span className="text-sm text-muted-foreground">Telefon raqami</span>
               {phone ? (
@@ -277,14 +351,20 @@ export function BookingDetailModal({
           {/* ── Section 3: Notes ── */}
           <div className="py-4 border-b border-white/8">
             {booking.clientId ? (
-              /* Registered client — auto-saving client notes */
+              /* Registered client note */
               <>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm font-semibold text-foreground">Mijoz haqida eslatma</p>
-                  {savedBadge(clientNoteSaved)}
+                  <SavedBadge visible={clientNoteSaved} />
                 </div>
+                <NoteActions
+                  dirty={clientNoteDirty}
+                  saving={updateClientMut.isPending}
+                  onSave={handleClientNoteSave}
+                  onRevert={handleClientNoteRevert}
+                />
                 <textarea
-                  value={clientNoteValue}
+                  value={clientNote}
                   onChange={(e) => handleClientNoteChange(e.target.value)}
                   placeholder="Soch uzunligi, rang xohishi, maxsus talablar..."
                   className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/35 resize-none focus:outline-none focus:border-primary/40 focus:bg-white/[0.07] transition-all"
@@ -292,14 +372,20 @@ export function BookingDetailModal({
                 />
               </>
             ) : (
-              /* Quick booking — editable booking-level notes with auto-save */
+              /* Quick booking note */
               <>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm font-semibold text-foreground">Bron eslatmasi</p>
-                  {savedBadge(bookingNoteSaved)}
+                  <SavedBadge visible={bookingNoteSaved} />
                 </div>
+                <NoteActions
+                  dirty={bookingNoteDirty}
+                  saving={updateBookingMut.isPending}
+                  onSave={handleBookingNoteSave}
+                  onRevert={handleBookingNoteRevert}
+                />
                 <textarea
-                  value={bookingNoteValue}
+                  value={bookingNote}
                   onChange={(e) => handleBookingNoteChange(e.target.value)}
                   placeholder="Maxsus talablar, eslatmalar..."
                   className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/35 resize-none focus:outline-none focus:border-primary/40 focus:bg-white/[0.07] transition-all"
