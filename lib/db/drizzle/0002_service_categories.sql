@@ -47,5 +47,5 @@ WHERE sc."barber_id" = s."barber_id"
     WHEN 'boshqa'   THEN 'Boshqa'
     ELSE s."name_ru"
   END
-WHERE s."name_ru" IS NOT NULL
+  AND s."name_ru" IS NOT NULL
   AND s."category_id" IS NULL;
