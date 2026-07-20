@@ -741,16 +741,61 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
     return;
   }
 
-  // ── Customer: cancel booking request ────────────────────────────────────
+  // ── Customer: cancel booking request (1-hour guardrail) ─────────────────
   if (callbackData.startsWith("customer_cancel_")) {
     const sessionId = callbackData.slice("customer_cancel_".length);
+
+    const [session] = await db
+      .select()
+      .from(bookingSessionsTable)
+      .where(eq(bookingSessionsTable.sessionId, sessionId))
+      .limit(1);
+
+    if (!session || session.status !== "confirmed") {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: session?.status === "cancelled"
+          ? "Bu bron allaqachon bekor qilingan."
+          : "Bron topilmadi yoki muddati tugagan.",
+      });
+      return;
+    }
+
+    let cancelData: BookingData;
+    try { cancelData = JSON.parse(session.bookingData) as BookingData; } catch {
+      await callTelegram("sendMessage", { chat_id: chatId, text: "Xatolik yuz berdi." });
+      return;
+    }
+
+    // 1-hour guardrail
+    const appointmentDt = parseBookingDateTimeInBot(cancelData);
+    if (appointmentDt) {
+      const diffMinutes = (appointmentDt.getTime() - Date.now()) / 60000;
+      if (diffMinutes < 60) {
+        const [barberForCancel] = await db
+          .select({ phone: usersTable.phone })
+          .from(usersTable)
+          .where(eq(usersTable.id, session.barberId))
+          .limit(1);
+        const phoneLine = barberForCancel?.phone
+          ? `\n\n\uD83D\uDCDE <b>${barberForCancel.phone}</b>`
+          : "";
+        await callTelegram("sendMessage", {
+          chat_id: chatId,
+          text: `\u23F0 Kechirasiz, bron vaqtiga <b>1 soatdan kam</b> vaqt qoldi.\n\nBekor qilish uchun sartosh bilan to\u02BBg\u02BBridan-to\u02BBg\u02BBri bog\u02BBlaning.${phoneLine}`,
+          parse_mode: "HTML",
+        });
+        return;
+      }
+    }
+
     await callTelegram("sendMessage", {
       chat_id: chatId,
-      text: "Navbatingizni bekor qilasizmi? \uD83E\uDD14",
+      text: "Haqiqatan ham bekor qilmoqchimisiz? \uD83E\uDD14",
       reply_markup: {
         inline_keyboard: [[
-          { text: "Ha, bekor qilinsin \u274C", callback_data: `confirm_customer_cancel_${sessionId}` },
-          { text: "Yo\u02BBq, qolsin \uD83D\uDFE2", callback_data: `abort_customer_cancel_${sessionId}` },
+          { text: "Ha \u2705", callback_data: `confirm_customer_cancel_${sessionId}` },
+          { text: "Yo\u02BBq \uD83D\uDFE2", callback_data: `abort_customer_cancel_${sessionId}` },
         ]],
       },
     });
@@ -767,6 +812,58 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
   // ── Customer: aborted cancel ────────────────────────────────────────────
   if (callbackData.startsWith("abort_customer_cancel_")) {
     await callTelegram("sendMessage", { chat_id: chatId, text: "Bekor qilish to\u02BBxtatildi. Navbatingiz saqlanib qoldi \u2705" });
+    return;
+  }
+
+  // ── Client reminder: confirmed attendance ───────────────────────────────
+  if (callbackData.startsWith("client_reminder_confirm_")) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Ajoyib! Sizni kutamiz \u2702\uFE0F Vaqtida keling \uD83D\uDE0A",
+    });
+    return;
+  }
+
+  // ── Client reminder: cancel from 24h reminder button ────────────────────
+  if (callbackData.startsWith("client_reminder_cancel_")) {
+    const sessionId = callbackData.slice("client_reminder_cancel_".length);
+    // Re-use customer cancel flow (includes 1-hour guardrail)
+    // Synthesize as if they tapped customer_cancel
+    const [session] = await db
+      .select()
+      .from(bookingSessionsTable)
+      .where(eq(bookingSessionsTable.sessionId, sessionId))
+      .limit(1);
+    if (!session || session.status !== "confirmed") {
+      await callTelegram("sendMessage", { chat_id: chatId, text: "Bron topilmadi yoki allaqachon bekor qilingan." });
+      return;
+    }
+    let reminderCancelData: BookingData;
+    try { reminderCancelData = JSON.parse(session.bookingData) as BookingData; } catch {
+      await callTelegram("sendMessage", { chat_id: chatId, text: "Xatolik yuz berdi." });
+      return;
+    }
+    const apptDt = parseBookingDateTimeInBot(reminderCancelData);
+    if (apptDt && (apptDt.getTime() - Date.now()) / 60000 < 60) {
+      const [b] = await db.select({ phone: usersTable.phone }).from(usersTable).where(eq(usersTable.id, session.barberId)).limit(1);
+      const ph = b?.phone ? `\n\n\uD83D\uDCDE <b>${b.phone}</b>` : "";
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: `\u23F0 Kechirasiz, bron vaqtiga <b>1 soatdan kam</b> vaqt qoldi. Bekor qilish uchun sartosh bilan bog\u02BBlaning.${ph}`,
+        parse_mode: "HTML",
+      });
+      return;
+    }
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Haqiqatan ham bekor qilmoqchimisiz? \uD83E\uDD14",
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "Ha \u2705", callback_data: `confirm_customer_cancel_${sessionId}` },
+          { text: "Yo\u02BBq \uD83D\uDFE2", callback_data: `abort_customer_cancel_${sessionId}` },
+        ]],
+      },
+    });
     return;
   }
 }
@@ -979,6 +1076,22 @@ async function handleConfirmCancel(chatId: number, sessionId: string) {
     .set({ status: "cancelled" })
     .where(eq(bookingSessionsTable.sessionId, sessionId));
 
+  // Also cancel the matching entry in bookingsTable (if it was inserted by confirmBookingSession)
+  try {
+    const isoDate = toISODate(data.date);
+    await db
+      .update(bookingsTable)
+      .set({ status: "cancelled", updatedAt: new Date() })
+      .where(and(
+        eq(bookingsTable.barberId, session.barberId),
+        eq(bookingsTable.date, isoDate),
+        eq(bookingsTable.startTime, data.time),
+        eq(bookingsTable.status, "confirmed"),
+      ));
+  } catch (err) {
+    console.warn("[Bot] bookingsTable cancel skipped:", (err as Error).message);
+  }
+
   log("booking_cancelled", {
     sessionId,
     barberId: session.barberId,
@@ -1055,6 +1168,22 @@ async function handleCustomerConfirmCancel(chatId: number, sessionId: string) {
     .set({ status: "cancelled" })
     .where(eq(bookingSessionsTable.sessionId, sessionId));
 
+  // Also cancel the matching entry in bookingsTable
+  try {
+    const isoDate = toISODate(data.date);
+    await db
+      .update(bookingsTable)
+      .set({ status: "cancelled", updatedAt: new Date() })
+      .where(and(
+        eq(bookingsTable.barberId, session.barberId),
+        eq(bookingsTable.date, isoDate),
+        eq(bookingsTable.startTime, data.time),
+        eq(bookingsTable.status, "confirmed"),
+      ));
+  } catch (err) {
+    console.warn("[Bot] bookingsTable customer-cancel skipped:", (err as Error).message);
+  }
+
   log("booking_cancelled_by_customer", { sessionId, barberId: session.barberId, telegramUserId: String(chatId) });
 
   const barberPageLink = (data.barberPageLink && validateAppUrl(data.barberPageLink))
@@ -1063,20 +1192,30 @@ async function handleCustomerConfirmCancel(chatId: number, sessionId: string) {
 
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: `\u2705 Navbatingiz muvaffaqiyatli bekor qilindi!\n\n${formatDateLabel(data.date)}, soat <b>${data.time}</b> ga bo\u02BBlib o\u02BBtadigan navbat bekor qilindi.`,
+    text:
+      `\u2705 <b>Broningiz bekor qilindi!</b>\n\n` +
+      `${formatDateLabel(data.date)}, soat <b>${data.time}</b> dagi navbat bekor qilindi.\n\n` +
+      `Qayta bron qilish uchun quyidagi tugmani bosing:`,
     parse_mode: "HTML",
     reply_markup: {
       inline_keyboard: [[{ text: "\uD83D\uDD04 Qayta bron qilish", url: barberPageLink }]],
     },
   });
 
-  // Notify barber
+  // Notify barber with full details
   const [barber] = await db.select().from(usersTable).where(eq(usersTable.id, session.barberId)).limit(1);
   if (barber?.telegramId) {
     const clientFirstName = session.clientName?.split(" ")[0] || "Mijoz";
+    const clientPhone     = session.clientPhone ? `\n\uD83D\uDCDE ${session.clientPhone}` : "";
+    const serviceNames    = data.services.map(s => s.name).join(", ");
     await callTelegram("sendMessage", {
       chat_id: Number(barber.telegramId),
-      text: `\u274C <b>Navbat bekor qilindi!</b>\n\n\uD83D\uDC64 Mijoz: ${clientFirstName}\n\uD83D\uDCC5 Sana: ${formatDateLabel(data.date)}\n\u23F0 Vaqt: ${data.time}\n\nMijoz navbatni o\u02BBzi bekor qildi.`,
+      text:
+        `\u26A0\uFE0F <b>Bron bekor qilindi!</b>\n\n` +
+        `\uD83D\uDC64 Mijoz: ${clientFirstName}${clientPhone}\n` +
+        `\uD83D\uDCC5 Sana va vaqt: ${formatDateLabel(data.date)}, <b>${data.time}</b>\n` +
+        `\u2702\uFE0F Xizmat: ${serviceNames}\n\n` +
+        `Ushbu vaqt slot kalendaringizda avtomatik bo\u02BBshatildi.`,
       parse_mode: "HTML",
     }).catch(() => {});
   }
@@ -1180,6 +1319,26 @@ function parseBookingPayload(payload: string): { sessionId: string } | null {
 
 const UZ_MONTHS = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
 const UZ_DAYS   = ["Yakshanba","Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"];
+
+function parseBookingDateTimeInBot(data: BookingData): Date | null {
+  try {
+    let dateStr = data.date;
+    if (dateStr === "today" || dateStr === "bugun") {
+      dateStr = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+    } else if (dateStr === "tomorrow" || dateStr === "ertaga") {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      dateStr = d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+    }
+    const [hours, minutes] = data.time.split(":").map(Number);
+    const dt = new Date(
+      `${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00+05:00`,
+    );
+    return isNaN(dt.getTime()) ? null : dt;
+  } catch {
+    return null;
+  }
+}
 
 function formatDateLabel(dateStr: string): string {
   if (dateStr === "today"    || dateStr === "bugun")  return "Bugun";
