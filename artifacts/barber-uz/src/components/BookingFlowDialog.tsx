@@ -31,6 +31,7 @@ import {
   getListBookingsQueryKey,
   getGetDashboardStatsQueryKey,
   getListServicesQueryKey,
+  getListClientsQueryKey,
 } from "@workspace/api-client-react";
 import type { Service } from "@workspace/api-client-react";
 import { ServiceForm } from "@/components/ServiceForm";
@@ -810,6 +811,9 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
       .filter(Boolean)
       .join("\n") || null;
 
+    const phoneDigitsForApi = form.phone.replace(/\D/g, "");
+    const clientPhoneForApi = phoneDigitsForApi.length >= 12 ? form.phone.trim() : undefined;
+
     createBookingMut.mutate(
       {
         data: {
@@ -820,13 +824,15 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
           endTime: fmtMins(endMins),
           price: selectedSvc?.price ?? 0,
           notes: encodedNotes,
-        },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ...(clientPhoneForApi ? { clientPhone: clientPhoneForApi } : {}),
+        } as any,
       },
       {
         onSuccess: () => {
           setSaving(false);
           setSaved(true);
-          // Invalidate so Calendar + Dashboard auto-refresh
+          // Invalidate bookings (Calendar + Dashboard) and clients list
           queryClient.invalidateQueries({
             queryKey: getListBookingsQueryKey({ date: form.date }),
           });
@@ -835,6 +841,9 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
           });
           queryClient.invalidateQueries({
             queryKey: getGetDashboardStatsQueryKey(),
+          });
+          queryClient.invalidateQueries({
+            queryKey: getListClientsQueryKey(),
           });
           setTimeout(() => close(), 1200);
         },

@@ -21,7 +21,7 @@
 
 import { randomBytes } from "crypto";
 import { db, usersTable, bookingSessionsTable, bookingsTable, clientsTable } from "@workspace/db";
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, and, or, isNull, desc, sql } from "drizzle-orm";
 import { generateToken } from "./auth";
 
 function getToken(): string {
@@ -1293,13 +1293,27 @@ async function confirmBookingSession(
     clientPhone: effectivePhone,
   }).where(eq(bookingSessionsTable.sessionId, sessionId));
 
-  // Upsert client record so phone/name are always linked to bookings
+  // Upsert client record: search by phone first, then telegramId, then create new
   let clientId: string | null = null;
   try {
+    const bookingDate = new Date();
+    const totalPrice = data.totalPrice || 0;
+
+    // Build lookup conditions: prefer phone match, fall back to telegramId
+    const conditions = [];
+    if (effectivePhone) {
+      conditions.push(
+        and(eq(clientsTable.barberId, session.barberId), eq(clientsTable.phone, effectivePhone))
+      );
+    }
+    conditions.push(
+      and(eq(clientsTable.barberId, session.barberId), eq(clientsTable.telegramId, tgUserId))
+    );
+
     const [existing] = await db
       .select()
       .from(clientsTable)
-      .where(and(eq(clientsTable.barberId, session.barberId), eq(clientsTable.telegramId, tgUserId)))
+      .where(or(...conditions))
       .limit(1);
 
     if (existing) {
@@ -1307,7 +1321,11 @@ async function confirmBookingSession(
         .set({
           name: firstName,
           ...(effectivePhone && { phone: effectivePhone }),
-          updatedAt: new Date(),
+          telegramId: tgUserId,
+          visitCount: sql`${clientsTable.visitCount} + 1`,
+          totalSpent: sql`${clientsTable.totalSpent} + ${totalPrice}`,
+          lastVisit: bookingDate,
+          updatedAt: bookingDate,
         })
         .where(eq(clientsTable.id, existing.id));
       clientId = existing.id;
@@ -1318,6 +1336,9 @@ async function confirmBookingSession(
         phone: effectivePhone || null,
         telegramId: tgUserId,
         status: "new",
+        visitCount: 1,
+        totalSpent: String(totalPrice),
+        lastVisit: bookingDate,
       }).returning();
       clientId = newClient.id;
     }

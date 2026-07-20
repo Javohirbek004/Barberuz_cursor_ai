@@ -1,9 +1,52 @@
 import { Router } from "express";
 import { db, bookingsTable, clientsTable, servicesTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, or } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 
 const router = Router();
+
+/**
+ * Find an existing client by phone number for this barber, or create a new one.
+ * Returns the clientId and whether stats were already updated (true if existing).
+ */
+async function findOrCreateClient(
+  barberId: string,
+  clientName: string,
+  clientPhone: string,
+  price: number,
+): Promise<string> {
+  const normalizedPhone = clientPhone.replace(/\s+/g, "");
+  const bookingDate = new Date();
+
+  const [existing] = await db
+    .select()
+    .from(clientsTable)
+    .where(and(eq(clientsTable.barberId, barberId), eq(clientsTable.phone, normalizedPhone)))
+    .limit(1);
+
+  if (existing) {
+    await db.update(clientsTable)
+      .set({
+        visitCount: sql`${clientsTable.visitCount} + 1`,
+        totalSpent: sql`${clientsTable.totalSpent} + ${price}`,
+        lastVisit: bookingDate,
+        updatedAt: bookingDate,
+      })
+      .where(eq(clientsTable.id, existing.id));
+    return existing.id;
+  }
+
+  const [newClient] = await db.insert(clientsTable).values({
+    barberId,
+    name: clientName,
+    phone: normalizedPhone,
+    status: "new",
+    visitCount: 1,
+    totalSpent: String(price),
+    lastVisit: bookingDate,
+  }).returning();
+  return newClient.id;
+}
 
 function formatBooking(b: typeof bookingsTable.$inferSelect) {
   return {
@@ -50,7 +93,7 @@ router.get("/", authenticate, async (req, res) => {
 router.post("/", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
-    const { clientId, clientName, serviceId, date, startTime, endTime, price, notes } = req.body;
+    const { clientId, clientPhone, clientName, serviceId, date, startTime, endTime, price, notes } = req.body;
     if (!clientName || !date || !startTime || !endTime) {
       res.status(400).json({ error: "validation", message: "Missing required fields" });
       return;
@@ -67,30 +110,45 @@ router.post("/", authenticate, async (req, res) => {
       resolvedServiceName = svc?.name ?? null;
     }
 
+    // Smart client resolution:
+    // 1. If phone provided → find-or-create by phone (deduplicates, updates stats)
+    // 2. Else if explicit clientId → update that client's stats
+    // 3. Otherwise → booking with no client link
+    let resolvedClientId: string | null = clientId || null;
+    const numericPrice = Number(price) || 0;
+
+    const rawPhone = (typeof clientPhone === "string" ? clientPhone : "").trim();
+    if (rawPhone) {
+      try {
+        resolvedClientId = await findOrCreateClient(user.id, clientName, rawPhone, numericPrice);
+      } catch (err) {
+        console.warn("[Bookings] findOrCreateClient failed:", (err as Error).message);
+      }
+    } else if (resolvedClientId) {
+      // Phone not provided but clientId was given — update stats directly
+      await db.update(clientsTable)
+        .set({
+          visitCount: sql`${clientsTable.visitCount} + 1`,
+          totalSpent: sql`${clientsTable.totalSpent} + ${numericPrice}`,
+          lastVisit: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(clientsTable.id, resolvedClientId), eq(clientsTable.barberId, user.id)));
+    }
+
     const [booking] = await db.insert(bookingsTable).values({
       barberId: user.id,
-      clientId: clientId || null,
+      clientId: resolvedClientId,
       clientName,
       serviceId: serviceId || null,
       serviceName: resolvedServiceName,
       date,
       startTime,
       endTime,
-      price: price?.toString() || "0",
+      price: numericPrice.toString(),
       notes: notes || null,
       status: "confirmed",
     }).returning();
-
-    if (clientId) {
-      await db.update(clientsTable)
-        .set({
-          visitCount: sql`${clientsTable.visitCount} + 1`,
-          totalSpent: sql`${clientsTable.totalSpent} + ${price || 0}`,
-          lastVisit: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(clientsTable.id, clientId));
-    }
 
     res.status(201).json(formatBooking(booking));
   } catch (err) {
