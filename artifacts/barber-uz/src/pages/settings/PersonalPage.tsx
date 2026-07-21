@@ -1732,32 +1732,16 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
 
   return (
     <div className="pb-28 -mx-4">
-      {/* Hero */}
-      <div className="relative">
-        <div className="w-full h-48 relative overflow-hidden">
-          {coverImage
-            ? <img src={coverImage} className="w-full h-full object-cover" />
-            : <div className="w-full h-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
-                <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(45deg,#ffffff08 0,#ffffff08 1px,transparent 0,transparent 50%)", backgroundSize: "20px 20px" }} />
-                <div className={`absolute inset-0 bg-gradient-to-br ${COVER_GRAD[gradIdx]}`} />
-              </div>
+      {/* Hero — dark profile header */}
+      <div className="bg-zinc-950 px-4 pt-8 pb-5">
+        <div className="w-24 h-24 rounded-full border-4 border-zinc-800 overflow-hidden bg-zinc-900 flex items-center justify-center shadow-2xl shadow-black/60 mb-4">
+          {profile.avatarUrl
+            ? <img src={profile.avatarUrl} className="w-full h-full object-cover" />
+            : <span className="text-4xl font-bold text-primary uppercase">{profile.name.charAt(0) || "?"}</span>
           }
-          <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-background to-transparent" />
         </div>
-        <div className="absolute bottom-0 left-4 translate-y-8">
-          <div className="w-20 h-20 rounded-full border-4 border-background overflow-hidden bg-gradient-to-br from-primary/40 to-primary/15 flex items-center justify-center shadow-2xl shadow-black/40">
-            {profile.avatarUrl
-              ? <img src={profile.avatarUrl} className="w-full h-full object-cover" />
-              : <span className="text-3xl font-bold text-primary uppercase">{profile.name.charAt(0) || "?"}</span>
-            }
-          </div>
-        </div>
-      </div>
-
-      {/* Name + bio */}
-      <div className="px-4 pt-12 pb-3">
-        <h1 className="text-2xl font-display font-bold text-foreground mb-1">{profile.brandName || profile.name}</h1>
-        {profile.bio && <p className="text-sm text-muted-foreground leading-relaxed">{profile.bio}</p>}
+        <h1 className="text-2xl font-display font-bold text-white mb-0.5">{profile.brandName || profile.name}</h1>
+        {profile.bio && <p className="text-sm text-zinc-400 leading-relaxed">{profile.bio}</p>}
       </div>
 
       {/* Gallery strip — always above tabs (1+ images) */}
@@ -1775,15 +1759,13 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
       )}
 
       {/* Tab bar */}
-      <div className="px-4 mb-1">
-        <div className="flex gap-1 bg-white/5 p-1 rounded-2xl">
-          {(["asosiy", "xizmatlar"] as const).map(t => (
-            <motion.button key={t} onClick={() => setPreviewTab(t)} whileTap={{ scale: 0.97 }}
-              className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${previewTab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
-              {t === "asosiy" ? "Asosiy" : "Xizmatlar"}
-            </motion.button>
-          ))}
-        </div>
+      <div className="flex border-b border-white/8 mb-1">
+        {(["asosiy", "xizmatlar"] as const).map(t => (
+          <motion.button key={t} onClick={() => setPreviewTab(t)} whileTap={{ scale: 0.97 }}
+            className={`flex-1 py-3 text-sm font-semibold transition-all border-b-2 -mb-px ${previewTab === t ? "text-foreground border-primary" : "text-muted-foreground border-transparent"}`}>
+            {t === "asosiy" ? "Asosiy" : "Xizmatlar"}
+          </motion.button>
+        ))}
       </div>
 
       {/* Tab content */}
