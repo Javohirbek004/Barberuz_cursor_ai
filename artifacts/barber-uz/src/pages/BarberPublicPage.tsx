@@ -405,16 +405,31 @@ function PublicView({ barber }: { barber: BarberData }) {
 
   return (
     <div className="pb-28 -mx-4">
-      {/* Hero — dark profile header */}
-      <div className="bg-zinc-950 px-4 pt-8 pb-5">
-        <div className="w-24 h-24 rounded-full border-4 border-zinc-800 overflow-hidden bg-zinc-900 flex items-center justify-center shadow-2xl shadow-black/60 mb-4">
-          {barber.avatarUrl
-            ? <img src={barber.avatarUrl} className="w-full h-full object-cover" alt="" />
-            : <span className="text-4xl font-bold text-primary uppercase">{displayName.charAt(0) || "?"}</span>
+      {/* Hero — cover image + avatar inside */}
+      <div className="relative">
+        <div className="w-full h-44 relative overflow-hidden">
+          {coverImage
+            ? <img src={coverImage} className="w-full h-full object-cover" alt="" />
+            : <div className="w-full h-full bg-zinc-950">
+                <div className={`absolute inset-0 bg-gradient-to-br ${COVER_GRADS[gradIdx]} opacity-60`} />
+              </div>
           }
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+          <div className="absolute bottom-3 left-4">
+            <div className="w-20 h-20 rounded-full border-4 border-black/50 overflow-hidden bg-zinc-900 flex items-center justify-center shadow-2xl shadow-black/60">
+              {barber.avatarUrl
+                ? <img src={barber.avatarUrl} className="w-full h-full object-cover" alt="" />
+                : <span className="text-3xl font-bold text-primary uppercase">{displayName.charAt(0) || "?"}</span>
+              }
+            </div>
+          </div>
         </div>
-        <h1 className="text-2xl font-display font-bold text-white mb-0.5">{displayName}</h1>
-        {barber.bio && <p className="text-sm text-zinc-400 leading-relaxed">{barber.bio}</p>}
+      </div>
+
+      {/* Name + bio */}
+      <div className="px-4 pt-3 pb-3">
+        <h1 className="text-2xl font-display font-bold text-foreground mb-0.5">{displayName}</h1>
+        {barber.bio && <p className="text-sm text-muted-foreground leading-relaxed">{barber.bio}</p>}
       </div>
 
       {/* Gallery strip (all images) */}
