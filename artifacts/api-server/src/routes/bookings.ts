@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, bookingsTable, clientsTable, servicesTable } from "@workspace/db";
 import { eq, and, sql, or } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
+import { sendDirectBookingNotification } from "../lib/telegram-bot";
 
 const router = Router();
 
@@ -149,6 +150,17 @@ router.post("/", authenticate, async (req, res) => {
       notes: notes || null,
       status: "confirmed",
     }).returning();
+
+    // Send Telegram notification to barber (non-blocking — never crashes booking flow)
+    sendDirectBookingNotification({
+      barberId: user.id,
+      clientName,
+      clientPhone: rawPhone || null,
+      serviceName: resolvedServiceName,
+      date,
+      time: startTime,
+      price: numericPrice,
+    }).catch(() => {});
 
     res.status(201).json(formatBooking(booking));
   } catch (err) {

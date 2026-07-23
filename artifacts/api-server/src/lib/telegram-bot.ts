@@ -1232,66 +1232,125 @@ export async function sendBarberBookingNotification(
   clientName: string,
   clientPhone: string | null,
 ) {
-  const [barber] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, barberId))
-    .limit(1);
+  try {
+    const [barber] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, barberId))
+      .limit(1);
 
-  if (!barber?.telegramId) {
-    log("barber_no_telegram", { barberId, sessionId });
-    return;
+    if (!barber?.telegramId) {
+      log("barber_no_telegram", { barberId, sessionId });
+      return;
+    }
+
+    const [session] = await db
+      .select()
+      .from(bookingSessionsTable)
+      .where(eq(bookingSessionsTable.sessionId, sessionId))
+      .limit(1);
+
+    if (session?.notificationSent) {
+      log("notification_already_sent", { barberId, sessionId });
+      return;
+    }
+
+    const serviceNames = data.services.map(s => s.name).join(", ");
+    const phoneLine = clientPhone ? `\uD83D\uDCDE Tel: ${clientPhone}\n` : "";
+    const text =
+      `\u2702\uFE0F <b>YANGI BRON TUSHDI!</b>\n\n` +
+      `\uD83D\uDC64 Mijoz: ${clientName}\n` +
+      `${phoneLine}` +
+      `\uD83D\uDC88 Xizmat: ${serviceNames}\n` +
+      `\uD83D\uDCC5 Sana: ${formatDateLabel(data.date)}\n` +
+      `\u23F0 Vaqt: ${data.time}\n` +
+      `\uD83D\uDCB5 Narxi: ${data.totalPrice.toLocaleString()} SO\u02BCM\n\n` +
+      `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
+      `\uD83D\uDCA1 Ushbu bron avtomatik tarzda CRM kalendaringizga qo\u02BBshildi.`;
+
+    const buttons: { text: string; callback_data?: string; url?: string }[][] = [];
+    const row: { text: string; callback_data?: string; url?: string }[] = [];
+    if (clientPhone) {
+      const telUrl = `tel:${clientPhone.replace(/[\s\-()]/g, "")}`;
+      row.push({ text: "\uD83D\uDCDE Qo\u02BBng\u02BBiroq", url: telUrl });
+    }
+    row.push({ text: "\u274C Bekor qilish", callback_data: `cancel_booking_${sessionId}` });
+    buttons.push(row);
+
+    await callTelegram("sendMessage", {
+      chat_id: Number(barber.telegramId),
+      text,
+      parse_mode: "HTML",
+      reply_markup: { inline_keyboard: buttons },
+    });
+
+    await db
+      .update(bookingSessionsTable)
+      .set({ notificationSent: true })
+      .where(eq(bookingSessionsTable.sessionId, sessionId));
+
+    log("barber_notified", {
+      barberId,
+      sessionId,
+      telegramUserId: barber.telegramId,
+    });
+  } catch (err) {
+    log("barber_notification_error", { barberId, sessionId, error: String(err) });
   }
+}
 
-  const [session] = await db
-    .select()
-    .from(bookingSessionsTable)
-    .where(eq(bookingSessionsTable.sessionId, sessionId))
-    .limit(1);
+// ──────────────────────────────────────────────────────────────
+// Direct CRM booking notification (called from bookings route)
+// ──────────────────────────────────────────────────────────────
+export async function sendDirectBookingNotification(params: {
+  barberId: string;
+  clientName: string;
+  clientPhone: string | null;
+  serviceName: string | null;
+  date: string;
+  time: string;
+  price: number;
+}): Promise<void> {
+  try {
+    const [barber] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, params.barberId))
+      .limit(1);
 
-  if (session?.notificationSent) {
-    log("notification_already_sent", { barberId, sessionId });
-    return;
+    if (!barber?.telegramId) return;
+
+    const phoneLine = params.clientPhone ? `\uD83D\uDCDE Tel: ${params.clientPhone}\n` : "";
+    const serviceLine = params.serviceName || "Belgilanmagan";
+
+    // Format date: "2026-07-23" → "23-Iyul"
+    const months = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
+    const parts = params.date.split("-").map(Number);
+    const monthIdx = (parts[1] ?? 1) - 1;
+    const dateLabel = `${parts[2]}-${months[monthIdx]}`;
+
+    const text =
+      `\u2702\uFE0F <b>YANGI BRON TUSHDI!</b>\n\n` +
+      `\uD83D\uDC64 Mijoz: ${params.clientName}\n` +
+      `${phoneLine}` +
+      `\uD83D\uDC88 Xizmat: ${serviceLine}\n` +
+      `\uD83D\uDCC5 Sana: ${dateLabel}\n` +
+      `\u23F0 Vaqt: ${params.time}\n` +
+      `\uD83D\uDCB5 Narxi: ${params.price.toLocaleString()} SO\u02BCM\n\n` +
+      `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
+      `\uD83D\uDCA1 Ushbu bron avtomatik tarzda CRM kalendaringizga qo\u02BBshildi.`;
+
+    await callTelegram("sendMessage", {
+      chat_id: Number(barber.telegramId),
+      text,
+      parse_mode: "HTML",
+    });
+
+    log("direct_booking_notified", { barberId: params.barberId, telegramId: barber.telegramId });
+  } catch (err) {
+    // Non-blocking — never crash the booking flow
+    log("direct_booking_notify_error", { barberId: params.barberId, error: String(err) });
   }
-
-  const serviceNames = data.services.map(s => s.name).join(", ");
-  const phoneLine = clientPhone ? `\uD83D\uDCDE Telefon: ${clientPhone}\n` : "";
-  const text =
-    `\u26A1\uFE0F <b>Yangi navbat band qilindi!</b>\n\n` +
-    `\uD83D\uDC64 Mijoz: ${clientName}\n` +
-    `${phoneLine}` +
-    `\uD83D\uDEE0 Xizmat: ${serviceNames}\n` +
-    `\uD83D\uDCB8 Narx: ${data.totalPrice.toLocaleString()} so\u02BCm\n` +
-    `\uD83D\uDCC5 Sana: ${formatDateLabel(data.date)}\n` +
-    `\u23F0 Vaqt: ${data.time}\n\n` +
-    `Ushbu vaqt kalendaringizda avtomatik ravishda band qilindi`;
-
-  const buttons: { text: string; callback_data?: string; url?: string }[][] = [];
-  const row: { text: string; callback_data?: string; url?: string }[] = [];
-  if (clientPhone) {
-    const telUrl = `tel:${clientPhone.replace(/[\s\-()]/g, "")}`;
-    row.push({ text: "\uD83D\uDCDE Qo\u02BBng\u02BBiroq", url: telUrl });
-  }
-  row.push({ text: "\u274C Bekor qilish", callback_data: `cancel_booking_${sessionId}` });
-  buttons.push(row);
-
-  await callTelegram("sendMessage", {
-    chat_id: Number(barber.telegramId),
-    text,
-    parse_mode: "HTML",
-    reply_markup: { inline_keyboard: buttons },
-  });
-
-  await db
-    .update(bookingSessionsTable)
-    .set({ notificationSent: true })
-    .where(eq(bookingSessionsTable.sessionId, sessionId));
-
-  log("barber_notified", {
-    barberId,
-    sessionId,
-    telegramUserId: barber.telegramId,
-  });
 }
 
 // ──────────────────────────────────────────────────────────────

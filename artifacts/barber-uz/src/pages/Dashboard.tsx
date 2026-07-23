@@ -91,38 +91,6 @@ const MOCK_TEAM_BOOKINGS = [
   { id: "t3", time: "17:00", client: "Olim",    service: "Soqol",         barber: "Kamol barber"  },
 ];
 
-// ── Demo data (shown when real data is empty) ─────────────────────────────────
-function buildDemoBookings(today: string): Booking[] {
-  const slots: Array<{
-    id: string; start: string; end: string; name: string;
-    service: string; price: number; status: Booking["status"];
-  }> = [
-    { id: "d1", start: "09:00", end: "09:45", name: "Jasur Toshmatov",  service: "Soch oldirish",    price: 50000,  status: "completed"  },
-    { id: "d2", start: "10:00", end: "10:30", name: "Sherzod Nazarov",  service: "Soqol olish",      price: 30000,  status: "completed"  },
-    { id: "d3", start: "11:00", end: "11:45", name: "Bobur Raximov",    service: "Soch + Soqol",     price: 70000,  status: "confirmed"  },
-    { id: "d4", start: "12:30", end: "13:15", name: "Ulugbek Yusupov",  service: "Fade (gradyen)",   price: 60000,  status: "confirmed"  },
-    { id: "d5", start: "14:00", end: "14:45", name: "Azizbek Karimov",  service: "Soch oldirish",    price: 50000,  status: "confirmed"  },
-    { id: "d6", start: "15:30", end: "16:00", name: "Mirzo Hasanov",    service: "Qoshlarni tartib", price: 25000,  status: "pending"    },
-    { id: "d7", start: "17:00", end: "17:45", name: "Sardor Mirzayev",  service: "Soch + Soqol",     price: 70000,  status: "pending"    },
-  ];
-  return slots.map((s) => ({
-    id: s.id,
-    barberId: "demo",
-    clientId: null,
-    clientName: s.name,
-    serviceId: null,
-    serviceName: s.service,
-    date: today,
-    startTime: s.start,
-    endTime: s.end,
-    price: s.price,
-    status: s.status,
-    notes: null,
-    createdAt: new Date().toISOString(),
-  }));
-}
-
-const DEMO_STATS = { todayBookings: 7, todayRevenue: 355000, totalClients: 42 };
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 interface StatCardProps {
@@ -187,11 +155,8 @@ function IndividualDashboard() {
   const bookingItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const realBookings = bookingsData?.bookings ?? [];
-  const isEmpty = !bookingsLoading && !statsLoading && realBookings.length === 0 && (stats?.todayBookings ?? 0) === 0;
-  const demoBookings = isEmpty ? buildDemoBookings(today) : [];
-
-  const bookings = isEmpty ? demoBookings : realBookings;
-  const activeStats = isEmpty ? DEMO_STATS : stats;
+  const bookings = realBookings;
+  const activeStats = stats;
 
   const upcomingBookings = bookings
     .filter((b) => b.status !== "cancelled" && b.status !== "completed")
