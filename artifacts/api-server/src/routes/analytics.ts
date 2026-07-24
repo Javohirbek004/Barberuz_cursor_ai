@@ -142,18 +142,18 @@ router.get("/solo", authenticate, async (req, res) => {
       ),
     ]);
 
-    const active = bookings.filter(b => b.status !== "cancelled");
+    const completed = bookings.filter(b => b.status === "completed");
     const cancelled = bookings.filter(b => b.status === "cancelled");
-    const prevActive = prevBookings.filter(b => b.status !== "cancelled");
+    const prevCompleted = prevBookings.filter(b => b.status === "completed");
 
-    const revenue = active.reduce((s, b) => s + Number(b.price), 0);
-    const prevRevenue = prevActive.reduce((s, b) => s + Number(b.price), 0);
+    const revenue = completed.reduce((s, b) => s + Number(b.price), 0);
+    const prevRevenue = prevCompleted.reduce((s, b) => s + Number(b.price), 0);
     const revChange = calcRevChange(revenue, prevRevenue);
 
-    const uniqueClients = new Set(active.filter(b => b.clientId).map(b => b.clientId)).size;
+    const uniqueClients = new Set(completed.filter(b => b.clientId).map(b => b.clientId)).size;
 
     const serviceCount: Record<string, { count: number; revenue: number }> = {};
-    for (const b of active) {
+    for (const b of completed) {
       const name = b.serviceName || "Boshqa";
       if (!serviceCount[name]) serviceCount[name] = { count: 0, revenue: 0 };
       serviceCount[name].count++;
@@ -164,13 +164,13 @@ router.get("/solo", authenticate, async (req, res) => {
       .sort((a, b) => b.revenue - a.revenue);
     const topService = topServices[0] ?? null;
 
-    const busiestTime = peakHour(active);
+    const busiestTime = peakHour(completed);
 
     const tips = generateSoloTips(
       revenue,
       revChange,
       cancelled.length,
-      active.length,
+      completed.length,
       topService?.name ?? null,
       period,
     );
@@ -179,8 +179,8 @@ router.get("/solo", authenticate, async (req, res) => {
       period,
       revenue,
       revChange,
-      clients: uniqueClients || active.length,
-      activeBookings: active.length,
+      clients: uniqueClients || completed.length,
+      activeBookings: completed.length,
       totalBookings: bookings.length,
       cancelled: cancelled.length,
       noshow: 0,
@@ -227,21 +227,21 @@ router.get("/team", authenticate, async (req, res) => {
       ),
     ]);
 
-    const active = bookings.filter(b => b.status !== "cancelled");
+    const completed = bookings.filter(b => b.status === "completed");
     const cancelled = bookings.filter(b => b.status === "cancelled");
-    const prevActive = prevBookings.filter(b => b.status !== "cancelled");
+    const prevCompleted = prevBookings.filter(b => b.status === "completed");
 
-    const revenue = active.reduce((s, b) => s + Number(b.price), 0);
-    const prevRevenue = prevActive.reduce((s, b) => s + Number(b.price), 0);
+    const revenue = completed.reduce((s, b) => s + Number(b.price), 0);
+    const prevRevenue = prevCompleted.reduce((s, b) => s + Number(b.price), 0);
     const revChange = calcRevChange(revenue, prevRevenue);
-    const uniqueClients = new Set(active.filter(b => b.clientId).map(b => b.clientId)).size;
+    const uniqueClients = new Set(completed.filter(b => b.clientId).map(b => b.clientId)).size;
 
     const ownStats = {
       id: user.id,
       name: user.name,
       medal: "🥇",
       revenue,
-      clients: uniqueClients || active.length,
+      clients: uniqueClients || completed.length,
       cancelled: cancelled.length,
     };
 
@@ -251,8 +251,8 @@ router.get("/team", authenticate, async (req, res) => {
       period,
       revenue,
       revChange,
-      clients: uniqueClients || active.length,
-      activeBookings: active.length,
+      clients: uniqueClients || completed.length,
+      activeBookings: completed.length,
       totalBookings: bookings.length,
       cancelled: cancelled.length,
       noshow: 0,

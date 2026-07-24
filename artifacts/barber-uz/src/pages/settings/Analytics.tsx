@@ -186,14 +186,10 @@ function YakkaAnalytics({ period }: { period: Period }) {
     <div className="text-center py-10 text-sm text-muted-foreground">Ma'lumot yuklanmadi</div>
   );
 
-  const revSign = data.revChange > 0 ? "+" : "";
-
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <KpiCard index={0} emoji="💰" label="Daromad" value={fmtFull(data.revenue)}
-          sub={`${revSign}${data.revChange}%`}
-          subColor={data.revChange >= 0 ? "text-emerald-400" : "text-red-400"} />
+        <KpiCard index={0} emoji="💰" label="Daromad" value={fmtFull(data.revenue)} />
         <KpiCard index={1} emoji="👥" label="Mijozlar" value={`${data.clients} ta`} />
         <KpiCard index={2} emoji="❌" label="Bekor qilingan" value={`${data.cancelled} ta`} subColor="text-red-400" />
         <KpiCard index={3} emoji="📅" label="Bronlar" value={`${data.totalBookings} ta`} />
@@ -225,17 +221,6 @@ function YakkaAnalytics({ period }: { period: Period }) {
           </div>
         </Section>
       )}
-
-      <Section title="💡 Tavsiyalar" index={2}>
-        <ul className="space-y-2">
-          {data.tips.map((tip, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-              <span className="text-primary mt-0.5">•</span>
-              {tip}
-            </li>
-          ))}
-        </ul>
-      </Section>
     </div>
   );
 }
@@ -259,14 +244,10 @@ function JamoaAnalytics({ period }: { period: Period }) {
     <div className="text-center py-10 text-sm text-muted-foreground">Ma'lumot yuklanmadi</div>
   );
 
-  const revSign = data.revChange > 0 ? "+" : "";
-
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <KpiCard index={0} emoji="💰" label="Umumiy daromad" value={fmtFull(data.revenue)}
-          sub={`${revSign}${data.revChange}%`}
-          subColor={data.revChange >= 0 ? "text-emerald-400" : "text-red-400"} />
+        <KpiCard index={0} emoji="💰" label="Umumiy daromad" value={fmtFull(data.revenue)} />
         <KpiCard index={1} emoji="👥" label="Jami mijozlar" value={`${data.clients} ta`} />
         <KpiCard index={2} emoji="❌" label="Bekor qilingan" value={`${data.cancelled} ta`} />
         <KpiCard index={3} emoji="📅" label="Jami bronlar" value={`${data.totalBookings} ta`} />
@@ -316,16 +297,6 @@ function JamoaAnalytics({ period }: { period: Period }) {
         </Section>
       )}
 
-      <Section title="💡 Tavsiyalar" index={3}>
-        <ul className="space-y-2">
-          {data.tips.map((tip, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-              <span className="text-primary mt-0.5">•</span>
-              {tip}
-            </li>
-          ))}
-        </ul>
-      </Section>
     </div>
   );
 }

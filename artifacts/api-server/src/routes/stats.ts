@@ -106,7 +106,7 @@ router.get("/analytics", authenticate, async (req, res) => {
         lte(bookingsTable.date, end),
       ));
 
-    const completedBookings = bookings.filter(b => b.status !== "cancelled");
+    const completedBookings = bookings.filter(b => b.status === "completed");
     const totalRevenue = completedBookings.reduce((s, b) => s + Number(b.price), 0);
     const totalBookings = completedBookings.length;
     const averageCheck = totalBookings > 0 ? totalRevenue / totalBookings : 0;
