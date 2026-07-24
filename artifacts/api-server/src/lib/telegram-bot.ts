@@ -178,9 +178,12 @@ type LogAction =
   | "barber_invite_start" | "barber_invite_verified"
   | "booking_start" | "booking_confirmed"
   | "barber_notified" | "barber_no_telegram"
+  | "barber_notification_error"
   | "notification_already_sent"
   | "cancel_confirm_prompt" | "booking_cancelled" | "booking_cancelled_by_customer"
   | "cancel_client_notified"
+  | "direct_booking_notified" | "direct_booking_notify_error"
+  | "booking_contact_recovered"
   | "reminder_sent";
 
 function log(
@@ -463,10 +466,34 @@ export async function handleTelegramUpdate(update: unknown) {
     const tgUserId = String((contact.user_id as number) || chatId);
     const tgUsername = (from?.username as string) || null;
 
-    // Check if this is a booking phone verification flow (MUST come first)
+    // Check if this is a booking phone verification flow (MUST come first).
+    // Primary: in-memory map. Fallback: DB lookup by clientTelegramId (handles
+    // server restarts that clear the in-memory map).
     if (pendingBookingVerifications.has(chatId)) {
       await handleBookingContact(chatId, phone, tgUserId, tgUsername, from);
       return;
+    }
+    try {
+      const now = new Date();
+      const [recovered] = await db
+        .select()
+        .from(bookingSessionsTable)
+        .where(
+          and(
+            eq(bookingSessionsTable.clientTelegramId, String(chatId)),
+            eq(bookingSessionsTable.status, "pending"),
+          ),
+        )
+        .orderBy(desc(bookingSessionsTable.expiresAt))
+        .limit(1);
+      if (recovered && recovered.expiresAt > now) {
+        log("booking_contact_recovered", { chatId, sessionId: recovered.sessionId });
+        pendingBookingVerifications.set(chatId, recovered.sessionId);
+        await handleBookingContact(chatId, phone, tgUserId, tgUsername, from);
+        return;
+      }
+    } catch {
+      // Recovery lookup failed — fall through to other handlers
     }
 
     // Check if this is a login flow (auth pending)
@@ -1271,7 +1298,10 @@ export async function sendBarberBookingNotification(
     const buttons: { text: string; callback_data?: string; url?: string }[][] = [];
     const row: { text: string; callback_data?: string; url?: string }[] = [];
     if (clientPhone) {
-      const telUrl = `tel:${clientPhone.replace(/[\s\-()]/g, "")}`;
+      // Telegram requires tel: URLs with a leading + for international numbers.
+      // contact.phone_number from Telegram arrives without the + (e.g. "998901234567").
+      const digits = clientPhone.replace(/[\s\-()+]/g, "");
+      const telUrl = `tel:+${digits}`;
       row.push({ text: "\uD83D\uDCDE Qo\u02BBng\u02BBiroq", url: telUrl });
     }
     row.push({ text: "\u274C Bekor qilish", callback_data: `cancel_booking_${sessionId}` });
@@ -1346,7 +1376,7 @@ export async function sendDirectBookingNotification(params: {
       parse_mode: "HTML",
     });
 
-    log("direct_booking_notified", { barberId: params.barberId, telegramId: barber.telegramId });
+    log("direct_booking_notified", { barberId: params.barberId, telegramUserId: String(barber.telegramId) });
   } catch (err) {
     // Non-blocking — never crash the booking flow
     log("direct_booking_notify_error", { barberId: params.barberId, error: String(err) });
@@ -1643,6 +1673,19 @@ async function handleBookingStart(
 
   pendingBookingVerifications.delete(chatId);
   pendingBookingVerifications.set(chatId, sessionId);
+
+  // Persist the chatId→sessionId mapping in the DB so we can recover after a
+  // server restart. clientTelegramId will be overwritten with the verified
+  // Telegram ID when confirmBookingSession runs — here it just stores the
+  // chatId as a temporary placeholder.
+  try {
+    await db
+      .update(bookingSessionsTable)
+      .set({ clientTelegramId: String(chatId) })
+      .where(eq(bookingSessionsTable.sessionId, sessionId));
+  } catch (err) {
+    console.warn("[Bot] handleBookingStart: could not persist chatId:", err);
+  }
 
   await callTelegram("sendMessage", {
     chat_id: chatId,
