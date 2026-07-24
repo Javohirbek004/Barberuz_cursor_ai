@@ -78,12 +78,19 @@ function toMins(t: string): number {
 function fmtTime(m: number): string {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
-function generatePublicSlots(duration: number, barber: BarberData): string[] {
+function generatePublicSlots(
+  duration: number,
+  barber: BarberData,
+  busySlots: { startTime: string; endTime: string }[] = [],
+): string[] {
   const start = toMins(barber.workingHoursStart || "09:00");
   const end = toMins(barber.workingHoursEnd || "20:00");
   const busy: { s: number; e: number }[] = [];
   if (barber.lunchBreakEnabled && barber.lunchBreakStart && barber.lunchBreakEnd) {
     busy.push({ s: toMins(barber.lunchBreakStart), e: toMins(barber.lunchBreakEnd) });
+  }
+  for (const b of busySlots) {
+    busy.push({ s: toMins(b.startTime), e: toMins(b.endTime) });
   }
   const slots: string[] = [];
   for (let t = start; t + duration <= end; t += 30) {
@@ -93,6 +100,37 @@ function generatePublicSlots(duration: number, barber: BarberData): string[] {
     }
   }
   return slots;
+}
+
+// ── Date-picker helpers ───────────────────────────────────────────────────────
+const UZ_SHORT_DAYS_PUB = ["Ya", "Du", "Se", "Ch", "Pa", "Ju", "Sh"];
+const UZ_FULL_DAYS_PUB  = ["Yakshanba", "Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"];
+const UZ_MONTHS_PUB     = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
+
+function sevenDaysFromToday(): string[] {
+  const days: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    days.push(d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" }));
+  }
+  return days;
+}
+
+/** Short label for the date-picker button: "Bugun" / "Ertaga" / "Du 28" */
+function dateBtnLabel(iso: string, todayISO: string, tomorrowISO: string): string {
+  if (iso === todayISO) return "Bugun";
+  if (iso === tomorrowISO) return "Ertaga";
+  const d = new Date(`${iso}T12:00:00+05:00`);
+  return `${UZ_SHORT_DAYS_PUB[d.getDay()]} ${d.getDate()}`;
+}
+
+/** Full human-readable label used in confirm / done steps */
+function dateFullLabel(iso: string, todayISO: string, tomorrowISO: string): string {
+  if (iso === todayISO) return "Bugun";
+  if (iso === tomorrowISO) return "Ertaga";
+  const d = new Date(`${iso}T12:00:00+05:00`);
+  return `${UZ_FULL_DAYS_PUB[d.getDay()]}, ${d.getDate()}-${UZ_MONTHS_PUB[d.getMonth()]}`;
 }
 
 type PubBookingStep = "time" | "name" | "confirm" | "verifying" | "done";
@@ -106,13 +144,19 @@ function PublicBookingModal({
   totalPrice: number;
   onClose: () => void;
 }) {
+  const sevenDays   = sevenDaysFromToday();
+  const todayISO    = sevenDays[0]!;
+  const tomorrowISO = sevenDays[1]!;
+
   const [step, setStep] = useState<PubBookingStep>("time");
-  const [dateOpt, setDateOpt] = useState<"today" | "tomorrow">("today");
+  const [dateOpt, setDateOpt] = useState<string>(todayISO);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [clientName, setClientName] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [deepLink, setDeepLink] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [busySlots, setBusySlots] = useState<{ startTime: string; endTime: string }[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(true);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -120,9 +164,32 @@ function PublicBookingModal({
   }, []);
   useEffect(() => () => stopPolling(), [stopPolling]);
 
+  // Fetch already-booked slots for the selected date so we can hide them.
+  // Keep slotsLoading=true until fetch resolves — the slot grid is hidden during
+  // this window so the user cannot select a slot that might turn out to be taken.
+  useEffect(() => {
+    setSlotsLoading(true);
+    fetch(`/api/public/barber/${barber.username}/slots?date=${dateOpt}`)
+      .then(r => r.ok ? r.json() : { slots: [] })
+      .then((data: { slots: { startTime: string; endTime: string }[] }) => {
+        setBusySlots(data.slots ?? []);
+        setSlotsLoading(false);
+      })
+      .catch(() => { setBusySlots([]); setSlotsLoading(false); });
+  }, [dateOpt, barber.username]);
+
   const displayName = barber.brandName || barber.name;
-  const dateLabel = dateOpt === "today" ? "Bugun" : "Ertaga";
-  const slots = generatePublicSlots(totalDuration, barber);
+  const dateLabel   = dateFullLabel(dateOpt, todayISO, tomorrowISO);
+  const slots       = generatePublicSlots(totalDuration, barber, busySlots);
+
+  // If the previously selected time is no longer in the available slots (e.g.
+  // because the date changed or new busy data arrived), clear the selection so
+  // the user cannot silently advance with a taken slot.
+  useEffect(() => {
+    if (selectedTime && !slots.includes(selectedTime)) {
+      setSelectedTime(null);
+    }
+  }, [slots, selectedTime]);
 
   async function handleConfirm() {
     if (submitting || !selectedTime || !clientName.trim()) return;
@@ -142,6 +209,22 @@ function PublicBookingModal({
           clientName: clientName.trim(),
         }),
       });
+      if (res.status === 409) {
+        // The selected slot was taken by another booking (race condition).
+        // Refresh busy slots so the now-taken time disappears, then step back.
+        setSubmitting(false);
+        setSelectedTime(null);
+        setStep("time");
+        setSlotsLoading(true);
+        fetch(`/api/public/barber/${barber.username}/slots?date=${dateOpt}`)
+          .then(r => r.ok ? r.json() : { slots: [] })
+          .then((d: { slots: { startTime: string; endTime: string }[] }) => {
+            setBusySlots(d.slots ?? []);
+            setSlotsLoading(false);
+          })
+          .catch(() => { setBusySlots([]); setSlotsLoading(false); });
+        return;
+      }
       if (!res.ok) throw new Error("Session creation failed");
       const data = await res.json();
       setSessionId(data.sessionId);
@@ -223,15 +306,19 @@ function PublicBookingModal({
           <AnimatePresence mode="wait">
             {step === "time" && (
               <motion.div key="time" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <div className="flex gap-2 mb-5">
-                  {(["today", "tomorrow"] as const).map(d => (
-                    <button key={d} onClick={() => { setDateOpt(d); setSelectedTime(null); }}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-all ${dateOpt === d ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground"}`}>
-                      {d === "today" ? "📅 Bugun" : "📅 Ertaga"}
+                <div className="flex gap-1.5 mb-5 overflow-x-auto scrollbar-hide pb-1">
+                  {sevenDays.map(day => (
+                    <button key={day} onClick={() => { setDateOpt(day); setSelectedTime(null); }}
+                      className={`shrink-0 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all ${dateOpt === day ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground hover:bg-white/8"}`}>
+                      {dateBtnLabel(day, todayISO, tomorrowISO)}
                     </button>
                   ))}
                 </div>
-                {slots.length === 0 ? (
+                {slotsLoading ? (
+                  <div className="flex justify-center py-10">
+                    <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : slots.length === 0 ? (
                   <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">Bu kun bo'sh vaqt yo'q 😔</div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
@@ -243,7 +330,7 @@ function PublicBookingModal({
                     ))}
                   </div>
                 )}
-                <button onClick={() => selectedTime && setStep("name")} disabled={!selectedTime}
+                <button onClick={() => selectedTime && setStep("name")} disabled={!selectedTime || slotsLoading}
                   className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base mt-6 disabled:opacity-30 shadow-lg shadow-primary/20">
                   Davom etish →
                 </button>

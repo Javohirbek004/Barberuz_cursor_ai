@@ -7,8 +7,8 @@
  */
 
 import { Router } from "express";
-import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable } from "@workspace/db";
-import { eq, and, lt, isNull } from "drizzle-orm";
+import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable } from "@workspace/db";
+import { eq, and, lt, isNull, ne } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendBarberBookingNotification } from "../lib/telegram-bot";
 
@@ -16,6 +16,23 @@ const router = Router();
 
 function generateSessionId(): string {
   return randomBytes(5).toString("hex");
+}
+
+function toISODate(date: string): string {
+  if (date === "today" || date === "bugun") {
+    return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+  }
+  if (date === "tomorrow" || date === "ertaga") {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+  }
+  return date;
+}
+
+function timeToMins(t: string): number {
+  const [h = 0, m = 0] = t.split(":").map(Number);
+  return h * 60 + m;
 }
 
 function getBotUsername(): string {
@@ -91,6 +108,34 @@ router.post("/sessions", async (req, res) => {
 
     if (!barberId || !date || !time || !services?.length) {
       res.status(400).json({ error: "validation", message: "Missing required fields" });
+      return;
+    }
+
+    // Server-side conflict check — authoritative guard against race conditions.
+    // Reject if any non-cancelled booking overlaps the requested slot.
+    const isoDate = toISODate(date);
+    const reqStart = timeToMins(time);
+    const reqEnd   = reqStart + Math.max(Number(totalDuration) || 0, 1);
+
+    const existingOnDate = await db
+      .select({ startTime: bookingsTable.startTime, endTime: bookingsTable.endTime })
+      .from(bookingsTable)
+      .where(
+        and(
+          eq(bookingsTable.barberId, barberId),
+          eq(bookingsTable.date, isoDate),
+          ne(bookingsTable.status, "cancelled"),
+        ),
+      );
+
+    const hasConflict = existingOnDate.some(b => {
+      const s = timeToMins(b.startTime);
+      const e = timeToMins(b.endTime);
+      return reqStart < e && reqEnd > s;
+    });
+
+    if (hasConflict) {
+      res.status(409).json({ error: "conflict", message: "Tanlangan vaqt allaqachon band" });
       return;
     }
 
@@ -201,6 +246,55 @@ router.get("/sessions/:sessionId", async (req, res) => {
     });
   } catch (err) {
     console.error("[PublicAPI] GET /sessions/:id error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+/**
+ * GET /api/public/barber/:slug/slots?date=YYYY-MM-DD
+ * Returns non-cancelled booked time ranges for a barber on a given date.
+ * Used by the public booking modal to filter out already-taken slots.
+ * Must be registered BEFORE /barber/:slug so Express resolves it correctly.
+ */
+router.get("/barber/:slug/slots", async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { date } = req.query;
+
+    if (!date || typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ error: "validation", message: "date query param required (YYYY-MM-DD)" });
+      return;
+    }
+
+    const [barber] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.username, slug), isNull(usersTable.deletedAt)))
+      .limit(1);
+
+    if (!barber) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+
+    const booked = await db
+      .select({
+        startTime: bookingsTable.startTime,
+        endTime: bookingsTable.endTime,
+        status: bookingsTable.status,
+      })
+      .from(bookingsTable)
+      .where(
+        and(
+          eq(bookingsTable.barberId, barber.id),
+          eq(bookingsTable.date, date),
+          ne(bookingsTable.status, "cancelled"),
+        ),
+      );
+
+    res.json({ slots: booked });
+  } catch (err) {
+    console.error("[PublicAPI] GET /barber/:slug/slots error:", err);
     res.status(500).json({ error: "server_error" });
   }
 });
