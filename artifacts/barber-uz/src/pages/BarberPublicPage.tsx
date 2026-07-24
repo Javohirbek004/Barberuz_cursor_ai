@@ -147,21 +147,30 @@ function PublicBookingModal({
       setSessionId(data.sessionId);
       setDeepLink(data.deepLink);
 
-      if (data.deepLink) {
-        window.location.href = data.deepLink;
-      }
-
+      // Update state FIRST — before any navigation (iOS Safari freezes JS after tg:// redirect)
       setStep("verifying");
       setSubmitting(false);
+
+      // Start polling — handles confirmed, expired, and any unexpected state
       pollingRef.current = setInterval(async () => {
         try {
           const poll = await fetch(`/api/public/sessions/${data.sessionId}`).then(r => r.json());
-          if (poll.status === "confirmed") { stopPolling(); setStep("done"); }
-          else if (poll.status === "expired") { stopPolling(); setStep("confirm"); }
-        } catch {}
+          if (poll.status === "confirmed") {
+            stopPolling(); setStep("done");
+          } else if (poll.status === "expired" || poll.status === "cancelled" || poll.error) {
+            stopPolling(); setStep("confirm");
+          }
+          // "pending" → keep polling
+        } catch {
+          // Network error — keep polling silently
+        }
       }, 3000);
+
+      // Open Telegram AFTER state is set — use window.open to avoid page navigation
+      if (data.deepLink) {
+        setTimeout(() => { window.open(data.deepLink!, "_blank"); }, 100);
+      }
     } catch {
-      tgWindow?.close();
       setSubmitting(false);
     }
   }

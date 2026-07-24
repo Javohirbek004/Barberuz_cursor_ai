@@ -38,7 +38,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
       .where(and(eq(bookingsTable.barberId, user.id), eq(bookingsTable.date, today)));
 
     const todayRevenue = todayBookings
-      .filter(b => b.status !== "cancelled")
+      .filter(b => b.status === "completed")
       .reduce((sum, b) => sum + Number(b.price), 0);
 
     const weekStart = (() => {
@@ -55,7 +55,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
       ));
 
     const weekRevenue = weekBookings
-      .filter(b => b.status !== "cancelled")
+      .filter(b => b.status === "completed")
       .reduce((sum, b) => sum + Number(b.price), 0);
 
     const [{ value: totalClients }] = await db.select({ value: count() })
