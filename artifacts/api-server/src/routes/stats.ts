@@ -74,10 +74,13 @@ router.get("/dashboard", authenticate, async (req, res) => {
         gte(clientsTable.createdAt, new Date(monthStart))
       ));
 
+    const todayCompleted = todayBookings.filter(b => b.status === "completed").length;
+
     res.json({
       scans: 0,
       clicks: 0,
       todayBookings: todayBookings.filter(b => b.status !== "cancelled").length,
+      todayCompleted,
       todayRevenue,
       weekBookings: weekBookings.filter(b => b.status !== "cancelled").length,
       weekRevenue,

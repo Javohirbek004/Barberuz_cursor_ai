@@ -96,6 +96,7 @@ const MOCK_TEAM_BOOKINGS = [
 interface StatCardProps {
   label: string;
   value: string | number;
+  secondValue?: string;
   subtext?: string;
   icon: React.ElementType;
   iconColor: string;
@@ -105,7 +106,7 @@ interface StatCardProps {
 }
 
 function StatCard({
-  label, value, subtext, icon: Icon, iconColor, loading, delay = 0, onClick,
+  label, value, secondValue, subtext, icon: Icon, iconColor, loading, delay = 0, onClick,
 }: StatCardProps) {
   return (
     <motion.div
@@ -122,9 +123,18 @@ function StatCard({
           </div>
           <h3 className="text-xs font-medium text-muted-foreground leading-tight">{label}</h3>
         </div>
-        <div className={`font-display font-bold text-foreground leading-tight ${String(value).length > 10 ? "text-lg" : "text-2xl"}`}>
-          {loading ? <span className="text-muted-foreground text-base">...</span> : value}
-        </div>
+        {loading ? (
+          <span className="text-muted-foreground text-base">...</span>
+        ) : secondValue !== undefined ? (
+          <div className="space-y-0.5">
+            <div className="font-display font-bold text-foreground text-lg leading-tight">{value}</div>
+            <div className="font-display font-semibold text-muted-foreground text-base leading-tight">{secondValue}</div>
+          </div>
+        ) : (
+          <div className={`font-display font-bold text-foreground leading-tight ${String(value).length > 10 ? "text-lg" : "text-2xl"}`}>
+            {value}
+          </div>
+        )}
         {subtext && !loading && (
           <div className="text-xs text-muted-foreground/60 mt-1 truncate">{subtext}</div>
         )}
@@ -196,7 +206,8 @@ function IndividualDashboard() {
         {/* Card 1: Bugungi bronlar */}
         <StatCard
           label="Bugungi bronlar"
-          value={statsLoading ? "..." : `${activeStats?.todayBookings ?? 0} ta`}
+          value={statsLoading ? "..." : `Jami: ${activeStats?.todayBookings ?? 0} ta`}
+          secondValue={statsLoading ? undefined : `Tugadi: ${activeStats?.todayCompleted ?? 0} ta`}
           subtext={statsLoading ? undefined : durationLabel}
           icon={CalendarDays}
           iconColor="text-amber-400"

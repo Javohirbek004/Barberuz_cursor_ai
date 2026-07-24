@@ -260,6 +260,7 @@ export interface DashboardStats {
   scans: number;
   clicks: number;
   todayBookings: number;
+  todayCompleted: number;
   todayRevenue: number;
   weekBookings: number;
   weekRevenue: number;
