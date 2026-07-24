@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useGetDashboardStats,
   useListBookings,
+  useGetProfile,
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
@@ -92,6 +93,28 @@ const MOCK_TEAM_BOOKINGS = [
 ];
 
 
+function fmtTimeMins(m: number): string {
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+function computeFreeWindows(
+  workStart: number,
+  workEnd: number,
+  busyRanges: { startTime: string; endTime: string }[],
+): { start: number; end: number }[] {
+  const busy = busyRanges
+    .map(b => ({ s: toMins(b.startTime), e: toMins(b.endTime) }))
+    .sort((a, b) => a.s - b.s);
+  const windows: { start: number; end: number }[] = [];
+  let cursor = workStart;
+  for (const b of busy) {
+    if (b.s > cursor) windows.push({ start: cursor, end: b.s });
+    cursor = Math.max(cursor, b.e);
+  }
+  if (cursor < workEnd) windows.push({ start: cursor, end: workEnd });
+  return windows;
+}
+
 // ── Stat card ─────────────────────────────────────────────────────────────────
 interface StatCardProps {
   label: string;
@@ -143,12 +166,173 @@ function StatCard({
   );
 }
 
+// ── Interactive Card (clickable with gold pill) ───────────────────────────────
+function InteractiveCard({
+  label, value, pillLabel, icon: Icon, iconColor, loading, delay = 0, onClick,
+}: {
+  label: string; value: string; pillLabel: string;
+  icon: React.ElementType; iconColor: string;
+  loading?: boolean; delay?: number; onClick?: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay }}
+      onClick={!loading ? onClick : undefined}
+      className="cursor-pointer select-none"
+    >
+      <Card className="p-4 bg-card/50 backdrop-blur border-white/5 h-full transition-all active:scale-95 hover:border-amber-400/20">
+        <div className="flex items-center gap-2 mb-3">
+          <div className={`p-2 rounded-lg bg-white/5 ${iconColor}`}>
+            <Icon className="w-4 h-4" />
+          </div>
+          <h3 className="text-xs font-medium text-muted-foreground">{label}</h3>
+        </div>
+        {loading ? (
+          <div className="h-8 w-20 rounded-lg bg-white/5 animate-pulse mb-3" />
+        ) : (
+          <div className="font-display font-bold text-white text-2xl leading-tight mb-3">{value}</div>
+        )}
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
+          style={{ color: "#FACC15", backgroundColor: "rgba(250,204,21,0.12)" }}>
+          {pillLabel} ➔
+        </span>
+      </Card>
+    </motion.div>
+  );
+}
+
+// ── Bottom Sheet ──────────────────────────────────────────────────────────────
+function BottomSheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    if (open) document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm" onClick={onClose} />
+          <motion.div
+            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 32, stiffness: 320 }}
+            className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-white/8 rounded-t-3xl max-h-[85vh] overflow-hidden flex flex-col"
+          >
+            <div className="flex justify-center pt-3 pb-1 shrink-0">
+              <div className="w-10 h-1 rounded-full bg-white/20" />
+            </div>
+            {children}
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ── Today Stats Modal ─────────────────────────────────────────────────────────
+function TodayStatsModal({ open, onClose, total, completed, remaining, durationMins }: {
+  open: boolean; onClose: () => void;
+  total: number; completed: number; remaining: number; durationMins: number;
+}) {
+  const dh = Math.floor(durationMins / 60);
+  const dm = durationMins % 60;
+  const durStr = dh > 0 ? (dm > 0 ? `${dh} soat ${dm} daq` : `${dh} soat`) : `${dm} daq`;
+  return (
+    <BottomSheet open={open} onClose={onClose}>
+      <div className="overflow-y-auto px-5 pb-8 pt-2">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-bold text-foreground">📊 Bugungi bronlar hisoboti</h2>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/8 text-muted-foreground transition-colors text-lg">✖</button>
+        </div>
+        <div className="bg-white/5 border border-white/8 rounded-2xl p-4 mb-3 text-center">
+          <div className="text-xs text-muted-foreground mb-1">Jami bronlar</div>
+          <div className="font-bold text-3xl text-white">{total} ta</div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="bg-emerald-500/8 border border-emerald-500/20 rounded-2xl p-4 text-center">
+            <div className="text-xs text-emerald-400/80 mb-1">✅ Tugallangan</div>
+            <div className="font-bold text-2xl text-emerald-400">{completed} ta</div>
+          </div>
+          <div className="bg-amber-400/8 border border-amber-400/20 rounded-2xl p-4 text-center">
+            <div className="text-xs text-amber-400/80 mb-1">⏳ Kutilayotgan</div>
+            <div className="font-bold text-2xl text-amber-400">{remaining} ta</div>
+          </div>
+        </div>
+        <div className="bg-white/5 border border-white/8 rounded-2xl p-4 mb-5 flex items-center gap-3">
+          <span className="text-2xl shrink-0">⏱</span>
+          <div>
+            <div className="text-xs text-muted-foreground mb-0.5">Umumiy bandlik</div>
+            <div className="font-bold text-foreground">{durationMins > 0 ? durStr : "—"}</div>
+          </div>
+        </div>
+        <button onClick={onClose} className="w-full py-3.5 rounded-2xl bg-primary/15 border border-primary/20 text-primary font-semibold text-sm">
+          Tushunarli
+        </button>
+      </div>
+    </BottomSheet>
+  );
+}
+
+// ── Free Slot Modal ───────────────────────────────────────────────────────────
+function FreeSlotModal({ open, onClose, freeWindows, totalFreeSlots }: {
+  open: boolean; onClose: () => void;
+  freeWindows: { start: number; end: number }[];
+  totalFreeSlots: number;
+}) {
+  return (
+    <BottomSheet open={open} onClose={onClose}>
+      <div className="overflow-y-auto px-5 pb-8 pt-2">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-base font-bold text-foreground">⏱ Bugungi bo'sh vaqtlar</h2>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/8 text-muted-foreground transition-colors text-lg">✖</button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-5">Jami {totalFreeSlots} ta bo'sh slot mavjud</p>
+        {freeWindows.length === 0 ? (
+          <div className="text-center py-10 text-muted-foreground text-sm">Hozircha bo'sh vaqt yo'q 😔</div>
+        ) : (
+          <div>
+            {freeWindows.map((w, i) => {
+              const dMins = w.end - w.start;
+              const dh = Math.floor(dMins / 60);
+              const dm = dMins % 60;
+              const durStr = dh > 0 ? (dm > 0 ? `${dh} soat ${dm} daq` : `${dh} soat`) : `${dm} daq`;
+              return (
+                <div key={i}>
+                  {i > 0 && <div className="h-px bg-white/6 my-1" />}
+                  <div className="flex items-center gap-3 py-3">
+                    <span className="text-lg shrink-0">🟢</span>
+                    <div>
+                      <div className="font-semibold text-foreground text-sm">
+                        {fmtTimeMins(w.start)} — {fmtTimeMins(w.end)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{durStr} bo'sh</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className="mt-5">
+          <button onClick={onClose} className="w-full py-3.5 rounded-2xl bg-primary/15 border border-primary/20 text-primary font-semibold text-sm">
+            Yopish
+          </button>
+        </div>
+      </div>
+    </BottomSheet>
+  );
+}
+
 // ── Individual Dashboard ──────────────────────────────────────────────────────
 function IndividualDashboard() {
   const { t } = useTranslation();
   const [, navigate] = useLocation();
 
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useGetDashboardStats();
+  const { data: profile } = useGetProfile();
   const today = new Date().toISOString().split("T")[0];
   const { data: bookingsData, isLoading: bookingsLoading, refetch } = useListBookings({ date: today });
 
@@ -160,6 +344,8 @@ function IndividualDashboard() {
 
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
+  const [showBronModal, setShowBronModal] = useState(false);
+  const [showSlotModal, setShowSlotModal] = useState(false);
 
   const bookingsListRef = useRef<HTMLDivElement>(null);
   const bookingItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -173,9 +359,19 @@ function IndividualDashboard() {
     .sort((a, b) => a.startTime.localeCompare(b.startTime))
     .slice(0, 2);
 
-  const totalSlots = 18;
-  const busySlots = activeStats?.todayBookings ?? 0;
-  const freeSlots = Math.max(0, totalSlots - busySlots);
+  // Compute free time windows from actual working hours and today's bookings
+  const workStart = toMins(profile?.workingHoursStart ?? "09:00");
+  const workEnd   = toMins(profile?.workingHoursEnd   ?? "20:00");
+  const todayBusy = bookings.filter(b => b.status !== "cancelled");
+  const freeWindows = computeFreeWindows(workStart, workEnd, todayBusy);
+  const freeSlots   = freeWindows.reduce((s, w) => s + Math.floor((w.end - w.start) / 30), 0);
+
+  // Stats for TodayStatsModal
+  const todayTotal    = todayBusy.length;
+  const todayCompleted  = bookings.filter(b => b.status === "completed").length;
+  const todayRemaining  = bookings.filter(b => b.status === "confirmed" || b.status === "pending").length;
+  const todayDurMins    = todayBusy.reduce((s, b) => s + toMins(b.endTime) - toMins(b.startTime), 0);
+
   const durationLabel = calcTotalDuration(upcomingBookings);
 
   const { main: nextMain, sub: nextSub, nextId } = calcNextBookingInfo(upcomingBookings, now);
@@ -204,16 +400,15 @@ function IndividualDashboard() {
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3 mb-8">
         {/* Card 1: Bugungi bronlar */}
-        <StatCard
+        <InteractiveCard
           label="Bugungi bronlar"
-          value={statsLoading ? "..." : `Jami: ${activeStats?.todayBookings ?? 0} ta`}
-          secondValue={statsLoading ? undefined : `Tugadi: ${activeStats?.todayCompleted ?? 0} ta`}
-          subtext={statsLoading ? undefined : durationLabel}
+          value={`${activeStats?.todayBookings ?? 0} ta`}
+          pillLabel="Tafsilotlar"
           icon={CalendarDays}
           iconColor="text-amber-400"
           loading={statsLoading}
           delay={0}
-          onClick={() => navigate("/calendar")}
+          onClick={() => setShowBronModal(true)}
         />
 
         {/* Card 2: Bugungi daromad */}
@@ -227,14 +422,15 @@ function IndividualDashboard() {
         />
 
         {/* Card 3: Bo'sh vaqtlar */}
-        <StatCard
+        <InteractiveCard
           label="Bo'sh vaqtlar"
-          value={statsLoading ? "..." : `${freeSlots} ta`}
+          value={`${freeSlots} ta bo'sh joy`}
+          pillLabel="Vaqtlarni ko'rish"
           icon={Timer}
           iconColor="text-blue-400"
-          loading={statsLoading}
+          loading={statsLoading || bookingsLoading}
           delay={0.1}
-          onClick={() => navigate("/calendar")}
+          onClick={() => setShowSlotModal(true)}
         />
 
         {/* Card 4: Keyingi brongacha */}
@@ -334,6 +530,24 @@ function IndividualDashboard() {
           />
         )}
       </AnimatePresence>
+
+      {/* Today stats bottom sheet */}
+      <TodayStatsModal
+        open={showBronModal}
+        onClose={() => setShowBronModal(false)}
+        total={todayTotal}
+        completed={todayCompleted}
+        remaining={todayRemaining}
+        durationMins={todayDurMins}
+      />
+
+      {/* Free slots bottom sheet */}
+      <FreeSlotModal
+        open={showSlotModal}
+        onClose={() => setShowSlotModal(false)}
+        freeWindows={freeWindows}
+        totalFreeSlots={freeSlots}
+      />
     </>
   );
 }

@@ -9,7 +9,7 @@
  *  - Soft override warning before saving after-hours bookings
  *  - Real API save + React Query cache invalidation (Calendar + Dashboard)
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -76,14 +76,28 @@ function todayStr(): string {
   return new Date().toISOString().split("T")[0];
 }
 
+function tomorrowStr(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split("T")[0];
+}
+
+const UZ_MONTHS_DIALOG = ["Yanv","Fevr","Mart","Apr","May","Iyun","Iyul","Avg","Sen","Okt","Noy","Dek"];
+function fmtDateUzShort(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`);
+  return `${d.getDate()}-${UZ_MONTHS_DIALOG[d.getMonth()]}`;
+}
+
 function generateSlots(
   duration: number,
   busy: { startTime: string; endTime: string }[],
   rangeStart: number,
-  rangeEnd: number
+  rangeEnd: number,
+  nowMins: number | null = null,
 ): string[] {
   const slots: string[] = [];
   for (let t = rangeStart; t + duration <= rangeEnd; t += 30) {
+    if (nowMins !== null && t <= nowMins) continue; // filter past/current slots for today
     const end = t + duration;
     const free = !busy.some((b) => {
       const bs = toMins(b.startTime);
@@ -525,6 +539,45 @@ function TimePicker({
   );
 }
 
+// ── Date Picker (tabs + calendar trigger) ────────────────────────────────────
+function DatePicker({ form, onChange }: {
+  form: FormState;
+  onChange: (patch: Partial<FormState>) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const todayVal    = todayStr();
+  const tomorrowVal = tomorrowStr();
+  const isCustom    = form.date !== todayVal && form.date !== tomorrowVal;
+
+  return (
+    <div>
+      <div className="flex gap-2 mb-2">
+        {[todayVal, tomorrowVal].map((d, i) => (
+          <button key={d} type="button"
+            onClick={() => onChange({ date: d, time: "" })}
+            className={`flex-1 py-3 rounded-2xl text-sm font-bold border transition-all ${
+              form.date === d
+                ? "bg-primary/15 border-primary/30 text-primary"
+                : "bg-background/60 border-white/10 text-muted-foreground hover:bg-white/5"
+            }`}>
+            {i === 0 ? "Bugun" : "Ertaga"}
+          </button>
+        ))}
+      </div>
+      <div className="flex justify-center">
+        <button type="button" onClick={() => ref.current?.showPicker()}
+          className="text-sm flex items-center gap-1.5 py-1 transition-colors"
+          style={{ color: isCustom ? "#FACC15" : "rgba(250,204,21,0.65)" }}>
+          📅 {isCustom ? `${fmtDateUzShort(form.date)} tanlandi` : "Boshqa sana ➔"}
+        </button>
+        <input ref={ref} type="date" aria-hidden="true" className="sr-only"
+          min={todayVal} value={form.date}
+          onChange={e => { if (e.target.value) onChange({ date: e.target.value, time: "" }); }} />
+      </div>
+    </div>
+  );
+}
+
 // ── Main booking form ─────────────────────────────────────────────────────────
 function BookingFormContent({
   form,
@@ -631,15 +684,7 @@ function BookingFormContent({
       {/* 4. Sana */}
       <div>
         <FieldLabel>Sana</FieldLabel>
-        <div className="relative">
-          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-          <input
-            type="date"
-            value={form.date}
-            onChange={(e) => onChange({ date: e.target.value, time: "" })}
-            className="w-full h-12 pl-9 pr-4 rounded-2xl bg-background/60 border border-white/10 text-foreground focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm"
-          />
-        </div>
+        <DatePicker form={form} onChange={onChange} />
       </div>
 
       {/* 5. Vaqt (only shown after service selected) */}
@@ -767,14 +812,20 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
     }
   }, [open]);
 
+  const datePickerRef = useRef<HTMLInputElement>(null);
   const selectedSvc = services.find((s) => s.id === form.serviceId);
   const duration = selectedSvc?.duration ?? 0;
 
+  // Filter past/current time slots when booking for today
+  const nowMins = form.date === todayStr()
+    ? (() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); })()
+    : null;
+
   const standardSlots =
-    duration > 0 ? generateSlots(duration, busy, workStart, workEnd) : [];
+    duration > 0 ? generateSlots(duration, busy, workStart, workEnd, nowMins) : [];
   const afterSlots =
     duration > 0
-      ? generateSlots(duration, busy, workEnd, 23 * 60 + 30)
+      ? generateSlots(duration, busy, workEnd, 23 * 60 + 30, nowMins)
       : [];
 
   const isAfterHoursTime =

@@ -82,6 +82,7 @@ function generatePublicSlots(
   duration: number,
   barber: BarberData,
   busySlots: { startTime: string; endTime: string }[] = [],
+  nowMins: number | null = null,
 ): string[] {
   const start = toMins(barber.workingHoursStart || "09:00");
   const end = toMins(barber.workingHoursEnd || "20:00");
@@ -94,6 +95,7 @@ function generatePublicSlots(
   }
   const slots: string[] = [];
   for (let t = start; t + duration <= end; t += 30) {
+    if (nowMins !== null && t <= nowMins) continue; // filter past/current times for today
     const slotEnd = t + duration;
     if (!busy.some(b => t < b.e && slotEnd > b.s)) {
       slots.push(fmtTime(t));
@@ -178,9 +180,14 @@ function PublicBookingModal({
       .catch(() => { setBusySlots([]); setSlotsLoading(false); });
   }, [dateOpt, barber.username]);
 
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const displayName = barber.brandName || barber.name;
   const dateLabel   = dateFullLabel(dateOpt, todayISO, tomorrowISO);
-  const slots       = generatePublicSlots(totalDuration, barber, busySlots);
+  // Filter out past/current slots when today is selected
+  const nowMins = dateOpt === todayISO
+    ? (() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); })()
+    : null;
+  const slots = generatePublicSlots(totalDuration, barber, busySlots, nowMins);
 
   // If the previously selected time is no longer in the available slots (e.g.
   // because the date changed or new busy data arrived), clear the selection so
@@ -306,13 +313,27 @@ function PublicBookingModal({
           <AnimatePresence mode="wait">
             {step === "time" && (
               <motion.div key="time" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <div className="flex gap-1.5 mb-5 overflow-x-auto scrollbar-hide pb-1">
-                  {sevenDays.map(day => (
+                {/* Quick select: Bugun / Ertaga */}
+                <div className="flex gap-2 mb-3">
+                  {([todayISO, tomorrowISO] as const).map((day, i) => (
                     <button key={day} onClick={() => { setDateOpt(day); setSelectedTime(null); }}
-                      className={`shrink-0 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all ${dateOpt === day ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground hover:bg-white/8"}`}>
-                      {dateBtnLabel(day, todayISO, tomorrowISO)}
+                      className={`flex-1 py-3 rounded-2xl text-sm font-bold border transition-all ${dateOpt === day ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground hover:bg-white/8"}`}>
+                      {i === 0 ? "Bugun" : "Ertaga"}
                     </button>
                   ))}
+                </div>
+                {/* Calendar picker trigger */}
+                <div className="flex justify-center mb-5">
+                  <button type="button" onClick={() => dateInputRef.current?.showPicker()}
+                    className="text-sm font-medium flex items-center gap-1.5 py-1 transition-colors"
+                    style={{ color: dateOpt !== todayISO && dateOpt !== tomorrowISO ? "#FACC15" : "rgba(250,204,21,0.65)" }}>
+                    📅 {dateOpt !== todayISO && dateOpt !== tomorrowISO
+                      ? `${dateFullLabel(dateOpt, todayISO, tomorrowISO)} tanlandi`
+                      : "Boshqa sana ➔"}
+                  </button>
+                  <input ref={dateInputRef} type="date" aria-hidden="true"
+                    className="sr-only" min={todayISO} value={dateOpt}
+                    onChange={e => { if (e.target.value) { setDateOpt(e.target.value); setSelectedTime(null); } }} />
                 </div>
                 {slotsLoading ? (
                   <div className="flex justify-center py-10">
