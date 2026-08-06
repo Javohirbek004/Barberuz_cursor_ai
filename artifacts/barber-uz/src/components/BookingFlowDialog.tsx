@@ -247,9 +247,18 @@ function FieldLabel({
   return (
     <label className="block text-sm font-medium text-muted-foreground mb-1.5">
       {children}
-      {required && <span className="text-red-400 ml-0.5">*</span>}
+      {required && <span className="text-xs font-normal text-muted-foreground/55 ml-1">(majburiy)</span>}
     </label>
   );
+}
+
+// ── Amount formatter ──────────────────────────────────────────────────────────
+function fmtAmountDisplay(raw: string): string {
+  if (!raw) return "";
+  const n = parseInt(raw, 10);
+  if (isNaN(n)) return "";
+  // toLocaleString with "ru-RU" gives space-separated thousands: 50 000
+  return n.toLocaleString("ru-RU");
 }
 
 // ── Service picker ────────────────────────────────────────────────────────────
@@ -586,17 +595,19 @@ function getToken() {
   return localStorage.getItem("barber_token") ?? "";
 }
 
-function ExpenseForm({ onClose }: { onClose: () => void }) {
-  const [title, setTitle]         = useState("");
-  const [amount, setAmount]       = useState("");
-  const [category, setCategory]   = useState("📦 Boshqa");
+// onClose kept in signature for future use; X button lives in the shared tab row
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function ExpenseForm({ onClose: _onClose }: { onClose: () => void }) {
+  const [title, setTitle]           = useState("");
+  const [amountRaw, setAmountRaw]   = useState(""); // raw digits only
+  const [category, setCategory]     = useState("✂️ Ish qurollari"); // default to first
   const [customCats, setCustomCats] = useState<string[]>([]);
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState("");
-  const [dateMode, setDateMode]   = useState<"today" | "yesterday" | "custom">("today");
+  const [useCustomDate, setUseCustomDate] = useState(false);
   const [customDate, setCustomDate] = useState("");
-  const [saving, setSaving]       = useState(false);
-  const [saved, setSaved]         = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [saved, setSaved]           = useState(false);
   const calRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -612,13 +623,17 @@ function ExpenseForm({ onClose }: { onClose: () => void }) {
 
   const allCats = [...DEFAULT_EXPENSE_CATS, ...customCats];
 
+  const amountNum = amountRaw ? parseInt(amountRaw, 10) : 0;
+  const amountDisplay = fmtAmountDisplay(amountRaw);
+
+  function handleAmountChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const digits = e.target.value.replace(/\D/g, "");
+    setAmountRaw(digits);
+  }
+
   function getExpenseDate() {
-    if (dateMode === "today") return todayStr();
-    if (dateMode === "yesterday") {
-      const d = new Date(); d.setDate(d.getDate() - 1);
-      return d.toISOString().split("T")[0];
-    }
-    return customDate || todayStr();
+    if (useCustomDate && customDate) return customDate;
+    return todayStr();
   }
 
   async function handleAddCategory() {
@@ -636,7 +651,7 @@ function ExpenseForm({ onClose }: { onClose: () => void }) {
     } catch {}
   }
 
-  const isValid = title.trim().length > 0 && Number(amount) > 0;
+  const isValid = title.trim().length > 0 && amountNum > 0;
 
   async function handleSave() {
     if (!isValid || saving || saved) return;
@@ -645,14 +660,14 @@ function ExpenseForm({ onClose }: { onClose: () => void }) {
       const res = await fetch("/api/expenses", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ title: title.trim(), amount: Number(amount), category, date: getExpenseDate() }),
+        body: JSON.stringify({ title: title.trim(), amount: amountNum, category, date: getExpenseDate() }),
       });
       if (!res.ok) throw new Error("save_error");
       setSaved(true);
-      toast({ title: "Xarajat saqlandi ✓", description: `${title.trim()} — ${Number(amount).toLocaleString()} so'm` });
+      toast({ title: "Xarajat saqlandi ✓", description: `${title.trim()} — ${amountNum.toLocaleString()} so'm` });
       setTimeout(() => {
-        setTitle(""); setAmount(""); setCategory("📦 Boshqa");
-        setDateMode("today"); setCustomDate(""); setSaved(false); setSaving(false);
+        setTitle(""); setAmountRaw(""); setCategory("✂️ Ish qurollari");
+        setUseCustomDate(false); setCustomDate(""); setSaved(false); setSaving(false);
       }, 1200);
     } catch {
       setSaving(false);
@@ -661,16 +676,7 @@ function ExpenseForm({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="space-y-4 pt-3">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <button type="button" onClick={onClose}
-          className="p-2 rounded-xl hover:bg-white/5 text-muted-foreground transition-colors -ml-1">
-          <X className="w-5 h-5" />
-        </button>
-        <h2 className="text-xl font-display font-bold text-foreground">💸 Xarajat qo'shish</h2>
-      </div>
-
+    <div className="space-y-4 pt-2">
       {/* Saved banner */}
       <AnimatePresence>
         {saved && (
@@ -689,22 +695,28 @@ function ExpenseForm({ onClose }: { onClose: () => void }) {
           className="w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm" />
       </div>
 
-      {/* Amount */}
+      {/* Amount — formatted display with thousands separator */}
       <div>
         <FieldLabel required>Miqdor (so'm)</FieldLabel>
-        <input type="number" inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value)}
+        <input
+          inputMode="numeric"
+          value={amountDisplay}
+          onChange={handleAmountChange}
           placeholder="50 000"
-          className="w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm" />
+          className="w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm tabular-nums"
+        />
       </div>
 
-      {/* Category chips */}
+      {/* Category chips — 2-row flex wrap, max 2 columns feel */}
       <div>
         <FieldLabel>Kategoriya</FieldLabel>
         <div className="flex flex-wrap gap-2">
           {allCats.map(c => (
             <button key={c} type="button" onClick={() => setCategory(c)}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                category === c ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground hover:bg-white/8 hover:text-foreground"
+                category === c
+                  ? "bg-primary/15 border-primary/30 text-primary"
+                  : "bg-white/4 border-white/8 text-muted-foreground hover:bg-white/8 hover:text-foreground"
               }`}>
               {c}
             </button>
@@ -732,28 +744,33 @@ function ExpenseForm({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {/* Date */}
+      {/* Date — Bugun + Boshqa sana calendar trigger only */}
       <div>
         <FieldLabel>Sana</FieldLabel>
-        <div className="flex gap-2 mb-2">
-          {(["today", "yesterday"] as const).map(mode => (
-            <button key={mode} type="button" onClick={() => setDateMode(mode)}
-              className={`flex-1 py-2.5 rounded-2xl text-sm font-bold border transition-all ${
-                dateMode === mode ? "bg-primary/15 border-primary/30 text-primary" : "bg-background/60 border-white/10 text-muted-foreground hover:bg-white/5"
-              }`}>
-              {mode === "today" ? "Bugun" : "Kecha"}
-            </button>
-          ))}
-        </div>
-        <div className="flex justify-center">
-          <button type="button" onClick={() => calRef.current?.showPicker()}
-            className="text-sm flex items-center gap-1.5 py-1 transition-colors"
-            style={{ color: dateMode === "custom" ? "#FACC15" : "rgba(250,204,21,0.65)" }}>
-            📅 {dateMode === "custom" && customDate ? `${fmtDateUzShort(customDate)} tanlandi` : "Boshqa sana ➔"}
+        <div className="flex gap-2 items-center">
+          <button type="button"
+            onClick={() => { setUseCustomDate(false); setCustomDate(""); }}
+            className={`flex-1 py-2.5 rounded-2xl text-sm font-bold border transition-all ${
+              !useCustomDate
+                ? "bg-primary/15 border-primary/30 text-primary"
+                : "bg-background/60 border-white/10 text-muted-foreground hover:bg-white/5"
+            }`}>
+            Bugun
+          </button>
+          <button type="button"
+            onClick={() => calRef.current?.showPicker()}
+            className={`flex-1 py-2.5 rounded-2xl text-sm font-bold border transition-all ${
+              useCustomDate
+                ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
+                : "bg-background/60 border-white/10 text-muted-foreground hover:bg-white/5"
+            }`}>
+            {useCustomDate && customDate ? `📅 ${fmtDateUzShort(customDate)}` : "📅 Boshqa sana"}
           </button>
           <input ref={calRef} type="date" aria-hidden="true" className="sr-only"
             value={customDate}
-            onChange={e => { if (e.target.value) { setCustomDate(e.target.value); setDateMode("custom"); } }} />
+            onChange={e => {
+              if (e.target.value) { setCustomDate(e.target.value); setUseCustomDate(true); }
+            }} />
         </div>
       </div>
 
@@ -809,21 +826,7 @@ function BookingFormContent({
   onAddService: () => void;
 }) {
   return (
-    <div className="space-y-4 pt-3">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onClose}
-          className="p-2 rounded-xl hover:bg-white/5 text-muted-foreground transition-colors -ml-1"
-        >
-          <X className="w-5 h-5" />
-        </button>
-        <h2 className="text-xl font-display font-bold text-foreground">
-          Tezkor mijoz qo'shish
-        </h2>
-      </div>
-
+    <div className="space-y-4 pt-2">
       {/* Saved banner */}
       <AnimatePresence>
         {saved && (
@@ -1133,13 +1136,10 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
       <AnimatePresence>
         {open && (
           <Sheet onClose={close}>
-            {/* Tab switcher — only shown when not in add-service flow */}
+            {/* Tab row with X close — only shown when not in add-service flow */}
             {!showAddService && (
-              <div className="flex gap-2 mb-1 pt-2">
-                {([
-                  { key: "bron" as const, label: "📅 Bron", icon: null },
-                  { key: "xarajat" as const, label: "💸 Xarajat", icon: null },
-                ] as { key: ActiveTab; label: string; icon: null }[]).map(({ key, label }) => (
+              <div className="flex items-center gap-2 pt-2 mb-1">
+                {(["bron", "xarajat"] as ActiveTab[]).map((key) => (
                   <button
                     key={key}
                     type="button"
@@ -1150,9 +1150,17 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
                         : "bg-background/40 border-white/8 text-muted-foreground hover:bg-white/5"
                     }`}
                   >
-                    {label}
+                    {key === "bron" ? "📅 Bron" : "💸 Xarajat"}
                   </button>
                 ))}
+                {/* Close button lives here, inline with tabs */}
+                <button
+                  type="button"
+                  onClick={close}
+                  className="shrink-0 w-10 h-10 flex items-center justify-center rounded-2xl bg-white/5 border border-white/10 text-muted-foreground hover:bg-white/10 hover:text-foreground transition-all"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             )}
 
