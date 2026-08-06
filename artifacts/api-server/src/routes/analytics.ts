@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, bookingsTable, usersTable } from "@workspace/db";
+import { db, bookingsTable, usersTable, expensesTable } from "@workspace/db";
 import { eq, and, gte, lte, isNull } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 
@@ -123,7 +123,7 @@ router.get("/solo", authenticate, async (req, res) => {
     const { start, end } = getDateRange(period);
     const { start: prevStart, end: prevEnd } = getPrevDateRange(period);
 
-    const [bookings, prevBookings] = await Promise.all([
+    const [bookings, prevBookings, expenses] = await Promise.all([
       db.select().from(bookingsTable).where(
         and(
           eq(bookingsTable.barberId, user.id),
@@ -140,6 +140,13 @@ router.get("/solo", authenticate, async (req, res) => {
           isNull(bookingsTable.deletedAt),
         ),
       ),
+      db.select().from(expensesTable).where(
+        and(
+          eq(expensesTable.barberId, user.id),
+          gte(expensesTable.date, start),
+          lte(expensesTable.date, end),
+        ),
+      ),
     ]);
 
     const completed = bookings.filter(b => b.status === "completed");
@@ -149,6 +156,9 @@ router.get("/solo", authenticate, async (req, res) => {
     const revenue = completed.reduce((s, b) => s + Number(b.price), 0);
     const prevRevenue = prevCompleted.reduce((s, b) => s + Number(b.price), 0);
     const revChange = calcRevChange(revenue, prevRevenue);
+
+    const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
+    const netProfit = revenue - totalExpenses;
 
     const uniqueClients = new Set(completed.filter(b => b.clientId).map(b => b.clientId)).size;
 
@@ -179,6 +189,8 @@ router.get("/solo", authenticate, async (req, res) => {
       period,
       revenue,
       revChange,
+      totalExpenses,
+      netProfit,
       clients: uniqueClients || completed.length,
       activeBookings: completed.length,
       totalBookings: bookings.length,
@@ -208,7 +220,7 @@ router.get("/team", authenticate, async (req, res) => {
     const { start, end } = getDateRange(period);
     const { start: prevStart, end: prevEnd } = getPrevDateRange(period);
 
-    const [bookings, prevBookings] = await Promise.all([
+    const [bookings, prevBookings, expenses] = await Promise.all([
       db.select().from(bookingsTable).where(
         and(
           eq(bookingsTable.barberId, user.id),
@@ -225,6 +237,13 @@ router.get("/team", authenticate, async (req, res) => {
           isNull(bookingsTable.deletedAt),
         ),
       ),
+      db.select().from(expensesTable).where(
+        and(
+          eq(expensesTable.barberId, user.id),
+          gte(expensesTable.date, start),
+          lte(expensesTable.date, end),
+        ),
+      ),
     ]);
 
     const completed = bookings.filter(b => b.status === "completed");
@@ -234,6 +253,8 @@ router.get("/team", authenticate, async (req, res) => {
     const revenue = completed.reduce((s, b) => s + Number(b.price), 0);
     const prevRevenue = prevCompleted.reduce((s, b) => s + Number(b.price), 0);
     const revChange = calcRevChange(revenue, prevRevenue);
+    const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
+    const netProfit = revenue - totalExpenses;
     const uniqueClients = new Set(completed.filter(b => b.clientId).map(b => b.clientId)).size;
 
     const ownStats = {
@@ -251,6 +272,8 @@ router.get("/team", authenticate, async (req, res) => {
       period,
       revenue,
       revChange,
+      totalExpenses,
+      netProfit,
       clients: uniqueClients || completed.length,
       activeBookings: completed.length,
       totalBookings: bookings.length,
