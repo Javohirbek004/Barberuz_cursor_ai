@@ -591,6 +591,16 @@ function DatePicker({ form, onChange }: {
 // ── Expense Form ──────────────────────────────────────────────────────────────
 const DEFAULT_EXPENSE_CATS = ["✂️ Ish qurollari", "🏢 Ijara va Kommunal", "🍔 Shaxsiy", "📦 Boshqa"];
 
+const EXPENSE_CAT_PLACEHOLDERS: Record<string, string> = {
+  "✂️ Ish qurollari":      "Masalan: Mashinka, taroq...",
+  "🏢 Ijara va Kommunal":  "Masalan: Salon ijarasi, svet, suv...",
+  "🍔 Shaxsiy":            "Masalan: Tushlik, kofe...",
+  "📦 Boshqa":             "Masalan: Kutilmagan xarajat...",
+};
+function getExpensePlaceholder(cat: string): string {
+  return EXPENSE_CAT_PLACEHOLDERS[cat] ?? "Xarajat nomini kiriting...";
+}
+
 function getToken() {
   return localStorage.getItem("barber_token") ?? "";
 }
@@ -691,7 +701,7 @@ function ExpenseForm({ onClose: _onClose }: { onClose: () => void }) {
       {/* Title */}
       <div>
         <FieldLabel required>Nomi</FieldLabel>
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Qaychi sotib olindi"
+        <input value={title} onChange={e => setTitle(e.target.value)} placeholder={getExpensePlaceholder(category)}
           className="w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm" />
       </div>
 
