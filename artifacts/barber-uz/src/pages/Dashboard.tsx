@@ -421,11 +421,11 @@ function IndividualDashboard() {
           delay={0.05}
         />
 
-        {/* Card 3: Bo'sh vaqtlar */}
+        {/* Card 3: Bo'sh joylar */}
         <InteractiveCard
-          label="Bo'sh vaqtlar"
-          value={`${freeSlots} ta bo'sh joy`}
-          pillLabel="Vaqtlarni ko'rish"
+          label="Bo'sh joylar"
+          value={`${freeSlots} ta`}
+          pillLabel="Ko'rish"
           icon={Timer}
           iconColor="text-blue-400"
           loading={statsLoading || bookingsLoading}
