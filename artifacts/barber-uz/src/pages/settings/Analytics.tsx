@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { motion } from "framer-motion";
+import { ChevronLeft, ChevronRight, X, Loader2, Check, Plus } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -18,6 +18,8 @@ const PERIOD_API: Record<Period, string> = {
 interface SoloData {
   revenue: number;
   revChange: number;
+  totalExpenses: number;
+  netProfit: number;
   clients: number;
   activeBookings: number;
   totalBookings: number;
@@ -26,6 +28,14 @@ interface SoloData {
   topService: { name: string; count: number; revenue: number } | null;
   busiestTime: string;
   tips: string[];
+}
+
+interface Expense {
+  id: string;
+  title: string;
+  amount: string;
+  category: string;
+  date: string;
 }
 
 interface BarberStat {
@@ -80,6 +90,30 @@ async function fetchTeam(period: string): Promise<TeamData> {
   });
   if (!res.ok) throw new Error("fetch_error");
   return res.json();
+}
+
+async function fetchExpenses(period: string): Promise<Expense[]> {
+  const res = await fetch(`/api/expenses?period=${period}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.expenses ?? [];
+}
+
+async function deleteExpense(id: string): Promise<void> {
+  await fetch(`/api/expenses/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+}
+
+async function updateExpense(id: string, payload: Partial<Pick<Expense, "title" | "amount" | "category">>): Promise<void> {
+  await fetch(`/api/expenses/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+    body: JSON.stringify(payload),
+  });
 }
 
 // ── Skeleton ───────────────────────────────────────────────────────────────────
@@ -167,36 +201,156 @@ function PeriodFilter({ period, onChange }: { period: Period; onChange: (p: Peri
   );
 }
 
+// ── Expense edit modal ─────────────────────────────────────────────────────────
+
+function ExpenseEditModal({
+  expense,
+  onClose,
+  onSaved,
+}: {
+  expense: Expense;
+  onClose: () => void;
+  onSaved: (updated: Expense) => void;
+}) {
+  const [title, setTitle]     = useState(expense.title);
+  const [amount, setAmount]   = useState(expense.amount);
+  const [saving, setSaving]   = useState(false);
+
+  async function handleSave() {
+    if (!title.trim() || Number(amount) <= 0) return;
+    setSaving(true);
+    try {
+      await updateExpense(expense.id, { title: title.trim(), amount });
+      onSaved({ ...expense, title: title.trim(), amount });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <motion.div className="fixed inset-0 z-[200] flex items-center justify-center px-5"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      <motion.div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <motion.div className="relative w-full max-w-sm bg-[#18181d] rounded-3xl border border-white/8 p-6 z-10 shadow-2xl space-y-4"
+        initial={{ scale: 0.94, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 16 }}
+        transition={{ type: "spring", damping: 24, stiffness: 280 }}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-foreground">✏️ Xarajatni tahrirlash</h3>
+          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-white/5 text-muted-foreground transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Nomi</label>
+          <input value={title} onChange={e => setTitle(e.target.value)}
+            className="w-full h-11 px-3 rounded-2xl bg-white/5 border border-white/10 text-foreground text-sm focus:outline-none focus:border-primary/50" />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Miqdor (so'm)</label>
+          <input type="number" inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value)}
+            className="w-full h-11 px-3 rounded-2xl bg-white/5 border border-white/10 text-foreground text-sm focus:outline-none focus:border-primary/50" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <button onClick={onClose}
+            className="py-3 rounded-2xl bg-white/6 border border-white/10 text-sm font-semibold text-foreground hover:bg-white/10 transition-all">
+            Bekor
+          </button>
+          <button onClick={handleSave} disabled={saving || !title.trim() || Number(amount) <= 0}
+            className="py-3 rounded-2xl bg-primary/15 border border-primary/30 text-primary text-sm font-semibold hover:bg-primary/25 transition-all disabled:opacity-40 flex items-center justify-center gap-1.5">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            Saqlash
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ── YAKKA MODE UI ─────────────────────────────────────────────────────────────
 
 function YakkaAnalytics({ period }: { period: Period }) {
-  const [data, setData] = useState<SoloData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData]             = useState<SoloData | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [expenses, setExpenses]     = useState<Expense[]>([]);
+  const [expLoading, setExpLoading] = useState(true);
+  const [editingExp, setEditingExp] = useState<Expense | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
-    fetchSolo(PERIOD_API[period])
+    setExpLoading(true);
+    const apiPeriod = PERIOD_API[period];
+    fetchSolo(apiPeriod)
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));
+    fetchExpenses(apiPeriod)
+      .then(setExpenses)
+      .catch(() => setExpenses([]))
+      .finally(() => setExpLoading(false));
   }, [period]);
+
+  async function handleDelete(id: string) {
+    setDeletingId(id);
+    try {
+      await deleteExpense(id);
+      setExpenses(prev => prev.filter(e => e.id !== id));
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   if (loading) return <SkeletonKPI />;
   if (!data) return (
     <div className="text-center py-10 text-sm text-muted-foreground">Ma'lumot yuklanmadi</div>
   );
 
+  const netColor = data.netProfit >= 0 ? "text-green-400" : "text-red-400";
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <KpiCard index={0} emoji="💰" label="Daromad" value={fmtFull(data.revenue)} />
         <KpiCard index={1} emoji="👥" label="Mijozlar" value={`${data.clients} ta`} />
-        <KpiCard index={2} emoji="❌" label="Bekor qilingan" value={`${data.cancelled} ta`} subColor="text-red-400" />
-        <KpiCard index={3} emoji="📅" label="Bronlar" value={`${data.totalBookings} ta`} />
+        <KpiCard index={2} emoji="💸" label="Xarajatlar" value={fmtFull(data.totalExpenses ?? 0)} subColor="text-red-400" />
+        <KpiCard index={3} emoji="📈" label="Sof foyda" value={fmtFull(data.netProfit ?? 0)} subColor={netColor} />
       </div>
 
+      {/* Expense history */}
+      <Section title="💸 Xarajatlar tarixi" index={1}>
+        {expLoading ? (
+          <div className="space-y-2">
+            {[1,2,3].map(i => <div key={i} className="h-12 rounded-xl bg-white/5 animate-pulse" />)}
+          </div>
+        ) : expenses.length === 0 ? (
+          <div className="text-center py-4 text-sm text-muted-foreground">Xarajatlar yo'q</div>
+        ) : (
+          <div className="space-y-1">
+            {expenses.map(exp => (
+              <div key={exp.id} className="flex items-center gap-2 py-2.5 px-1 rounded-xl group hover:bg-white/4 transition-all">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-foreground truncate">{exp.title}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{exp.category} · {exp.date}</div>
+                </div>
+                <div className="text-sm font-bold text-red-400 tabular-nums shrink-0">
+                  −{Number(exp.amount).toLocaleString()}
+                </div>
+                <button onClick={() => setEditingExp(exp)}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-white/8 text-muted-foreground transition-all text-xs">
+                  ✏️
+                </button>
+                <button onClick={() => handleDelete(exp.id)} disabled={deletingId === exp.id}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-all disabled:opacity-30">
+                  {deletingId === exp.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="text-xs">🗑️</span>}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
       {data.topService && (
-        <Section title="🏆 Faoliyat" index={1}>
+        <Section title="🏆 Faoliyat" index={2}>
           <div className="space-y-3">
             <div className="flex items-start justify-between">
               <div>
@@ -221,6 +375,20 @@ function YakkaAnalytics({ period }: { period: Period }) {
           </div>
         </Section>
       )}
+
+      {/* Edit modal */}
+      <AnimatePresence>
+        {editingExp && (
+          <ExpenseEditModal
+            expense={editingExp}
+            onClose={() => setEditingExp(null)}
+            onSaved={updated => {
+              setExpenses(prev => prev.map(e => e.id === updated.id ? updated : e));
+              setEditingExp(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

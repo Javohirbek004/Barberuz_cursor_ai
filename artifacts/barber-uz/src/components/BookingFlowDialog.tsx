@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   Check,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListServices,
@@ -578,6 +579,199 @@ function DatePicker({ form, onChange }: {
   );
 }
 
+// ── Expense Form ──────────────────────────────────────────────────────────────
+const DEFAULT_EXPENSE_CATS = ["✂️ Ish qurollari", "🏢 Ijara va Kommunal", "🍔 Shaxsiy", "📦 Boshqa"];
+
+function getToken() {
+  return localStorage.getItem("barber_token") ?? "";
+}
+
+function ExpenseForm({ onClose }: { onClose: () => void }) {
+  const [title, setTitle]         = useState("");
+  const [amount, setAmount]       = useState("");
+  const [category, setCategory]   = useState("📦 Boshqa");
+  const [customCats, setCustomCats] = useState<string[]>([]);
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [dateMode, setDateMode]   = useState<"today" | "yesterday" | "custom">("today");
+  const [customDate, setCustomDate] = useState("");
+  const [saving, setSaving]       = useState(false);
+  const [saved, setSaved]         = useState(false);
+  const calRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetch("/api/expenses/categories", { headers: { Authorization: `Bearer ${getToken()}` } })
+      .then(r => r.json())
+      .then(data => {
+        const custom = (data.categories ?? []).filter((c: string) => !DEFAULT_EXPENSE_CATS.includes(c));
+        setCustomCats(custom);
+      })
+      .catch(() => {});
+  }, []);
+
+  const allCats = [...DEFAULT_EXPENSE_CATS, ...customCats];
+
+  function getExpenseDate() {
+    if (dateMode === "today") return todayStr();
+    if (dateMode === "yesterday") {
+      const d = new Date(); d.setDate(d.getDate() - 1);
+      return d.toISOString().split("T")[0];
+    }
+    return customDate || todayStr();
+  }
+
+  async function handleAddCategory() {
+    const name = newCatName.trim();
+    if (!name) return;
+    try {
+      await fetch("/api/expenses/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ name }),
+      });
+      setCustomCats(prev => [...prev, name]);
+      setCategory(name);
+      setNewCatName(""); setShowNewCat(false);
+    } catch {}
+  }
+
+  const isValid = title.trim().length > 0 && Number(amount) > 0;
+
+  async function handleSave() {
+    if (!isValid || saving || saved) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ title: title.trim(), amount: Number(amount), category, date: getExpenseDate() }),
+      });
+      if (!res.ok) throw new Error("save_error");
+      setSaved(true);
+      toast({ title: "Xarajat saqlandi ✓", description: `${title.trim()} — ${Number(amount).toLocaleString()} so'm` });
+      setTimeout(() => {
+        setTitle(""); setAmount(""); setCategory("📦 Boshqa");
+        setDateMode("today"); setCustomDate(""); setSaved(false); setSaving(false);
+      }, 1200);
+    } catch {
+      setSaving(false);
+      toast({ title: "Xatolik", description: "Xarajat saqlanmadi", variant: "destructive" });
+    }
+  }
+
+  return (
+    <div className="space-y-4 pt-3">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={onClose}
+          className="p-2 rounded-xl hover:bg-white/5 text-muted-foreground transition-colors -ml-1">
+          <X className="w-5 h-5" />
+        </button>
+        <h2 className="text-xl font-display font-bold text-foreground">💸 Xarajat qo'shish</h2>
+      </div>
+
+      {/* Saved banner */}
+      <AnimatePresence>
+        {saved && (
+          <motion.div initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+            className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
+            <CheckCircle2 className="w-6 h-6 text-amber-400 shrink-0" />
+            <span className="font-bold text-amber-400 text-lg">Saqlandi!</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Title */}
+      <div>
+        <FieldLabel required>Nomi</FieldLabel>
+        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Qaychi sotib olindi"
+          className="w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm" />
+      </div>
+
+      {/* Amount */}
+      <div>
+        <FieldLabel required>Miqdor (so'm)</FieldLabel>
+        <input type="number" inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value)}
+          placeholder="50 000"
+          className="w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm" />
+      </div>
+
+      {/* Category chips */}
+      <div>
+        <FieldLabel>Kategoriya</FieldLabel>
+        <div className="flex flex-wrap gap-2">
+          {allCats.map(c => (
+            <button key={c} type="button" onClick={() => setCategory(c)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                category === c ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground hover:bg-white/8 hover:text-foreground"
+              }`}>
+              {c}
+            </button>
+          ))}
+          {showNewCat ? (
+            <div className="flex items-center gap-1">
+              <input autoFocus value={newCatName} onChange={e => setNewCatName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleAddCategory()} placeholder="Yangi"
+                className="h-8 w-24 px-2 rounded-xl text-xs bg-white/5 border border-white/15 focus:outline-none focus:border-primary/40" />
+              <button type="button" onClick={handleAddCategory}
+                className="h-8 w-8 rounded-xl bg-primary/15 border border-primary/30 text-primary flex items-center justify-center">
+                <Check className="w-3 h-3" />
+              </button>
+              <button type="button" onClick={() => { setShowNewCat(false); setNewCatName(""); }}
+                className="h-8 w-8 rounded-xl bg-white/5 border border-white/10 text-muted-foreground flex items-center justify-center">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setShowNewCat(true)}
+              className="h-8 px-2.5 rounded-xl text-xs border border-dashed border-white/15 text-muted-foreground/60 hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-all flex items-center gap-1">
+              <Plus className="w-3 h-3" /> Yangi
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Date */}
+      <div>
+        <FieldLabel>Sana</FieldLabel>
+        <div className="flex gap-2 mb-2">
+          {(["today", "yesterday"] as const).map(mode => (
+            <button key={mode} type="button" onClick={() => setDateMode(mode)}
+              className={`flex-1 py-2.5 rounded-2xl text-sm font-bold border transition-all ${
+                dateMode === mode ? "bg-primary/15 border-primary/30 text-primary" : "bg-background/60 border-white/10 text-muted-foreground hover:bg-white/5"
+              }`}>
+              {mode === "today" ? "Bugun" : "Kecha"}
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-center">
+          <button type="button" onClick={() => calRef.current?.showPicker()}
+            className="text-sm flex items-center gap-1.5 py-1 transition-colors"
+            style={{ color: dateMode === "custom" ? "#FACC15" : "rgba(250,204,21,0.65)" }}>
+            📅 {dateMode === "custom" && customDate ? `${fmtDateUzShort(customDate)} tanlandi` : "Boshqa sana ➔"}
+          </button>
+          <input ref={calRef} type="date" aria-hidden="true" className="sr-only"
+            value={customDate}
+            onChange={e => { if (e.target.value) { setCustomDate(e.target.value); setDateMode("custom"); } }} />
+        </div>
+      </div>
+
+      {/* Save */}
+      <button type="button" onClick={handleSave} disabled={!isValid || saving || saved}
+        className={`w-full h-14 rounded-2xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
+          isValid && !saving && !saved
+            ? "bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/20 hover:-translate-y-0.5"
+            : "bg-amber-500/20 text-amber-500/50 cursor-not-allowed"
+        }`}>
+        {saving ? <><Loader2 className="w-5 h-5 animate-spin" /> Saqlanmoqda...</>
+          : saved ? <><CheckCircle2 className="w-5 h-5" /> Saqlandi!</>
+          : "Xarajatni saqlash"}
+      </button>
+    </div>
+  );
+}
+
 // ── Main booking form ─────────────────────────────────────────────────────────
 function BookingFormContent({
   form,
@@ -759,9 +953,12 @@ interface Props {
   isTeam?: boolean;
 }
 
+type ActiveTab = "bron" | "xarajat";
+
 // ── Main dialog export ────────────────────────────────────────────────────────
 export function BookingFlowDialog({ open, onOpenChange }: Props) {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<ActiveTab>("bron");
 
   // ── Profile (working hours) ───────────────────────────────────────────────
   const { data: profile } = useGetProfile();
@@ -809,6 +1006,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
       setPendingAfterHours(false);
       setSaving(false);
       setSaved(false);
+      setActiveTab("bron");
     }
   }, [open]);
 
@@ -935,6 +1133,29 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
       <AnimatePresence>
         {open && (
           <Sheet onClose={close}>
+            {/* Tab switcher — only shown when not in add-service flow */}
+            {!showAddService && (
+              <div className="flex gap-2 mb-1 pt-2">
+                {([
+                  { key: "bron" as const, label: "📅 Bron", icon: null },
+                  { key: "xarajat" as const, label: "💸 Xarajat", icon: null },
+                ] as { key: ActiveTab; label: string; icon: null }[]).map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setActiveTab(key)}
+                    className={`flex-1 py-2.5 rounded-2xl text-sm font-bold border transition-all ${
+                      activeTab === key
+                        ? "bg-primary/15 border-primary/30 text-primary"
+                        : "bg-background/40 border-white/8 text-muted-foreground hover:bg-white/5"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <AnimatePresence mode="wait">
               {showAddService ? (
                 <motion.div
@@ -951,6 +1172,16 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
                       saving={svcSaving}
                     />
                   </div>
+                </motion.div>
+              ) : activeTab === "xarajat" ? (
+                <motion.div
+                  key="expense-form"
+                  initial={{ opacity: 0, x: 24 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -24 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <ExpenseForm onClose={close} />
                 </motion.div>
               ) : (
                 <motion.div

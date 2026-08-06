@@ -11,6 +11,7 @@ import settingsRouter from "./settings";
 import telegramRouter from "./telegram";
 import feedbackRouter from "./feedback";
 import publicRouter from "./public";
+import expensesRouter from "./expenses";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use("/settings", settingsRouter);
 router.use("/telegram", telegramRouter);
 router.use("/feedback", feedbackRouter);
 router.use("/public", publicRouter);
+router.use("/expenses", expensesRouter);
 
 export default router;
