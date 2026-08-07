@@ -290,6 +290,41 @@ router.get("/team", authenticate, async (req, res) => {
   }
 });
 
+// ── Completed-bookings detail endpoint (for Analytics modals) ────────────────
+
+router.get("/detail", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const period = (req.query.period as string) || "month";
+    const { start, end } = getDateRange(period);
+
+    const bookings = await db.select().from(bookingsTable).where(
+      and(
+        eq(bookingsTable.barberId, user.id),
+        gte(bookingsTable.date, start),
+        lte(bookingsTable.date, end),
+        isNull(bookingsTable.deletedAt),
+      ),
+    );
+
+    const completedBookings = bookings
+      .filter(b => b.status === "completed")
+      .map(b => ({
+        id: b.id,
+        clientName: b.clientName,
+        serviceName: b.serviceName ?? null,
+        startTime: b.startTime,
+        date: b.date,
+        price: Number(b.price),
+      }));
+
+    res.json({ completedBookings });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
 // ── Barber detail endpoint ────────────────────────────────────────────────────
 
 // NOTE: Currently restricted to self-only access. Multi-barber access requires

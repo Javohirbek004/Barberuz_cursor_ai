@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
-import { ChevronLeft, ChevronRight, X, Loader2, Check, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, Loader2, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type Period = "bugun" | "hafta" | "oy";
+type ModalKind = "daromad" | "mijozlar" | "xarajatlar" | "sof-foyda" | null;
 
 const PERIOD_API: Record<Period, string> = {
   bugun: "today",
@@ -36,6 +37,15 @@ interface Expense {
   amount: string;
   category: string;
   date: string;
+}
+
+interface CompletedBooking {
+  id: string;
+  clientName: string;
+  serviceName: string | null;
+  startTime: string;
+  date: string;
+  price: number;
 }
 
 interface BarberStat {
@@ -69,12 +79,62 @@ function fmt(n: number) {
 }
 
 function fmtFull(n: number) {
-  return n.toLocaleString("uz-UZ") + " so'm";
+  return Math.abs(n).toLocaleString("uz-UZ") + " so'm";
 }
 
 function getToken() {
   return localStorage.getItem("barber_token") ?? "";
 }
+
+function todayIso(): string {
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+}
+
+const UZ_MONTHS = [
+  "Yanvar","Fevral","Mart","Aprel","May","Iyun",
+  "Iyul","Avgust","Sentyabr","Oktyabr","Noyabr","Dekabr",
+];
+
+function fmtDateGroupHeader(iso: string): string {
+  const today = todayIso();
+  const ydObj = new Date();
+  ydObj.setDate(ydObj.getDate() - 1);
+  const yesterday = ydObj.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+  const d = new Date(`${iso}T12:00:00`);
+  const dateStr = `${d.getDate()}-${UZ_MONTHS[d.getMonth()]}`;
+  if (iso === today) return `Bugun, ${dateStr}`;
+  if (iso === yesterday) return `Kecha, ${dateStr}`;
+  return dateStr;
+}
+
+const PERIOD_COMPARE_LABEL: Record<Period, string> = {
+  bugun: "Kechaga nisbatan",
+  hafta: "O'tgan haftaga nisbatan",
+  oy: "O'tgan oyga nisbatan",
+};
+
+const CAT_COLORS = [
+  "bg-amber-400",
+  "bg-blue-400",
+  "bg-green-400",
+  "bg-purple-400",
+  "bg-pink-400",
+  "bg-orange-400",
+  "bg-cyan-400",
+  "bg-red-400",
+];
+const CAT_TEXT_COLORS = [
+  "text-amber-400",
+  "text-blue-400",
+  "text-green-400",
+  "text-purple-400",
+  "text-pink-400",
+  "text-orange-400",
+  "text-cyan-400",
+  "text-red-400",
+];
+
+// ── API ────────────────────────────────────────────────────────────────────────
 
 async function fetchSolo(period: string): Promise<SoloData> {
   const res = await fetch(`/api/analytics/solo?period=${period}`, {
@@ -92,6 +152,15 @@ async function fetchTeam(period: string): Promise<TeamData> {
   return res.json();
 }
 
+async function fetchDetail(period: string): Promise<CompletedBooking[]> {
+  const res = await fetch(`/api/analytics/detail?period=${period}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.completedBookings ?? [];
+}
+
 async function fetchExpenses(period: string): Promise<Expense[]> {
   const res = await fetch(`/api/expenses?period=${period}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
@@ -101,14 +170,17 @@ async function fetchExpenses(period: string): Promise<Expense[]> {
   return data.expenses ?? [];
 }
 
-async function deleteExpense(id: string): Promise<void> {
+async function deleteExpenseApi(id: string): Promise<void> {
   await fetch(`/api/expenses/${id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${getToken()}` },
   });
 }
 
-async function updateExpense(id: string, payload: Partial<Pick<Expense, "title" | "amount" | "category">>): Promise<void> {
+async function updateExpenseApi(
+  id: string,
+  payload: Partial<Pick<Expense, "title" | "amount" | "category">>,
+): Promise<void> {
   await fetch(`/api/expenses/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
@@ -120,56 +192,11 @@ async function updateExpense(id: string, payload: Partial<Pick<Expense, "title" 
 
 function SkeletonKPI() {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-24 rounded-2xl bg-white/5 animate-pulse" />
-        ))}
-      </div>
-      <div className="h-32 rounded-2xl bg-white/5 animate-pulse" />
-      <div className="h-28 rounded-2xl bg-white/5 animate-pulse" />
+    <div className="grid grid-cols-2 gap-3">
+      {[...Array(4)].map((_, i) => (
+        <div key={i} className="h-28 rounded-2xl bg-white/5 animate-pulse" />
+      ))}
     </div>
-  );
-}
-
-// ── KPI Card ───────────────────────────────────────────────────────────────────
-
-function KpiCard({
-  emoji, label, value, sub, subColor, index,
-}: {
-  emoji: string; label: string; value: string;
-  sub?: string; subColor?: string; index: number;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.05 + index * 0.04 }}
-      className="bg-card border border-white/6 rounded-2xl p-4"
-    >
-      <div className="text-xl mb-1">{emoji}</div>
-      <div className="text-xs text-muted-foreground mb-1">{label}</div>
-      <div className="font-bold text-base text-foreground leading-tight">{value}</div>
-      {sub && (
-        <div className={`text-xs mt-0.5 font-semibold ${subColor ?? "text-muted-foreground"}`}>{sub}</div>
-      )}
-    </motion.div>
-  );
-}
-
-// ── Section card ───────────────────────────────────────────────────────────────
-
-function Section({ title, children, index }: { title: string; children: React.ReactNode; index: number }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.1 + index * 0.06 }}
-      className="bg-card border border-white/6 rounded-2xl p-4"
-    >
-      <div className="font-bold text-sm mb-3 text-foreground">{title}</div>
-      {children}
-    </motion.div>
   );
 }
 
@@ -201,7 +228,130 @@ function PeriodFilter({ period, onChange }: { period: Period; onChange: (p: Peri
   );
 }
 
-// ── Expense edit modal ─────────────────────────────────────────────────────────
+// ── Bottom Sheet ───────────────────────────────────────────────────────────────
+
+function BottomSheet({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    const fn = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", fn);
+    return () => document.removeEventListener("keydown", fn);
+  }, [onClose]);
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.div
+        className="absolute inset-0 bg-black/65 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 28, stiffness: 260 }}
+        className="relative w-full max-w-md bg-card rounded-t-3xl z-10 max-h-[92vh] flex flex-col shadow-2xl"
+      >
+        {/* Drag handle */}
+        <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 shrink-0" />
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-3 pb-3 shrink-0">
+          <h2 className="font-display font-bold text-lg text-foreground">{title}</h2>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-white/8 transition-all"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="h-px bg-white/6 mx-5 shrink-0" />
+
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-5 py-4 pb-12">{children}</div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ── Clickable KPI Card ─────────────────────────────────────────────────────────
+
+function ClickableKpiCard({
+  emoji,
+  label,
+  value,
+  valueColor,
+  sub,
+  subColor,
+  index,
+  onClick,
+}: {
+  emoji: string;
+  label: string;
+  value: string;
+  valueColor?: string;
+  sub?: string;
+  subColor?: string;
+  index: number;
+  onClick: () => void;
+}) {
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.05 + index * 0.04 }}
+      whileTap={{ scale: 0.95 }}
+      onClick={onClick}
+      className="bg-card border border-white/6 rounded-2xl p-4 text-left w-full hover:bg-white/4 active:bg-white/6 transition-colors"
+    >
+      <div className="text-xl mb-1">{emoji}</div>
+      <div className="text-xs text-muted-foreground mb-1">{label}</div>
+      <div className={`font-bold text-base leading-tight ${valueColor ?? "text-foreground"}`}>
+        {value}
+      </div>
+      {sub && (
+        <div className={`text-xs mt-0.5 font-semibold ${subColor ?? "text-muted-foreground"}`}>
+          {sub}
+        </div>
+      )}
+    </motion.button>
+  );
+}
+
+// ── Metric Pill ────────────────────────────────────────────────────────────────
+
+function MetricPill({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <div className="flex-1 bg-white/4 border border-white/8 rounded-2xl p-3">
+      <div className="text-xs text-muted-foreground mb-0.5 leading-tight">{label}</div>
+      <div className={`font-bold text-sm leading-snug ${valueColor ?? "text-foreground"}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// ── Expense Edit Modal ─────────────────────────────────────────────────────────
 
 function ExpenseEditModal({
   expense,
@@ -212,15 +362,15 @@ function ExpenseEditModal({
   onClose: () => void;
   onSaved: (updated: Expense) => void;
 }) {
-  const [title, setTitle]     = useState(expense.title);
-  const [amount, setAmount]   = useState(expense.amount);
-  const [saving, setSaving]   = useState(false);
+  const [title, setTitle]   = useState(expense.title);
+  const [amount, setAmount] = useState(expense.amount);
+  const [saving, setSaving] = useState(false);
 
   async function handleSave() {
     if (!title.trim() || Number(amount) <= 0) return;
     setSaving(true);
     try {
-      await updateExpense(expense.id, { title: title.trim(), amount });
+      await updateExpenseApi(expense.id, { title: title.trim(), amount });
       onSaved({ ...expense, title: title.trim(), amount });
     } finally {
       setSaving(false);
@@ -228,35 +378,59 @@ function ExpenseEditModal({
   }
 
   return (
-    <motion.div className="fixed inset-0 z-[200] flex items-center justify-center px-5"
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+    <motion.div
+      className="fixed inset-0 z-[200] flex items-center justify-center px-5"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
       <motion.div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <motion.div className="relative w-full max-w-sm bg-[#18181d] rounded-3xl border border-white/8 p-6 z-10 shadow-2xl space-y-4"
-        initial={{ scale: 0.94, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 16 }}
-        transition={{ type: "spring", damping: 24, stiffness: 280 }}>
+      <motion.div
+        className="relative w-full max-w-sm bg-[#18181d] rounded-3xl border border-white/8 p-6 z-10 shadow-2xl space-y-4"
+        initial={{ scale: 0.94, y: 16 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.94, y: 16 }}
+        transition={{ type: "spring", damping: 24, stiffness: 280 }}
+      >
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-foreground">✏️ Xarajatni tahrirlash</h3>
-          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-white/5 text-muted-foreground transition-colors">
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-xl hover:bg-white/5 text-muted-foreground transition-colors"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
         <div>
           <label className="text-xs text-muted-foreground mb-1 block">Nomi</label>
-          <input value={title} onChange={e => setTitle(e.target.value)}
-            className="w-full h-11 px-3 rounded-2xl bg-white/5 border border-white/10 text-foreground text-sm focus:outline-none focus:border-primary/50" />
+          <input
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            className="w-full h-11 px-3 rounded-2xl bg-white/5 border border-white/10 text-foreground text-sm focus:outline-none focus:border-primary/50"
+          />
         </div>
         <div>
           <label className="text-xs text-muted-foreground mb-1 block">Miqdor (so'm)</label>
-          <input type="number" inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value)}
-            className="w-full h-11 px-3 rounded-2xl bg-white/5 border border-white/10 text-foreground text-sm focus:outline-none focus:border-primary/50" />
+          <input
+            type="number"
+            inputMode="numeric"
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            className="w-full h-11 px-3 rounded-2xl bg-white/5 border border-white/10 text-foreground text-sm focus:outline-none focus:border-primary/50"
+          />
         </div>
         <div className="grid grid-cols-2 gap-3 pt-1">
-          <button onClick={onClose}
-            className="py-3 rounded-2xl bg-white/6 border border-white/10 text-sm font-semibold text-foreground hover:bg-white/10 transition-all">
+          <button
+            onClick={onClose}
+            className="py-3 rounded-2xl bg-white/6 border border-white/10 text-sm font-semibold text-foreground hover:bg-white/10 transition-all"
+          >
             Bekor
           </button>
-          <button onClick={handleSave} disabled={saving || !title.trim() || Number(amount) <= 0}
-            className="py-3 rounded-2xl bg-primary/15 border border-primary/30 text-primary text-sm font-semibold hover:bg-primary/25 transition-all disabled:opacity-40 flex items-center justify-center gap-1.5">
+          <button
+            onClick={handleSave}
+            disabled={saving || !title.trim() || Number(amount) <= 0}
+            className="py-3 rounded-2xl bg-primary/15 border border-primary/30 text-primary text-sm font-semibold hover:bg-primary/25 transition-all disabled:opacity-40 flex items-center justify-center gap-1.5"
+          >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
             Saqlash
           </button>
@@ -266,130 +440,541 @@ function ExpenseEditModal({
   );
 }
 
-// ── YAKKA MODE UI ─────────────────────────────────────────────────────────────
+// ── Daromad Modal ─────────────────────────────────────────────────────────────
 
-function YakkaAnalytics({ period }: { period: Period }) {
-  const [data, setData]             = useState<SoloData | null>(null);
-  const [loading, setLoading]       = useState(true);
-  const [expenses, setExpenses]     = useState<Expense[]>([]);
-  const [expLoading, setExpLoading] = useState(true);
+function DaromadModal({
+  data,
+  bookings,
+  onClose,
+}: {
+  data: SoloData;
+  bookings: CompletedBooking[];
+  onClose: () => void;
+}) {
+  const avgCheck =
+    bookings.length > 0 ? Math.round(data.revenue / bookings.length) : 0;
+  const topSvcPct =
+    data.topService && data.revenue > 0
+      ? Math.round((data.topService.revenue / data.revenue) * 100)
+      : 0;
+
+  // Group by date desc; within each group sort by startTime asc
+  const grouped: Record<string, CompletedBooking[]> = {};
+  for (const b of bookings) {
+    if (!grouped[b.date]) grouped[b.date] = [];
+    grouped[b.date].push(b);
+  }
+  for (const d of Object.keys(grouped)) {
+    grouped[d].sort((a, b) => a.startTime.localeCompare(b.startTime));
+  }
+  const dates = Object.keys(grouped).sort().reverse();
+
+  return (
+    <BottomSheet title="💰 Daromad tahlili" onClose={onClose}>
+      {/* Top metrics */}
+      <div className="flex gap-2 mb-5">
+        <MetricPill label="O'rtacha chek" value={fmtFull(avgCheck)} />
+        {data.topService ? (
+          <MetricPill
+            label="Top xizmat"
+            value={`${data.topService.name} · ${topSvcPct}%`}
+          />
+        ) : (
+          <MetricPill label="Top xizmat" value="—" />
+        )}
+      </div>
+
+      {/* Transaction list */}
+      {bookings.length === 0 ? (
+        <div className="text-center py-10 text-sm text-muted-foreground">
+          Tugatilgan bronlar yo'q
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {dates.map(date => {
+            const entries = grouped[date];
+            const dayTotal = entries.reduce((s, b) => s + b.price, 0);
+            return (
+              <div key={date}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    {fmtDateGroupHeader(date)}
+                  </span>
+                  <span className="text-xs font-bold text-green-400">
+                    +{fmtFull(dayTotal)}
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  {entries.map(b => (
+                    <div
+                      key={b.id}
+                      className="flex items-center gap-3 py-2.5 px-3 rounded-2xl bg-white/3 border border-white/5"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-foreground truncate">
+                          {b.clientName || "Mijoz"}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                          {b.serviceName ?? "—"} · {b.startTime}
+                        </div>
+                      </div>
+                      <div className="text-sm font-bold text-green-400 tabular-nums shrink-0">
+                        +{fmtFull(b.price)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </BottomSheet>
+  );
+}
+
+// ── Mijozlar Modal ────────────────────────────────────────────────────────────
+
+function MijozlarModal({
+  bookings,
+  onClose,
+}: {
+  bookings: CompletedBooking[];
+  onClose: () => void;
+}) {
+  const clientMap: Record<string, { visits: number; totalSpent: number }> = {};
+  for (const b of bookings) {
+    const key = b.clientName || "Noma'lum";
+    if (!clientMap[key]) clientMap[key] = { visits: 0, totalSpent: 0 };
+    clientMap[key].visits++;
+    clientMap[key].totalSpent += b.price;
+  }
+  const ranked = Object.entries(clientMap)
+    .map(([name, v]) => ({ name, ...v }))
+    .sort((a, b) => b.visits - a.visits || b.totalSpent - a.totalSpent);
+
+  const uniqueCount = ranked.length;
+  const returningCount = ranked.filter(c => c.visits > 1).length;
+  const returningRate =
+    uniqueCount > 0 ? Math.round((returningCount / uniqueCount) * 100) : 0;
+
+  function badge(rank: number) {
+    if (rank === 1) return <span className="text-lg leading-none">🥇</span>;
+    if (rank === 2) return <span className="text-lg leading-none">🥈</span>;
+    if (rank === 3) return <span className="text-lg leading-none">🥉</span>;
+    return <span className="text-xs font-bold text-muted-foreground">{rank}</span>;
+  }
+
+  return (
+    <BottomSheet title="👥 Mijozlar tahlili" onClose={onClose}>
+      <div className="flex gap-2 mb-5">
+        <MetricPill label="Jami mijozlar" value={`${uniqueCount} ta`} />
+        <MetricPill
+          label="Qayta kelganlar"
+          value={`${returningRate}%`}
+          valueColor={returningRate >= 30 ? "text-green-400" : "text-foreground"}
+        />
+      </div>
+
+      {ranked.length === 0 ? (
+        <div className="text-center py-10 text-sm text-muted-foreground">
+          Mijozlar yo'q
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {ranked.map((c, i) => (
+            <div
+              key={c.name}
+              className="flex items-center gap-3 py-2.5 px-3 rounded-2xl bg-white/3 border border-white/5"
+            >
+              <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center shrink-0">
+                {badge(i + 1)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-foreground truncate">{c.name}</div>
+                <div className="text-xs text-muted-foreground">{c.visits} marta</div>
+              </div>
+              <div className="text-sm font-bold text-primary tabular-nums shrink-0">
+                {fmtFull(c.totalSpent)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </BottomSheet>
+  );
+}
+
+// ── Xarajatlar Modal ──────────────────────────────────────────────────────────
+
+function XarajatlarModal({
+  expenses,
+  onExpensesChange,
+  onClose,
+}: {
+  expenses: Expense[];
+  onExpensesChange: (updated: Expense[]) => void;
+  onClose: () => void;
+}) {
   const [editingExp, setEditingExp] = useState<Expense | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    setLoading(true);
-    setExpLoading(true);
-    const apiPeriod = PERIOD_API[period];
-    fetchSolo(apiPeriod)
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-    fetchExpenses(apiPeriod)
-      .then(setExpenses)
-      .catch(() => setExpenses([]))
-      .finally(() => setExpLoading(false));
-  }, [period]);
+  const totalExp = expenses.reduce((s, e) => s + Number(e.amount), 0);
+  const catMap: Record<string, number> = {};
+  for (const e of expenses) {
+    catMap[e.category] = (catMap[e.category] || 0) + Number(e.amount);
+  }
+  const catEntries = Object.entries(catMap)
+    .map(([name, amount]) => ({
+      name,
+      amount,
+      pct: totalExp > 0 ? Math.round((amount / totalExp) * 100) : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
+  const grouped: Record<string, Expense[]> = {};
+  for (const e of expenses) {
+    if (!grouped[e.date]) grouped[e.date] = [];
+    grouped[e.date].push(e);
+  }
+  const dates = Object.keys(grouped).sort().reverse();
 
   async function handleDelete(id: string) {
     setDeletingId(id);
     try {
-      await deleteExpense(id);
-      setExpenses(prev => prev.filter(e => e.id !== id));
+      await deleteExpenseApi(id);
+      onExpensesChange(expenses.filter(e => e.id !== id));
     } finally {
       setDeletingId(null);
     }
   }
 
-  if (loading) return <SkeletonKPI />;
-  if (!data) return (
-    <div className="text-center py-10 text-sm text-muted-foreground">Ma'lumot yuklanmadi</div>
-  );
-
-  const netColor = data.netProfit >= 0 ? "text-green-400" : "text-red-400";
-
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <KpiCard index={0} emoji="💰" label="Daromad" value={fmtFull(data.revenue)} />
-        <KpiCard index={1} emoji="👥" label="Mijozlar" value={`${data.clients} ta`} />
-        <KpiCard index={2} emoji="💸" label="Xarajatlar" value={fmtFull(data.totalExpenses ?? 0)} subColor="text-red-400" />
-        <KpiCard index={3} emoji="📈" label="Sof foyda" value={fmtFull(data.netProfit ?? 0)} subColor={netColor} />
-      </div>
-
-      {/* Expense history */}
-      <Section title="💸 Xarajatlar tarixi" index={1}>
-        {expLoading ? (
-          <div className="space-y-2">
-            {[1,2,3].map(i => <div key={i} className="h-12 rounded-xl bg-white/5 animate-pulse" />)}
+    <>
+      <BottomSheet title="💸 Xarajatlar tahlili" onClose={onClose}>
+        {expenses.length === 0 ? (
+          <div className="text-center py-10 text-sm text-muted-foreground">
+            Xarajatlar yo'q
           </div>
-        ) : expenses.length === 0 ? (
-          <div className="text-center py-4 text-sm text-muted-foreground">Xarajatlar yo'q</div>
         ) : (
-          <div className="space-y-1">
-            {expenses.map(exp => (
-              <div key={exp.id} className="flex items-center gap-2 py-2.5 px-1 rounded-xl group hover:bg-white/4 transition-all">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-foreground truncate">{exp.title}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{exp.category} · {exp.date}</div>
-                </div>
-                <div className="text-sm font-bold text-red-400 tabular-nums shrink-0">
-                  −{Number(exp.amount).toLocaleString()}
-                </div>
-                <button onClick={() => setEditingExp(exp)}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-white/8 text-muted-foreground transition-all text-xs">
-                  ✏️
-                </button>
-                <button onClick={() => handleDelete(exp.id)} disabled={deletingId === exp.id}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-all disabled:opacity-30">
-                  {deletingId === exp.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="text-xs">🗑️</span>}
-                </button>
+          <div className="space-y-5">
+            {/* Category breakdown */}
+            <div>
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                Kategoriyalar bo'yicha
               </div>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      {data.topService && (
-        <Section title="🏆 Faoliyat" index={2}>
-          <div className="space-y-3">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="text-xs text-muted-foreground">Eng ko'p xizmat</div>
-                <div className="font-bold text-foreground mt-0.5">
-                  {data.topService.name} — {data.topService.count} ta
-                </div>
-                <div className="text-xs text-primary mt-0.5">
-                  💰 {fmtFull(data.topService.revenue)}
-                </div>
+              <div className="space-y-3">
+                {catEntries.map((cat, i) => (
+                  <div key={cat.name}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${CAT_COLORS[i % CAT_COLORS.length]}`} />
+                        <span className="text-sm font-medium text-foreground">{cat.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">{fmtFull(cat.amount)}</span>
+                        <span className={`text-xs font-bold w-9 text-right ${CAT_TEXT_COLORS[i % CAT_TEXT_COLORS.length]}`}>
+                          {cat.pct}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 bg-white/6 rounded-full overflow-hidden">
+                      <motion.div
+                        className={`h-full rounded-full ${CAT_COLORS[i % CAT_COLORS.length]}`}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${cat.pct}%` }}
+                        transition={{ duration: 0.5, delay: i * 0.08 }}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-            {data.busiestTime !== "—" && (
-              <>
-                <div className="h-px bg-white/6" />
-                <div>
-                  <div className="text-xs text-muted-foreground">Eng band vaqt</div>
-                  <div className="font-bold text-foreground mt-0.5">🕒 {data.busiestTime}</div>
-                </div>
-              </>
-            )}
-          </div>
-        </Section>
-      )}
 
-      {/* Edit modal */}
+            <div className="h-px bg-white/6" />
+
+            {/* History */}
+            <div>
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                Tarix
+              </div>
+              <div className="space-y-5">
+                {dates.map(date => {
+                  const entries = grouped[date];
+                  const dayTotal = entries.reduce((s, e) => s + Number(e.amount), 0);
+                  return (
+                    <div key={date}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-muted-foreground">
+                          {fmtDateGroupHeader(date)}
+                        </span>
+                        <span className="text-xs font-bold text-red-400">
+                          −{fmtFull(dayTotal)}
+                        </span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {entries.map(exp => (
+                          <div
+                            key={exp.id}
+                            className="flex items-center gap-2 py-2.5 px-3 rounded-2xl bg-white/3 border border-white/5"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-semibold text-foreground truncate">
+                                {exp.title}
+                              </div>
+                              <div className="mt-0.5">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/6 text-muted-foreground/80">
+                                  {exp.category}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-sm font-bold text-red-400 tabular-nums shrink-0">
+                              −{fmtFull(Number(exp.amount))}
+                            </div>
+                            <button
+                              onClick={() => setEditingExp(exp)}
+                              className="p-1.5 rounded-lg hover:bg-white/8 text-muted-foreground hover:text-foreground transition-all shrink-0"
+                            >
+                              <span className="text-xs">✏️</span>
+                            </button>
+                            <button
+                              onClick={() => handleDelete(exp.id)}
+                              disabled={deletingId === exp.id}
+                              className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-all disabled:opacity-30 shrink-0"
+                            >
+                              {deletingId === exp.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <span className="text-xs">🗑️</span>
+                              )}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </BottomSheet>
+
+      {/* Edit modal stacks on top */}
       <AnimatePresence>
         {editingExp && (
           <ExpenseEditModal
             expense={editingExp}
             onClose={() => setEditingExp(null)}
             onSaved={updated => {
-              setExpenses(prev => prev.map(e => e.id === updated.id ? updated : e));
+              onExpensesChange(expenses.map(e => (e.id === updated.id ? updated : e)));
               setEditingExp(null);
             }}
           />
         )}
       </AnimatePresence>
+    </>
+  );
+}
+
+// ── Sof Foyda Modal ───────────────────────────────────────────────────────────
+
+function SofFoydaModal({
+  data,
+  totalExpenses,
+  netProfit,
+  period,
+  onClose,
+}: {
+  data: SoloData;
+  totalExpenses: number;
+  netProfit: number;
+  period: Period;
+  onClose: () => void;
+}) {
+  const profitMargin =
+    data.revenue > 0 ? Math.round((netProfit / data.revenue) * 100) : 0;
+  const netPositive = netProfit >= 0;
+  const netColor = netPositive ? "text-green-400" : "text-red-400";
+  const netBg = netPositive
+    ? "bg-green-500/8 border-green-500/20"
+    : "bg-red-500/8 border-red-500/20";
+  const trendSign = data.revChange > 0 ? "+" : "";
+  const trendColor =
+    data.revChange > 0
+      ? "text-green-400"
+      : data.revChange < 0
+        ? "text-red-400"
+        : "text-muted-foreground";
+
+  return (
+    <BottomSheet title="📈 Sof foyda tahlili" onClose={onClose}>
+      <div className="space-y-4">
+        {/* Financial summary */}
+        <div className="bg-white/3 border border-white/8 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">💰 Jami daromad</span>
+            <span className="font-bold text-foreground tabular-nums">+{fmtFull(data.revenue)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">💸 Jami xarajat</span>
+            <span className="font-bold text-red-400 tabular-nums">−{fmtFull(totalExpenses)}</span>
+          </div>
+          <div className="h-px bg-white/8" />
+          <div className={`flex items-center justify-between px-3 py-2.5 rounded-xl border ${netBg}`}>
+            <span className="text-sm font-semibold text-foreground">📈 Sof foyda</span>
+            <span className={`font-bold text-lg tabular-nums ${netColor}`}>
+              {netPositive ? "+" : "−"}{fmtFull(Math.abs(netProfit))}
+            </span>
+          </div>
+        </div>
+
+        {/* Key metrics */}
+        <div className="flex gap-3">
+          <div className="flex-1 bg-white/4 border border-white/8 rounded-2xl p-4">
+            <div className="text-xs text-muted-foreground mb-1">Foydalilik darajasi</div>
+            <div className={`font-bold text-2xl tabular-nums ${netColor}`}>{profitMargin}%</div>
+            <div className="text-xs text-muted-foreground mt-1">Daromaddan sof foyda</div>
+          </div>
+          <div className="flex-1 bg-white/4 border border-white/8 rounded-2xl p-4">
+            <div className="text-xs text-muted-foreground mb-1">O'sish ko'rsatkichi</div>
+            <div className={`font-bold text-2xl tabular-nums ${trendColor}`}>
+              {trendSign}{data.revChange}%
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {PERIOD_COMPARE_LABEL[period]}
+            </div>
+          </div>
+        </div>
+      </div>
+    </BottomSheet>
+  );
+}
+
+// ── Section card (kept for JamoaAnalytics) ────────────────────────────────────
+
+function Section({
+  title,
+  children,
+  index,
+}: {
+  title: string;
+  children: React.ReactNode;
+  index: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.1 + index * 0.06 }}
+      className="bg-card border border-white/6 rounded-2xl p-4"
+    >
+      <div className="font-bold text-sm mb-3 text-foreground">{title}</div>
+      {children}
+    </motion.div>
+  );
+}
+
+// ── YAKKA MODE UI ─────────────────────────────────────────────────────────────
+
+function YakkaAnalytics({ period }: { period: Period }) {
+  const [data, setData]         = useState<SoloData | null>(null);
+  const [bookings, setBookings] = useState<CompletedBooking[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [activeModal, setActiveModal] = useState<ModalKind>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setActiveModal(null);
+    const apiPeriod = PERIOD_API[period];
+    Promise.all([
+      fetchSolo(apiPeriod),
+      fetchDetail(apiPeriod),
+      fetchExpenses(apiPeriod),
+    ])
+      .then(([solo, detail, exp]) => {
+        setData(solo);
+        setBookings(detail);
+        setExpenses(exp);
+      })
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, [period]);
+
+  // Derive locally so edits/deletes in XarajatlarModal update cards instantly
+  const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
+  const netProfit     = (data?.revenue ?? 0) - totalExpenses;
+  const netColor      = netProfit >= 0 ? "text-green-400" : "text-red-400";
+
+  if (loading) return <SkeletonKPI />;
+  if (!data) return (
+    <div className="text-center py-10 text-sm text-muted-foreground">
+      Ma'lumot yuklanmadi
     </div>
+  );
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        <ClickableKpiCard
+          index={0} emoji="💰" label="Daromad"
+          value={fmtFull(data.revenue)}
+          onClick={() => setActiveModal("daromad")}
+        />
+        <ClickableKpiCard
+          index={1} emoji="👥" label="Mijozlar"
+          value={`${data.clients} ta`}
+          onClick={() => setActiveModal("mijozlar")}
+        />
+        <ClickableKpiCard
+          index={2} emoji="💸" label="Xarajatlar"
+          value={fmtFull(totalExpenses)}
+          valueColor="text-red-400"
+          onClick={() => setActiveModal("xarajatlar")}
+        />
+        <ClickableKpiCard
+          index={3} emoji="📈" label="Sof foyda"
+          value={fmtFull(Math.abs(netProfit))}
+          valueColor={netColor}
+          sub={netProfit < 0 ? "Zarar" : undefined}
+          subColor="text-red-400"
+          onClick={() => setActiveModal("sof-foyda")}
+        />
+      </div>
+
+      <AnimatePresence>
+        {activeModal === "daromad" && (
+          <DaromadModal
+            data={data}
+            bookings={bookings}
+            onClose={() => setActiveModal(null)}
+          />
+        )}
+        {activeModal === "mijozlar" && (
+          <MijozlarModal
+            bookings={bookings}
+            onClose={() => setActiveModal(null)}
+          />
+        )}
+        {activeModal === "xarajatlar" && (
+          <XarajatlarModal
+            expenses={expenses}
+            onExpensesChange={setExpenses}
+            onClose={() => setActiveModal(null)}
+          />
+        )}
+        {activeModal === "sof-foyda" && (
+          <SofFoydaModal
+            data={data}
+            totalExpenses={totalExpenses}
+            netProfit={netProfit}
+            period={period}
+            onClose={() => setActiveModal(null)}
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
@@ -409,22 +994,24 @@ function JamoaAnalytics({ period }: { period: Period }) {
 
   if (loading) return <SkeletonKPI />;
   if (!data) return (
-    <div className="text-center py-10 text-sm text-muted-foreground">Ma'lumot yuklanmadi</div>
+    <div className="text-center py-10 text-sm text-muted-foreground">
+      Ma'lumot yuklanmadi
+    </div>
   );
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <KpiCard index={0} emoji="💰" label="Umumiy daromad" value={fmtFull(data.revenue)} />
-        <KpiCard index={1} emoji="👥" label="Jami mijozlar" value={`${data.clients} ta`} />
-        <KpiCard index={2} emoji="❌" label="Bekor qilingan" value={`${data.cancelled} ta`} />
-        <KpiCard index={3} emoji="📅" label="Jami bronlar" value={`${data.totalBookings} ta`} />
+        <ClickableKpiCard index={0} emoji="💰" label="Umumiy daromad" value={fmtFull(data.revenue)} onClick={() => {}} />
+        <ClickableKpiCard index={1} emoji="👥" label="Jami mijozlar"  value={`${data.clients} ta`}  onClick={() => {}} />
+        <ClickableKpiCard index={2} emoji="❌" label="Bekor qilingan" value={`${data.cancelled} ta`} onClick={() => {}} />
+        <ClickableKpiCard index={3} emoji="📅" label="Jami bronlar"   value={`${data.totalBookings} ta`} onClick={() => {}} />
       </div>
 
       {data.barbers.length > 0 && (
         <Section title="👨‍✂️ Ustalar statistikasi" index={1}>
           <div className="space-y-1">
-            {data.barbers.map((b) => (
+            {data.barbers.map(b => (
               <Link key={b.id} href={`/settings/analytics/barber/${encodeURIComponent(b.id)}`}>
                 <div className="flex items-center gap-3 py-3 px-1 rounded-xl hover:bg-white/4 cursor-pointer transition-all group">
                   <span className="text-lg w-7 shrink-0">{b.medal}</span>
@@ -464,7 +1051,6 @@ function JamoaAnalytics({ period }: { period: Period }) {
           </div>
         </Section>
       )}
-
     </div>
   );
 }
@@ -477,7 +1063,9 @@ function EmptyState() {
       <div className="text-5xl mb-4">📊</div>
       <div className="font-bold text-foreground mb-2">Hozircha ma'lumot yo'q</div>
       <div className="text-sm text-muted-foreground">
-        Birinchi bronni qabul qiling<br />va statistikani ko'ring ✂️
+        Birinchi bronni qabul qiling
+        <br />
+        va statistikani ko'ring ✂️
       </div>
     </div>
   );
@@ -499,7 +1087,9 @@ export default function AnalyticsPage() {
             <ChevronLeft className="w-5 h-5" />
           </button>
         </Link>
-        <h1 className="text-xl font-display font-bold text-foreground">📊 Tahlil</h1>
+        <h1 className="text-xl font-display font-bold text-foreground">
+          📊 Tahlil
+        </h1>
       </div>
 
       <PeriodFilter period={period} onChange={setPeriod} />
