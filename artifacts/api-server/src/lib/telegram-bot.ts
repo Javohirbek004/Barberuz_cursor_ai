@@ -1594,22 +1594,32 @@ async function confirmBookingSession(
     console.warn("[Bot] client upsert skipped:", (err as Error).message);
   }
 
-  // Insert into bookings table
-  try {
-    const totalDur = data.services.reduce((a, s) => a + (s.duration || 0), 0);
-    await db.insert(bookingsTable).values({
-      barberId: session.barberId,
-      clientId: clientId || null,
-      clientName: firstName,
-      serviceName: data.services.map(s => s.name).join(", "),
-      date: toISODate(data.date),
-      startTime: data.time,
-      endTime: addMinutes(data.time, totalDur || 30),
-      price: String(data.totalPrice),
-      status: "confirmed",
-    });
-  } catch (err) {
-    console.warn("[Bot] bookings insert skipped:", (err as Error).message);
+  // Insert into bookings table.
+  // Skip if the fast-path (tgCustomer) already created the row and linked it
+  // via session.bookingId — prevents duplicate entries in dashboard/analytics.
+  if (!session.bookingId) {
+    try {
+      const totalDur = data.services.reduce((a, s) => a + (s.duration || 0), 0);
+      await db.insert(bookingsTable).values({
+        barberId: session.barberId,
+        clientId: clientId || null,
+        clientName: firstName,
+        serviceName: data.services.map(s => s.name).join(", "),
+        date: toISODate(data.date),
+        startTime: data.time,
+        endTime: addMinutes(data.time, totalDur || 30),
+        price: String(data.totalPrice),
+        status: "confirmed",
+      });
+    } catch (err) {
+      console.warn("[Bot] bookings insert skipped:", (err as Error).message);
+    }
+  } else if (clientId) {
+    // Fast-path row exists — backfill clientId now that we have it resolved
+    db.update(bookingsTable)
+      .set({ clientId, updatedAt: new Date() })
+      .where(eq(bookingsTable.id, session.bookingId))
+      .catch(() => {});
   }
 
   log("booking_confirmed", { sessionId, telegramUserId: tgUserId, barberId: session.barberId });

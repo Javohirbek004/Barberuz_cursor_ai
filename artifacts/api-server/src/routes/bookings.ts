@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, bookingsTable, clientsTable, servicesTable } from "@workspace/db";
-import { eq, and, sql, or } from "drizzle-orm";
+import { eq, and, sql, or, gte, lte, inArray } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 import { sendDirectBookingNotification } from "../lib/telegram-bot";
 
@@ -72,10 +72,20 @@ router.get("/", authenticate, async (req, res) => {
     const user = getUser(req);
     const { date, status, clientId } = req.query as Record<string, string>;
     const conditions = [eq(bookingsTable.barberId, user.id)];
-    if (date && date !== "today") conditions.push(eq(bookingsTable.date, date));
     if (date === "today") {
       const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
       conditions.push(eq(bookingsTable.date, today));
+    } else if (date === "upcoming") {
+      // Return confirmed/pending bookings from today onward (next 30 days)
+      const todayDate = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+      const maxDate = new Date();
+      maxDate.setDate(maxDate.getDate() + 30);
+      const maxDateStr = maxDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+      conditions.push(gte(bookingsTable.date, todayDate));
+      conditions.push(lte(bookingsTable.date, maxDateStr));
+      conditions.push(inArray(bookingsTable.status, ["confirmed", "pending"]));
+    } else if (date) {
+      conditions.push(eq(bookingsTable.date, date));
     }
     if (status) conditions.push(eq(bookingsTable.status, status as any));
     if (clientId) conditions.push(eq(bookingsTable.clientId, clientId));

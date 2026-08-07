@@ -902,6 +902,29 @@ function YakkaAnalytics({ period }: { period: Period }) {
       .finally(() => setLoading(false));
   }, [period]);
 
+  // Re-fetch whenever the user navigates back to this page
+  useEffect(() => {
+    function onVisibility() {
+      if (document.visibilityState !== "visible") return;
+      const apiPeriod = PERIOD_API[period];
+      setLoading(true);
+      Promise.all([
+        fetchSolo(apiPeriod),
+        fetchDetail(apiPeriod),
+        fetchExpenses(apiPeriod),
+      ])
+        .then(([solo, detail, exp]) => {
+          setData(solo);
+          setBookings(detail);
+          setExpenses(exp);
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [period]);
+
   // Derive locally so edits/deletes in XarajatlarModal update cards instantly
   const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
   const netProfit     = (data?.revenue ?? 0) - totalExpenses;

@@ -7,8 +7,8 @@
  */
 
 import { Router } from "express";
-import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable } from "@workspace/db";
-import { eq, and, lt, isNull, ne } from "drizzle-orm";
+import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable, clientsTable } from "@workspace/db";
+import { eq, and, lt, isNull, ne, or, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendBarberBookingNotification } from "../lib/telegram-bot";
 
@@ -162,18 +162,97 @@ router.post("/sessions", async (req, res) => {
 
     if (tgCustomer?.tgId) {
       const clientFirstName = (tgCustomer.name as string || "Mijoz").split(" ")[0];
+      const tgIdStr = String(tgCustomer.tgId);
 
       await db.insert(bookingSessionsTable).values({
         sessionId,
         barberId,
         bookingData: JSON.stringify(bookingData),
-        clientTelegramId: String(tgCustomer.tgId),
+        clientTelegramId: tgIdStr,
         clientName: tgCustomer.name || "Mijoz",
         clientTelegramUsername: tgCustomer.username || null,
         clientPhone: safeClientPhone,
         status: "confirmed",
         expiresAt,
       });
+
+      // Upsert client record (mirrors confirmBookingSession in telegram-bot.ts)
+      // so analytics client-identity counts remain correct.
+      let clientId: string | null = null;
+      try {
+        const conditions: ReturnType<typeof and>[] = [];
+        if (safeClientPhone) {
+          conditions.push(and(eq(clientsTable.barberId, barberId), eq(clientsTable.phone, safeClientPhone))!);
+        }
+        conditions.push(and(eq(clientsTable.barberId, barberId), eq(clientsTable.telegramId, tgIdStr))!);
+
+        const [existing] = await db
+          .select()
+          .from(clientsTable)
+          .where(or(...conditions))
+          .limit(1);
+
+        if (existing) {
+          await db.update(clientsTable).set({
+            name: (tgCustomer.name as string) || existing.name,
+            telegramId: tgIdStr,
+            ...(safeClientPhone && { phone: safeClientPhone }),
+            visitCount: sql`${clientsTable.visitCount} + 1`,
+            totalSpent: sql`${clientsTable.totalSpent} + ${Number(totalPrice) || 0}`,
+            lastVisit: new Date(),
+            updatedAt: new Date(),
+          }).where(eq(clientsTable.id, existing.id));
+          clientId = existing.id;
+        } else {
+          const [newClient] = await db.insert(clientsTable).values({
+            barberId,
+            name: (tgCustomer.name as string) || "Mijoz",
+            phone: safeClientPhone,
+            telegramId: tgIdStr,
+            status: "new",
+            visitCount: 1,
+            totalSpent: String(Number(totalPrice) || 0),
+            lastVisit: new Date(),
+          }).returning();
+          clientId = newClient?.id ?? null;
+        }
+      } catch (clientErr) {
+        console.warn("[PublicAPI] client upsert skipped:", (clientErr as Error).message);
+      }
+
+      // Insert booking row (with clientId) and link it back to the session
+      // via bookingSessionsTable.bookingId — this makes confirmation idempotent:
+      // if confirmBookingSession ever runs for this session, it will see
+      // session.bookingId is already set and skip the duplicate insert.
+      try {
+        const durationMins = Math.max(Number(totalDuration) || 60, 1);
+        const startMins    = timeToMins(time);
+        const endMins      = startMins + durationMins;
+        const endTimeStr   = `${String(Math.floor(endMins / 60)).padStart(2, "0")}:${String(endMins % 60).padStart(2, "0")}`;
+        const svcName      = Array.isArray(services) && services.length > 0
+          ? (services as Array<{ name: string }>).map(s => s.name).join(", ")
+          : null;
+
+        const [inserted] = await db.insert(bookingsTable).values({
+          barberId,
+          clientId: clientId || null,
+          clientName: (tgCustomer.name as string) || "Mijoz",
+          serviceName: svcName,
+          date: isoDate,
+          startTime: time,
+          endTime: endTimeStr,
+          price: String(Number(totalPrice) || 0),
+          status: "confirmed",
+        }).returning({ id: bookingsTable.id });
+
+        if (inserted?.id) {
+          await db.update(bookingSessionsTable)
+            .set({ bookingId: inserted.id })
+            .where(eq(bookingSessionsTable.sessionId, sessionId));
+        }
+      } catch (bookingErr) {
+        console.error("[PublicAPI] booking row insert failed (non-fatal):", bookingErr);
+      }
 
       res.json({
         sessionId,
