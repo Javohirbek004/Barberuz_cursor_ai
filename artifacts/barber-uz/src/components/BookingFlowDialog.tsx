@@ -74,13 +74,13 @@ function fmtMins(total: number): string {
 }
 
 function todayStr(): string {
-  return new Date().toISOString().split("T")[0];
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
 }
 
 function tomorrowStr(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
-  return d.toISOString().split("T")[0];
+  return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
 }
 
 const UZ_MONTHS_DIALOG = ["Yanv","Fevr","Mart","Apr","May","Iyun","Iyul","Avg","Sen","Okt","Noy","Dek"];

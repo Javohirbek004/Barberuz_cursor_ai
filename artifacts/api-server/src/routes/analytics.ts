@@ -149,9 +149,9 @@ router.get("/solo", authenticate, async (req, res) => {
       ),
     ]);
 
-    const completed = bookings.filter(b => b.status === "completed");
+    const completed = bookings.filter(b => b.status === "completed" || b.status === "confirmed");
     const cancelled = bookings.filter(b => b.status === "cancelled");
-    const prevCompleted = prevBookings.filter(b => b.status === "completed");
+    const prevCompleted = prevBookings.filter(b => b.status === "completed" || b.status === "confirmed");
 
     const revenue = completed.reduce((s, b) => s + Number(b.price), 0);
     const prevRevenue = prevCompleted.reduce((s, b) => s + Number(b.price), 0);
@@ -246,9 +246,9 @@ router.get("/team", authenticate, async (req, res) => {
       ),
     ]);
 
-    const completed = bookings.filter(b => b.status === "completed");
+    const completed = bookings.filter(b => b.status === "completed" || b.status === "confirmed");
     const cancelled = bookings.filter(b => b.status === "cancelled");
-    const prevCompleted = prevBookings.filter(b => b.status === "completed");
+    const prevCompleted = prevBookings.filter(b => b.status === "completed" || b.status === "confirmed");
 
     const revenue = completed.reduce((s, b) => s + Number(b.price), 0);
     const prevRevenue = prevCompleted.reduce((s, b) => s + Number(b.price), 0);
@@ -308,7 +308,7 @@ router.get("/detail", authenticate, async (req, res) => {
     );
 
     const completedBookings = bookings
-      .filter(b => b.status === "completed")
+      .filter(b => b.status === "completed" || b.status === "confirmed")
       .map(b => ({
         id: b.id,
         clientName: b.clientName,

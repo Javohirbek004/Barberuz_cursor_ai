@@ -333,8 +333,20 @@ function IndividualDashboard() {
 
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useGetDashboardStats();
   const { data: profile } = useGetProfile();
-  const today = new Date().toISOString().split("T")[0];
+  // Use Tashkent date so today's filter matches the server-side timezone
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
   const { data: bookingsData, isLoading: bookingsLoading, refetch } = useListBookings({ date: today });
+  // Separate query for the "Yaqin bronlar" list — shows today + future bookings
+  const { data: upcomingData, isLoading: upcomingLoading } = useListBookings({ date: "upcoming" as any });
+
+  // Periodic auto-refresh every 60 s so Telegram-confirmed bookings appear without reload
+  useEffect(() => {
+    const id = setInterval(() => {
+      refetch();
+      refetchStats();
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [refetch, refetchStats]);
 
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -350,14 +362,20 @@ function IndividualDashboard() {
   const bookingsListRef = useRef<HTMLDivElement>(null);
   const bookingItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  const realBookings = bookingsData?.bookings ?? [];
-  const bookings = realBookings;
+  // Today's bookings — for stats, free-slot calc, and TodayStatsModal
+  const bookings = bookingsData?.bookings ?? [];
   const activeStats = stats;
 
-  const upcomingBookings = bookings
+  // Upcoming bookings from today onward — shown in the "Yaqin bronlar" display list
+  const upcomingBookings = (upcomingData?.bookings ?? [])
     .filter((b) => b.status !== "cancelled" && b.status !== "completed")
-    .sort((a, b) => a.startTime.localeCompare(b.startTime))
-    .slice(0, 2);
+    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+    .slice(0, 10);
+
+  // Today's upcoming only — used for "next booking" time calculation (same-day, time-based)
+  const todayUpcoming = bookings
+    .filter((b) => b.status !== "cancelled" && b.status !== "completed")
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   // Compute free time windows from actual working hours and today's bookings
   const workStart = toMins(profile?.workingHoursStart ?? "09:00");
@@ -367,14 +385,14 @@ function IndividualDashboard() {
   const freeSlots   = freeWindows.reduce((s, w) => s + Math.floor((w.end - w.start) / 30), 0);
 
   // Stats for TodayStatsModal
-  const todayTotal    = todayBusy.length;
+  const todayTotal      = todayBusy.length;
   const todayCompleted  = bookings.filter(b => b.status === "completed").length;
   const todayRemaining  = bookings.filter(b => b.status === "confirmed" || b.status === "pending").length;
   const todayDurMins    = todayBusy.reduce((s, b) => s + toMins(b.endTime) - toMins(b.startTime), 0);
 
-  const durationLabel = calcTotalDuration(upcomingBookings);
+  const durationLabel = calcTotalDuration(todayUpcoming);
 
-  const { main: nextMain, sub: nextSub, nextId } = calcNextBookingInfo(upcomingBookings, now);
+  const { main: nextMain, sub: nextSub, nextId } = calcNextBookingInfo(todayUpcoming, now);
 
   const handleScrollToNext = () => {
     if (!nextId) return;
@@ -456,7 +474,7 @@ function IndividualDashboard() {
           {t("dash.recent_bookings")}
         </h2>
 
-        {bookingsLoading ? (
+        {(bookingsLoading || upcomingLoading) ? (
           <p className="text-muted-foreground text-center py-8 text-sm">{t("loading")}</p>
         ) : upcomingBookings.length > 0 ? (
           <div className="space-y-2">
@@ -511,7 +529,7 @@ function IndividualDashboard() {
             <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
               <CalendarDays className="w-6 h-6 text-muted-foreground/40" />
             </div>
-            <p className="text-sm font-medium text-muted-foreground mb-1">Bugun hali bronlar yo'q</p>
+            <p className="text-sm font-medium text-muted-foreground mb-1">Yaqin bronlar yo'q</p>
             <p className="text-xs text-muted-foreground/50">
               Yangi bron qo'shish uchun + tugmasini bosing
             </p>
