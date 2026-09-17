@@ -1,5 +1,6 @@
+import "./load-env";
 import app from "./app";
-import { registerWebhook, isBotConfigured } from "./lib/telegram-bot";
+import { registerWebhook, isBotConfigured, startDevPolling } from "./lib/telegram-bot";
 import { startReminderJob } from "./lib/reminders";
 
 const rawPort = process.env["PORT"];
@@ -55,11 +56,7 @@ app.listen(port, async () => {
   // Doing so would overwrite the production webhook URL and break bot flows
   // for real users (their pending state lives in the prod server's memory).
   if (process.env.NODE_ENV === "development") {
-    console.log(
-      "[TelegramBot] Dev mode — skipping webhook auto-registration to avoid " +
-      "overwriting the production webhook. Use GET /api/telegram/setup to " +
-      "register a dev webhook manually if needed.",
-    );
+    startDevPolling();
     return;
   }
 

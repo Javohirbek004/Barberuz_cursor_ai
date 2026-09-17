@@ -146,8 +146,18 @@ async function callTelegram(
 // ──────────────────────────────────────────────────────────────
 
 function validateAppUrl(url: string): boolean {
-  if (!url || !url.startsWith("https://")) return false;
-  try { new URL(url); return true; } catch { return false; }
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "https:") return true;
+    const host = parsed.hostname;
+    return (
+      parsed.protocol === "http:" &&
+      (host === "localhost" || host === "127.0.0.1")
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1790,6 +1800,52 @@ export async function getWebhookInfo() {
   return callTelegram("getWebhookInfo", {});
 }
 
+export async function deleteWebhook() {
+  return callTelegram("deleteWebhook", { drop_pending_updates: true });
+}
+
+let pollingStarted = false;
+
+/** Local Windows has no public HTTPS URL, so Telegram webhooks cannot reach us. */
+export function startDevPolling() {
+  if (pollingStarted || !isBotConfigured()) return;
+  pollingStarted = true;
+
+  void (async () => {
+    await deleteWebhook();
+    console.log("[TelegramBot] Dev polling started (getUpdates). Talk to @" + (process.env.TELEGRAM_BOT_USERNAME || "BARBERUZ_YORDAMCHI_BOT"));
+    let offset = 0;
+    while (pollingStarted) {
+      const token = getToken();
+      try {
+        const res = await fetch(
+          `https://api.telegram.org/bot${token}/getUpdates?offset=${offset}&timeout=25&allowed_updates=${encodeURIComponent(JSON.stringify(["message", "callback_query"]))}`,
+        );
+        const json = (await res.json()) as {
+          ok?: boolean;
+          result?: Array<{ update_id: number }>;
+        };
+        if (!json.ok) {
+          console.error("[TelegramBot] getUpdates failed:", JSON.stringify(json));
+          await new Promise((r) => setTimeout(r, 3000));
+          continue;
+        }
+        for (const update of json.result || []) {
+          offset = update.update_id + 1;
+          await handleTelegramUpdate(update);
+        }
+      } catch (err) {
+        console.error("[TelegramBot] polling error:", err);
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    }
+  })();
+}
+
 export function isBotConfigured(): boolean {
-  return !!getToken();
+  const token = getToken();
+  if (!token || !token.includes(":")) return false;
+  // Ignore the common BotFather placeholder pasted in local .env files.
+  if (token.startsWith("123456789:")) return false;
+  return true;
 }
