@@ -5,7 +5,7 @@ packages:
   - scripts
 
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
 
 autoInstallPeers: false
 
