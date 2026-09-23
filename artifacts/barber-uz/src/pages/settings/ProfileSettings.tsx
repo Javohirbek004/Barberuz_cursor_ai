@@ -69,30 +69,59 @@ async function saveProfile(patch: Partial<ProfileData> & Record<string, unknown>
 }
 
 function parseSchedule(raw: string | null | undefined): WeekSchedule {
-  if (!raw) return DEFAULT_SCHEDULE;
+  const fallback = (): WeekSchedule => ({
+    monday:    { ...DEFAULT_SCHEDULE.monday },
+    tuesday:   { ...DEFAULT_SCHEDULE.tuesday },
+    wednesday: { ...DEFAULT_SCHEDULE.wednesday },
+    thursday:  { ...DEFAULT_SCHEDULE.thursday },
+    friday:    { ...DEFAULT_SCHEDULE.friday },
+    saturday:  { ...DEFAULT_SCHEDULE.saturday },
+    sunday:    { ...DEFAULT_SCHEDULE.sunday },
+  });
+  if (!raw) return fallback();
   try {
-    return JSON.parse(raw) as WeekSchedule;
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return fallback();
+    // Personal page stores { workDays: [...] } in the same column — not a week grid.
+    if ("workDays" in parsed && !("monday" in parsed)) return fallback();
+    const result = fallback();
+    for (const key of DAY_KEYS) {
+      const d = (parsed as Record<string, unknown>)[key];
+      if (!d || typeof d !== "object") continue;
+      const day = d as { enabled?: unknown; start?: unknown; end?: unknown };
+      result[key] = {
+        enabled: Boolean(day.enabled),
+        start: typeof day.start === "string" && day.start ? day.start : result[key].start,
+        end: typeof day.end === "string" && day.end ? day.end : result[key].end,
+      };
+    }
+    return result;
   } catch {
-    return DEFAULT_SCHEDULE;
+    return fallback();
   }
 }
 
 function parseSpecializations(raw: string | null | undefined): string[] {
   if (!raw) return [];
   try {
-    return JSON.parse(raw) as string[];
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === "string");
   } catch {
     return [];
   }
 }
 
 function schedulePreview(sched: WeekSchedule, t: (k: string) => string): string {
-  const on = DAY_KEYS.filter(d => sched[d].enabled);
+  const on = DAY_KEYS.filter(d => sched[d]?.enabled);
   if (on.length === 0) return t("profile.schedule.closed");
-  const first = t(DAY_KEY_TO_T[on[0]]).slice(0, 2);
-  const last  = t(DAY_KEY_TO_T[on[on.length - 1]]).slice(0, 2);
-  const start = sched[on[0]].start;
-  const end   = sched[on[on.length - 1]].end;
+  const firstDay = on[0];
+  const lastDay = on[on.length - 1];
+  if (!firstDay || !lastDay) return t("profile.schedule.closed");
+  const first = t(DAY_KEY_TO_T[firstDay]).slice(0, 2);
+  const last  = t(DAY_KEY_TO_T[lastDay]).slice(0, 2);
+  const start = sched[firstDay]?.start ?? "09:00";
+  const end = sched[lastDay]?.end ?? "21:00";
   return `${first}–${last} ${start}–${end}`;
 }
 
@@ -769,7 +798,10 @@ export default function ProfileSettings() {
   if (isLoading) {
     return (
       <Layout>
-        <div className="py-20 text-center text-muted-foreground text-sm">{t("loading")}</div>
+        <div className="py-20 flex flex-col items-center justify-center gap-3">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <div className="text-muted-foreground text-sm">{t("loading")}</div>
+        </div>
       </Layout>
     );
   }

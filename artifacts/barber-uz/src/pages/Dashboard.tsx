@@ -233,13 +233,17 @@ function BottomSheet({ open, onClose, children }: { open: boolean; onClose: () =
 }
 
 // ── Today Stats Modal ─────────────────────────────────────────────────────────
-function TodayStatsModal({ open, onClose, total, completed, remaining, durationMins }: {
+function TodayStatsModal({ open, onClose, total, completed, remaining, cancelled, durationMins }: {
   open: boolean; onClose: () => void;
-  total: number; completed: number; remaining: number; durationMins: number;
+  total: number; completed: number; remaining: number; cancelled: number; durationMins: number;
 }) {
   const dh = Math.floor(durationMins / 60);
   const dm = durationMins % 60;
   const durStr = dh > 0 ? (dm > 0 ? `${dh} soat ${dm} daq` : `${dh} soat`) : `${dm} daq`;
+  const metricCard =
+    "rounded-2xl p-4 text-center min-h-[6.25rem] h-full flex flex-col items-center justify-center";
+  const metricLabel = "text-xs mb-1 leading-snug";
+  const metricValue = "font-bold text-2xl leading-tight";
   return (
     <BottomSheet open={open} onClose={onClose}>
       <div className="overflow-y-auto px-5 pb-8 pt-2">
@@ -251,21 +255,22 @@ function TodayStatsModal({ open, onClose, total, completed, remaining, durationM
           <div className="text-xs text-muted-foreground mb-1">Jami bronlar</div>
           <div className="font-bold text-3xl text-white">{total} ta</div>
         </div>
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          <div className="bg-emerald-500/8 border border-emerald-500/20 rounded-2xl p-4 text-center">
-            <div className="text-xs text-emerald-400/80 mb-1">✅ Tugallangan</div>
-            <div className="font-bold text-2xl text-emerald-400">{completed} ta</div>
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <div className={`${metricCard} bg-emerald-500/8 border border-emerald-500/20`}>
+            <div className={`${metricLabel} text-emerald-400/80`}>✅ Tugallangan</div>
+            <div className={`${metricValue} text-emerald-400`}>{completed} ta</div>
           </div>
-          <div className="bg-amber-400/8 border border-amber-400/20 rounded-2xl p-4 text-center">
-            <div className="text-xs text-amber-400/80 mb-1">⏳ Kutilayotgan</div>
-            <div className="font-bold text-2xl text-amber-400">{remaining} ta</div>
+          <div className={`${metricCard} bg-amber-400/8 border border-amber-400/20`}>
+            <div className={`${metricLabel} text-amber-400/80`}>⏳ Kutilayotgan</div>
+            <div className={`${metricValue} text-amber-400`}>{remaining} ta</div>
           </div>
-        </div>
-        <div className="bg-white/5 border border-white/8 rounded-2xl p-4 mb-5 flex items-center gap-3">
-          <span className="text-2xl shrink-0">⏱</span>
-          <div>
-            <div className="text-xs text-muted-foreground mb-0.5">Umumiy bandlik</div>
-            <div className="font-bold text-foreground">{durationMins > 0 ? durStr : "—"}</div>
+          <div className={`${metricCard} bg-red-500/8 border border-red-500/20`}>
+            <div className={`${metricLabel} text-red-400/80`}>❌ Bekor qilingan</div>
+            <div className={`${metricValue} text-red-400`}>{cancelled} ta</div>
+          </div>
+          <div className={`${metricCard} bg-white/5 border border-white/8`}>
+            <div className={`${metricLabel} text-muted-foreground`}>⏱️ Bandlik</div>
+            <div className={`${metricValue} text-foreground`}>{durationMins > 0 ? durStr : "—"}</div>
           </div>
         </div>
         <button onClick={onClose} className="w-full py-3.5 rounded-2xl bg-primary/15 border border-primary/20 text-primary font-semibold text-sm">
@@ -388,6 +393,7 @@ function IndividualDashboard() {
   const todayTotal      = todayBusy.length;
   const todayCompleted  = bookings.filter(b => b.status === "completed").length;
   const todayRemaining  = bookings.filter(b => b.status === "confirmed" || b.status === "pending").length;
+  const todayCancelled  = bookings.filter(b => b.status === "cancelled").length;
   const todayDurMins    = todayBusy.reduce((s, b) => s + toMins(b.endTime) - toMins(b.startTime), 0);
 
   const durationLabel = calcTotalDuration(todayUpcoming);
@@ -556,6 +562,7 @@ function IndividualDashboard() {
         total={todayTotal}
         completed={todayCompleted}
         remaining={todayRemaining}
+        cancelled={todayCancelled}
         durationMins={todayDurMins}
       />
 

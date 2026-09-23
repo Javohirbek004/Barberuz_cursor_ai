@@ -28,3 +28,7 @@ for (const file of candidates) {
     if (process.env[key] === undefined) process.env[key] = value;
   }
 }
+
+if (!process.env.FEEDBACKS_BOT && process.env.FEEDBACKS_BOT_TOKEN) {
+  process.env.FEEDBACKS_BOT = process.env.FEEDBACKS_BOT_TOKEN;
+}

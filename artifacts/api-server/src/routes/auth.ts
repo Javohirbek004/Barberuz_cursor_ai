@@ -2,7 +2,7 @@ import { Router } from "express";
 import { randomBytes } from "crypto";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { hashPassword, legacyHash, generateToken, authenticate, getUser } from "../lib/auth";
+import { hashPassword, legacyHash, generateToken, authenticate, getUser, secretsEqual } from "../lib/auth";
 import { getTelegramLoginResult, storeLoginToken } from "../lib/telegram-bot";
 
 const router = Router();
@@ -195,8 +195,8 @@ router.post("/telegram-token", async (req, res) => {
       res.status(404).json({ error: "not_found", message: "No user linked to this Telegram ID" });
       return;
     }
-    const authToken = generateToken(user.id);
     const expiresIn = 10 * 60; // 10 minutes in seconds
+    const authToken = generateToken(user.id, expiresIn);
     console.log(`[Auth] telegram-token issued: userId=${user.id} tgId=${telegram_user_id}`);
     res.json({ authToken, expiresIn });
   } catch (err) {
@@ -228,8 +228,8 @@ router.post("/generate-login-link", authenticate, async (req, res) => {
 router.post("/telegram-verify", async (req, res) => {
   try {
     const { userId, telegramId, telegramUsername, secret } = req.body;
-    const expectedSecret = process.env.TELEGRAM_BOT_SECRET || "barber_telegram_secret_2024";
-    if (secret !== expectedSecret) {
+    const expectedSecret = process.env.TELEGRAM_BOT_SECRET?.trim();
+    if (!expectedSecret || typeof secret !== "string" || !secretsEqual(secret, expectedSecret)) {
       res.status(403).json({ error: "forbidden", message: "Invalid secret" });
       return;
     }

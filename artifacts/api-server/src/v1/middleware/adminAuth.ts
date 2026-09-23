@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 
-function getAdminSecret(): string {
-  return process.env.ADMIN_SECRET || "barber_admin_secret_change_me";
+function getAdminSecret(): string | null {
+  const secret = process.env.ADMIN_SECRET?.trim();
+  if (!secret || secret === "barber_admin_secret_change_me") return null;
+  return secret;
 }
 
 /**
@@ -9,8 +11,9 @@ function getAdminSecret(): string {
  * Protects export/import endpoints.
  */
 export function adminAuth(req: Request, res: Response, next: NextFunction) {
+  const expected = getAdminSecret();
   const provided = req.headers["x-admin-secret"];
-  if (!provided || provided !== getAdminSecret()) {
+  if (!expected || typeof provided !== "string" || provided !== expected) {
     res.status(401).json({
       error: "unauthorized",
       message: "Valid X-Admin-Secret header is required for this endpoint",

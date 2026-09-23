@@ -2,6 +2,9 @@ import "./load-env";
 import app from "./app";
 import { registerWebhook, isBotConfigured, startDevPolling } from "./lib/telegram-bot";
 import { startReminderJob } from "./lib/reminders";
+import { assertAuthSecrets } from "./lib/auth";
+
+assertAuthSecrets();
 
 const rawPort = process.env["PORT"];
 
