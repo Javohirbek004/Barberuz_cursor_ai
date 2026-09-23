@@ -3,5 +3,9 @@
   "framework": "vite",
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "pnpm --filter @workspace/barber-uz run build",
-  "outputDirectory": "artifacts/barber-uz/dist/public"
+  "outputDirectory": "artifacts/barber-uz/dist/public",
+  "env": {
+    "PORT": "5173",
+    "BASE_PATH": "/"
+  }
 }

@@ -7,12 +7,9 @@ import { fileURLToPath } from "url";
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, appDir, "");
-  const rawPort = env.PORT || process.env.PORT || "5173";
-  const parsedPort = Number(rawPort);
-  const port = Number.isNaN(parsedPort) || parsedPort <= 0 ? 5173 : parsedPort;
-
-  const basePath = env.BASE_PATH || process.env.BASE_PATH || "/";
+  const env = loadEnv(mode, appDir, "VITE_");
+  const port = 5173;
+  const basePath = process.env.BASE_PATH || "/";
   const apiTarget = env.VITE_API_BASE_URL || process.env.VITE_API_BASE_URL || "http://localhost:4000";
 
   return {
