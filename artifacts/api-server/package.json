@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx ./src/index.ts",
-    "build": "tsx ./build.ts",
+    "build": "node ./build.mjs",
+    "start": "node dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -14,14 +15,14 @@
     "drizzle-orm": "catalog:",
     "express": "^5",
     "cookie-parser": "^1.4.7",
-    "cors": "^2"
+    "cors": "^2",
+    "esbuild": "^0.27.3",
+    "tsx": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "@types/express": "^5.0.6",
     "@types/cors": "^2.8.19",
-    "@types/cookie-parser": "^1.4.10",
-    "esbuild": "^0.27.3",
-    "tsx": "catalog:"
+    "@types/cookie-parser": "^1.4.10"
   }
 }
