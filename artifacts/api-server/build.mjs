@@ -1,10 +1,35 @@
 import path from "path";
-import { fileURLToPath } from "url";
-import { build as esbuild } from "esbuild";
+import { createRequire } from "module";
+import { fileURLToPath, pathToFileURL } from "url";
+import { existsSync } from "fs";
 import { rm, readFile } from "fs/promises";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function loadEsbuild() {
+  const dirs = [
+    __dirname,
+    path.resolve(__dirname, "../.."),
+    process.cwd(),
+  ];
+  const errors = [];
+  for (const dir of dirs) {
+    const pkgJson = path.join(dir, "package.json");
+    if (!existsSync(pkgJson)) continue;
+    try {
+      const require = createRequire(pathToFileURL(pkgJson).href);
+      return require("esbuild");
+    } catch (err) {
+      errors.push(`${dir}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  throw new Error(
+    "Cannot load esbuild. Tried:\n" + errors.join("\n"),
+  );
+}
+
+const { build: esbuild } = loadEsbuild();
 
 const allowlist = [
   "@google/generative-ai",

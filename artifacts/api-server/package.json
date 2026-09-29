@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx ./src/index.ts",
-    "build": "node -e \"console.log('api-server: skip esbuild bundle')\"",
-    "start": "tsx ./src/index.ts",
+    "build": "node ./build.mjs",
+    "start": "node dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
