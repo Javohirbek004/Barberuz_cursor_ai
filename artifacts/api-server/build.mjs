@@ -4,8 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(dir, "../..");
 const distDir = path.join(dir, "dist");
 const outfile = path.join(distDir, "index.mjs");
+const slash = (p) => p.split(path.sep).join("/");
 
 rmSync(distDir, { recursive: true, force: true });
 mkdirSync(distDir, { recursive: true });
@@ -20,13 +22,15 @@ const result = spawnSync(
   command,
   [
     ...prefix,
-    path.join(dir, "src/index.ts"),
+    slash(path.join(dir, "src/index.ts")),
     "--bundle",
     "--platform=node",
     "--format=esm",
-    `--outfile=${outfile}`,
+    `--outfile=${slash(outfile)}`,
     "--minify",
     '--define:process.env.NODE_ENV="production"',
+    `--alias:@workspace/db=${slash(path.join(repoRoot, "lib/db/src/index.ts"))}`,
+    `--alias:@workspace/api-zod=${slash(path.join(repoRoot, "lib/api-zod/src/index.ts"))}`,
   ],
   {
     stdio: "inherit",
