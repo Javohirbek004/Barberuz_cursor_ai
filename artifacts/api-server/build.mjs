@@ -92,6 +92,9 @@ await esbuild.build({
   minify: true,
   logLevel: "info",
   nodePaths,
+  banner: {
+    js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
+  },
   alias: {
     "@workspace/db": path.join(repoRoot, "lib/db/src/index.ts"),
     "@workspace/api-zod": path.join(repoRoot, "lib/api-zod/src/index.ts"),
