@@ -1,16 +1,16 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(dir, "../..");
 const distDir = path.join(dir, "dist");
-const outfile = path.join(distDir, "index.mjs");
+const outfile = path.join(dir, "server.mjs");
 const slash = (p) => p.split(path.sep).join("/");
 
+if (existsSync(outfile)) rmSync(outfile, { force: true });
 rmSync(distDir, { recursive: true, force: true });
-mkdirSync(distDir, { recursive: true });
 
 const usePnpm = Boolean(process.env.npm_execpath?.includes("pnpm") || process.env.PNPM_HOME);
 const command = usePnpm ? "pnpm" : "npx";
