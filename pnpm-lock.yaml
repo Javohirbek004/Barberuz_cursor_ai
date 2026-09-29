@@ -159,6 +159,9 @@ importers:
 
   artifacts/api-server:
     dependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.3.14
+        version: 0.3.14
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
@@ -174,15 +177,24 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.1(@electric-sql/pglite@0.3.14)(@types/pg@8.18.0)(pg@8.20.0)
+      drizzle-zod:
+        specifier: ^0.8.3
+        version: 0.8.3(drizzle-orm@0.45.1(@electric-sql/pglite@0.3.14)(@types/pg@8.18.0)(pg@8.20.0))(zod@3.25.76)
       esbuild:
         specifier: 0.27.3
         version: 0.27.3
       express:
         specifier: ^5
         version: 5.2.1
+      pg:
+        specifier: ^8.20.0
+        version: 8.20.0
       tsx:
         specifier: 'catalog:'
         version: 4.21.0
+      zod:
+        specifier: 'catalog:'
+        version: 3.25.76
     devDependencies:
       '@types/cookie-parser':
         specifier: ^1.4.10

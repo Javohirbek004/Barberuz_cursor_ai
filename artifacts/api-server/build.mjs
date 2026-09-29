@@ -28,7 +28,7 @@ const result = spawnSync(
     "--format=esm",
     `--outfile=${slash(outfile)}`,
     "--minify",
-    '--define:process.env.NODE_ENV="production"',
+    "--packages=external",
     `--alias:@workspace/db=${slash(path.join(repoRoot, "lib/db/src/index.ts"))}`,
     `--alias:@workspace/api-zod=${slash(path.join(repoRoot, "lib/api-zod/src/index.ts"))}`,
   ],
