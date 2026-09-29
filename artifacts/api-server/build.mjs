@@ -7,28 +7,51 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(dir, "../..");
 const outfile = path.join(dir, "server.mjs");
-const slash = (p) => p.split(path.sep).join("/");
 
-const nodePaths = [
-  path.join(dir, "node_modules"),
-  path.join(repoRoot, "node_modules"),
-].filter(existsSync);
+function pnpm(args, cwd = repoRoot) {
+  const result = spawnSync("pnpm", args, {
+    cwd,
+    stdio: "inherit",
+    env: { ...process.env, CI: "true" },
+    shell: process.platform === "win32",
+  });
+  if (result.error) throw result.error;
+  if (result.status) process.exit(result.status);
+}
+
+function pnpmDirs() {
+  return [
+    path.join(repoRoot, "node_modules/.pnpm"),
+    path.join(dir, "node_modules/.pnpm"),
+  ].filter(existsSync);
+}
+
+function collectNodePaths() {
+  const paths = [
+    path.join(dir, "node_modules"),
+    path.join(repoRoot, "node_modules"),
+  ];
+  for (const pnpmDir of pnpmDirs()) {
+    for (const name of readdirSync(pnpmDir)) {
+      const nm = path.join(pnpmDir, name, "node_modules");
+      if (existsSync(nm)) paths.push(nm);
+    }
+  }
+  return paths.filter(existsSync);
+}
 
 function loadEsbuild() {
-  const pkgCandidates = [
+  const pkgs = [
     path.join(dir, "node_modules/esbuild/package.json"),
     path.join(repoRoot, "node_modules/esbuild/package.json"),
   ];
-  const pnpmDir = path.join(repoRoot, "node_modules/.pnpm");
-  if (existsSync(pnpmDir)) {
+  for (const pnpmDir of pnpmDirs()) {
     for (const name of readdirSync(pnpmDir)) {
       if (!name.startsWith("esbuild@")) continue;
-      pkgCandidates.push(
-        path.join(pnpmDir, name, "node_modules/esbuild/package.json"),
-      );
+      pkgs.push(path.join(pnpmDir, name, "node_modules/esbuild/package.json"));
     }
   }
-  for (const pkg of pkgCandidates) {
+  for (const pkg of pkgs) {
     if (!existsSync(pkg)) continue;
     try {
       return createRequire(pathToFileURL(pkg).href)("esbuild");
@@ -41,7 +64,26 @@ function loadEsbuild() {
 
 if (existsSync(outfile)) rmSync(outfile, { force: true });
 
-const buildOptions = {
+function canResolve(name) {
+  return collectNodePaths().some((p) => existsSync(path.join(p, name)));
+}
+
+let esbuild = loadEsbuild();
+if (!esbuild || !canResolve("express") || !canResolve("drizzle-orm")) {
+  console.log("installing api-server workspace dependencies for esbuild");
+  pnpm(["install", "--filter", "@workspace/api-server..."]);
+  esbuild = loadEsbuild();
+}
+
+if (!esbuild) {
+  console.error("esbuild is still missing after install");
+  process.exit(1);
+}
+
+const nodePaths = collectNodePaths();
+console.log("building fully bundled server.mjs with", nodePaths.length, "node module paths");
+
+await esbuild.build({
   entryPoints: [path.join(dir, "src/index.ts")],
   bundle: true,
   platform: "node",
@@ -55,49 +97,4 @@ const buildOptions = {
     "@workspace/api-zod": path.join(repoRoot, "lib/api-zod/src/index.ts"),
   },
   external: ["pg-native"],
-};
-
-const esbuild = loadEsbuild();
-
-if (esbuild) {
-  console.log("building server with local esbuild");
-  await esbuild.build(buildOptions);
-  process.exit(0);
-}
-
-console.log("local esbuild missing; using pnpm dlx / npx with NODE_PATH");
-const usePnpm = Boolean(process.env.npm_execpath?.includes("pnpm") || process.env.PNPM_HOME);
-const command = usePnpm ? "pnpm" : "npx";
-const prefix = usePnpm ? ["dlx", "esbuild@0.27.3"] : ["--yes", "esbuild@0.27.3"];
-
-const result = spawnSync(
-  command,
-  [
-    ...prefix,
-    slash(path.join(dir, "src/index.ts")),
-    "--bundle",
-    "--platform=node",
-    "--format=esm",
-    `--outfile=${slash(outfile)}`,
-    "--minify",
-    `--alias:@workspace/db=${slash(path.join(repoRoot, "lib/db/src/index.ts"))}`,
-    `--alias:@workspace/api-zod=${slash(path.join(repoRoot, "lib/api-zod/src/index.ts"))}`,
-    "--external:pg-native",
-  ],
-  {
-    stdio: "inherit",
-    cwd: dir,
-    env: {
-      ...process.env,
-      NODE_PATH: nodePaths.join(path.delimiter),
-    },
-    shell: process.platform === "win32",
-  },
-);
-
-if (result.error) {
-  console.error(result.error);
-  process.exit(1);
-}
-
-process.exit(result.status === null ? 1 : result.status);
+});
