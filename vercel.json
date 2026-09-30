@@ -7,5 +7,15 @@
   "env": {
     "PORT": "5173",
     "BASE_PATH": "/"
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api",
+      "destination": "https://barber-uz-clq6.onrender.com/api"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://barber-uz-clq6.onrender.com/api/:path*"
+    }
+  ]
 }
