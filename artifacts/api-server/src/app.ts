@@ -9,6 +9,10 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));       // large enough for import payloads
 app.use(express.urlencoded({ extended: true }));
 
+app.get("/", (_req, res) => {
+  res.json({ status: "ok", message: "Barber.uz API is running" });
+});
+
 // Legacy API — used by the frontend
 app.use("/api", router);
 
