@@ -17,7 +17,7 @@ import { motion } from "framer-motion";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const RESET_BOT_URL = "https://t.me/Barber_uz_bot?start=reset_password";
+const RESET_BOT_URL = "https://t.me/BARBERUZ_YORDAMCHI_BOT?start=reset_password";
 
 export default function Login() {
   const { t } = useTranslation();

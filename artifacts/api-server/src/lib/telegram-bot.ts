@@ -2,8 +2,9 @@
  * Telegram Bot Handler for @Barberuz_yordamchi_bot
  *
  * Deep-link formats:
- *  Registration : https://t.me/Barberuz_yordamchi_bot?start=reg_{uuid}_{lang}
- *  Login        : https://t.me/Barberuz_yordamchi_bot?start=auth_{code}_{lang}
+ *  Registration : https://t.me/BARBERUZ_YORDAMCHI_BOT?start=reg_{uuid}_{lang}
+ *  Login        : https://t.me/BARBERUZ_YORDAMCHI_BOT?start=auth_{code}_{lang}
+ *  Password reset: https://t.me/BARBERUZ_YORDAMCHI_BOT?start=reset_password
  *
  * Registration flow:
  *  1. /start reg_{uuid}_{lang}  → look up user by uuid → ask phone
@@ -606,9 +607,13 @@ export async function handleTelegramUpdate(update: unknown) {
 
   // ── /start ──────────────────────────────────────────────────
   if (text.startsWith("/start")) {
-    const payload = text.split(" ")[1]?.trim() || "";
+    const payload = text
+      .replace(/^\/start(?:@[\w]+)?\s*/i, "")
+      .trim()
+      .split("@")[0]
+      .trim();
 
-    if (payload === "reset_password") {
+    if (payload.toLowerCase() === "reset_password") {
       await handlePasswordResetStart(chatId);
       return;
     }
