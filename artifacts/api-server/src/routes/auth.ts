@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { randomBytes } from "crypto";
 import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, ilike, or } from "drizzle-orm";
 import { hashPassword, legacyHash, generateToken, authenticate, getUser, secretsEqual } from "../lib/auth";
 import { getTelegramLoginResult, storeLoginToken } from "../lib/telegram-bot";
 
@@ -33,6 +33,32 @@ async function uniqueUsername(baseName: string): Promise<string> {
     if (!exists) return candidate;
   }
   return `barber_${Date.now()}`;
+}
+
+async function findUserForLogin(identifier: string) {
+  const trimmed = identifier.trim();
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length >= 9) {
+    const local = digits.startsWith("998") ? digits.slice(3) : digits;
+    const nine = local.slice(-9);
+    const variants = Array.from(new Set([
+      trimmed,
+      trimmed.replace(/\s+/g, ""),
+      digits,
+      `+${digits}`,
+      `+998${nine}`,
+      `998${nine}`,
+      nine,
+    ]));
+    for (const candidate of variants) {
+      const [byPhone] = await db.select().from(usersTable).where(eq(usersTable.phone, candidate)).limit(1);
+      if (byPhone) return byPhone;
+    }
+  }
+  const [user] = await db.select().from(usersTable)
+    .where(or(eq(usersTable.username, trimmed), ilike(usersTable.name, trimmed)))
+    .limit(1);
+  return user ?? null;
 }
 
 router.post("/register", async (req, res) => {
@@ -84,11 +110,7 @@ router.post("/login", async (req, res) => {
       res.status(400).json({ error: "validation", message: "Missing credentials" });
       return;
     }
-    // Allow login by username OR by display name (case-insensitive)
-    const { ilike, or } = await import("drizzle-orm");
-    const [user] = await db.select().from(usersTable)
-      .where(or(eq(usersTable.username, username), ilike(usersTable.name, username)))
-      .limit(1);
+    const user = await findUserForLogin(String(username));
     if (!user) {
       res.status(401).json({ error: "unauthorized", message: "Invalid credentials" });
       return;

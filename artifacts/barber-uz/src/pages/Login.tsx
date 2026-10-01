@@ -19,6 +19,32 @@ import { useToast } from "@/hooks/use-toast";
 
 const RESET_BOT_URL = "https://t.me/BARBERUZ_YORDAMCHI_BOT?start=reset_password";
 
+function looksLikeLegacyUsername(value: string): boolean {
+  return /[a-zA-Z_]/.test(value);
+}
+
+function formatUzPhoneMask(raw: string): string {
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("998")) digits = digits.slice(3);
+  digits = digits.slice(0, 9);
+  if (!digits.length) return "";
+  let out = "+998";
+  if (!digits.length) return out;
+  out += ` ${digits.slice(0, 2)}`;
+  if (digits.length > 2) out += ` ${digits.slice(2, 5)}`;
+  if (digits.length > 5) out += `-${digits.slice(5, 7)}`;
+  if (digits.length > 7) out += `-${digits.slice(7, 9)}`;
+  return out;
+}
+
+function toLoginIdentifier(display: string): string {
+  if (looksLikeLegacyUsername(display)) return display.trim();
+  const digits = display.replace(/\D/g, "");
+  if (digits.length >= 12 && digits.startsWith("998")) return `+${digits}`;
+  if (digits.length === 9) return `+998${digits}`;
+  return display.trim();
+}
+
 export default function Login() {
   const { t } = useTranslation();
   const [, navigate] = useLocation();
@@ -27,10 +53,11 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
+  const resetSuccess = new URLSearchParams(window.location.search).get("reset") === "success";
 
   useEffect(() => {
     const token = localStorage.getItem("barber_token");
-    if (!token) return;
+    if (!token || resetSuccess) return;
     fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => {
         if (r.ok) {
@@ -64,7 +91,7 @@ export default function Login() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !password) return;
-    loginMutation.mutate({ data: { username, password } });
+    loginMutation.mutate({ data: { username: toLoginIdentifier(username), password } });
   };
 
   return (
@@ -105,12 +132,22 @@ export default function Login() {
           className="glass-panel p-6 sm:p-8 rounded-3xl"
         >
           <form onSubmit={handleSubmit} className="space-y-5">
+            {resetSuccess && (
+              <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-4 py-3 text-sm text-emerald-200 leading-relaxed">
+                🟢 Parol oʻzgardi. Telefon raqamingiz va yangi parolingizni kiritib profilingizga kiring.
+              </div>
+            )}
             <div className="space-y-2">
-              <Label className="text-white/80">{t("register.name")}</Label>
+              <Label className="text-white/80">Telefon raqamingizni kiriting:</Label>
               <Input
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder={t("register.name_placeholder")}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setUsername(looksLikeLegacyUsername(next) ? next : formatUzPhoneMask(next));
+                }}
+                placeholder="+998 90 123-45-67"
+                inputMode="tel"
+                autoComplete="tel"
                 className="bg-black/20 border-white/10 focus-visible:ring-primary h-12 rounded-xl"
               />
             </div>

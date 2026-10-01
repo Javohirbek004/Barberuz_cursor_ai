@@ -85,8 +85,8 @@ const pendingBookingVerifications = new Map<number, string>();
 
 type PasswordResetState =
   | { step: "phone"; expiresAt: number }
-  | { step: "new_password"; userId: string; expiresAt: number }
-  | { step: "confirm_password"; userId: string; firstPassword: string; expiresAt: number };
+  | { step: "new_password"; userId: string; phone: string; expiresAt: number }
+  | { step: "confirm_password"; userId: string; firstPassword: string; phone: string; expiresAt: number };
 
 const RESET_TTL_MS = 10 * 60 * 1000;
 const pendingPasswordResets = new Map<number, PasswordResetState>();
@@ -147,6 +147,16 @@ async function findUserByPhone(phone: string) {
   return null;
 }
 
+function formatPhoneForUser(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  const local = digits.startsWith("998") ? digits.slice(3) : digits;
+  const nine = local.slice(0, 9);
+  if (nine.length < 9) {
+    return phone.startsWith("+") ? phone : `+${digits || phone}`;
+  }
+  return `+998 ${nine.slice(0, 2)} ${nine.slice(2, 5)}-${nine.slice(5, 7)}-${nine.slice(7, 9)}`;
+}
+
 function beginPasswordReset(chatId: number) {
   pendingAuthLogins.delete(chatId);
   pendingNoPayloadLogins.delete(chatId);
@@ -197,11 +207,15 @@ async function handlePasswordResetContact(chatId: number, phone: string | null) 
   pendingPasswordResets.set(chatId, {
     step: "new_password",
     userId: foundUser.id,
+    phone: foundUser.phone || phone,
     expiresAt: Date.now() + RESET_TTL_MS,
   });
+  const userName = foundUser.name || "Barber";
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "\uD83D\uDD11 Raqamingiz tasdiqlandi! Profilingiz uchun yangi parol kiriting (eng kamida 6 ta belgi bo\u02BBlishi kerak):",
+    text:
+      `\uD83D\uDC64 ${userName}, profilingiz topildi va tasdiqlandi! \u2705\n\n` +
+      `Endi profilingiz uchun yangi parolingizni o\u02BBylab toping va shu yerga yuboring (kamida 6 ta belgi):`,
     reply_markup: { remove_keyboard: true },
   });
 }
@@ -237,6 +251,7 @@ async function handlePasswordResetText(
       step: "confirm_password",
       userId: pending.userId,
       firstPassword: text,
+      phone: pending.phone,
       expiresAt: Date.now() + RESET_TTL_MS,
     });
     await callTelegram("sendMessage", {
@@ -250,6 +265,7 @@ async function handlePasswordResetText(
     pendingPasswordResets.set(chatId, {
       step: "new_password",
       userId: pending.userId,
+      phone: pending.phone,
       expiresAt: Date.now() + RESET_TTL_MS,
     });
     await callTelegram("sendMessage", {
@@ -276,12 +292,18 @@ async function handlePasswordResetText(
 
   pendingPasswordResets.delete(chatId);
   log("password_reset_done", { chatId, userId: pending.userId });
+  const shownPhone = formatPhoneForUser(pending.phone);
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "\uD83C\uDF89 Yangi parolingiz tasdiqlandi \u2705 Profilingizga kirishingiz mumkin.",
+    text:
+      `\uD83C\uDF89 Parolingiz muvaffaqiyatli yangilandi! \u2705\n\n` +
+      `\uD83D\uDCF1 Profilingizga kirish uchun pastdagi "\uD83D\uDD11 Kirish sahifasiga o\u02BBtish" tugmasini bosing hamda kirish oynasiga ${shownPhone} telefon raqamingiz va yangi parolingizni kiritib profilingizga kiring.`,
     reply_markup: {
       inline_keyboard: [[
-        { text: "\uD83D\uDE80 Ilovaga kirish", url: `${publicSiteUrl()}/login` },
+        {
+          text: "\uD83D\uDD11 Kirish sahifasiga o\u02BBtish",
+          url: "https://barberuz-lovat.vercel.app/login?reset=success",
+        },
       ]],
     },
   });
