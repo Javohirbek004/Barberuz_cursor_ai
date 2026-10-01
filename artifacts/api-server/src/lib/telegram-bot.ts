@@ -160,6 +160,14 @@ function validateAppUrl(url: string): boolean {
   }
 }
 
+/** Open the site inside Telegram Mini App (not the old in-app browser tab). */
+function appWebAppButton(text: string, url: string): Record<string, unknown> {
+  if (url.startsWith("https://")) {
+    return { text, web_app: { url } };
+  }
+  return { text, url };
+}
+
 /**
  * Build a login URL using the tg_code polling mechanism.
  * Generates a one-time code, stores the login result in pendingLoginResults,
@@ -253,7 +261,7 @@ async function sendVerificationSuccess(chatId: number, userId: string) {
     reply_markup: {
       remove_keyboard: true,
       inline_keyboard: [
-        [{ text: "\uD83C\uDF10 Ilovaga kirish", url: profileUrl }],
+        [appWebAppButton("\uD83C\uDF10 Ilovaga kirish", profileUrl)],
       ],
     },
   });
@@ -312,7 +320,7 @@ async function sendLoginSuccess(
     reply_markup: {
       remove_keyboard: true,
       inline_keyboard: [
-        [{ text: "\uD83C\uDF10 Sahifaga qaytish", url: profileUrl }],
+        [appWebAppButton("\uD83C\uDF10 Sahifaga qaytish", profileUrl)],
       ],
     },
   });
@@ -328,7 +336,7 @@ async function sendNotRegistered(chatId: number, lang: string) {
     reply_markup: {
       remove_keyboard: true,
       inline_keyboard: [
-        [{ text: isUz ? "\uD83C\uDF10 Ro\u02BByxatdan o\u02BBtish" : "\uD83C\uDF10 Зарегистрироваться", url: `${getAppUrl()}/register` }],
+        [appWebAppButton(isUz ? "\uD83C\uDF10 Ro\u02BByxatdan o\u02BBtish" : "\uD83C\uDF10 Зарегистрироваться", `${getAppUrl()}/register`)],
       ],
     },
   });
@@ -610,14 +618,14 @@ async function handleBarberStart(chatId: number, userId: string) {
   }
 
   if (user.telegramVerified) {
-    const profileUrl = buildLoginUrl(user.id);
-    log("barber_invite_start", { chatId, userId, url: profileUrl || "invalid" });
-    if (profileUrl) {
+    const profileUrl = `${getAppUrl()}/login`;
+    log("barber_invite_start", { chatId, userId, url: profileUrl });
+    if (validateAppUrl(profileUrl)) {
       await callTelegram("sendMessage", {
         chat_id: chatId,
         text: "\u2705 Siz allaqachon ulanganmiz!\n\nEndi barcha bronlar sizga shu yerga keladi \uD83D\uDD14",
         reply_markup: {
-          inline_keyboard: [[{ text: "Ilovaga qaytish", url: profileUrl }]],
+          inline_keyboard: [[appWebAppButton("Ilovaga qaytish", profileUrl)]],
         },
       });
     } else {
@@ -715,7 +723,7 @@ async function handleLoginStart(
     parse_mode: "HTML",
     reply_markup: {
       inline_keyboard: [
-        [{ text: "\uD83C\uDF10 Sahifaga qaytish", url: profileUrl }],
+        [appWebAppButton("\uD83C\uDF10 Sahifaga qaytish", profileUrl)],
       ],
     },
   });
@@ -968,7 +976,7 @@ async function handleAuthPhoneContact(
     reply_markup: {
       remove_keyboard: true,
       inline_keyboard: [
-        [{ text: isUz ? "\uD83C\uDF10 Sahifaga qaytish" : "\uD83C\uDF10 Перейти в профиль", url: loginUrl }],
+        [appWebAppButton(isUz ? "\uD83C\uDF10 Sahifaga qaytish" : "\uD83C\uDF10 Перейти в профиль", loginUrl)],
       ],
     },
   });

@@ -37,33 +37,15 @@ export default function Login() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  // Already logged in — verify token with server before redirecting
-  useEffect(() => {
-    const token = localStorage.getItem("barber_token");
-    const params = new URLSearchParams(window.location.search);
-    if (!token || params.has("tg_code") || params.has("authToken")) return;
-    fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => {
-        if (r.ok) {
-          navigate("/dashboard");
-        } else {
-          localStorage.removeItem("barber_token");
-          localStorage.removeItem("barber_user");
-        }
-      })
-      .catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
   // Telegram login state: "idle" | "waiting"
-  const [tgState, setTgState] = useState<"idle" | "waiting">(() =>
-    getStoredCode() ? "waiting" : "idle",
-  );
+  const [tgState, setTgState] = useState<"idle" | "waiting">("idle");
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const waitUntilRef = useRef(0);
 
   // ── Password login ──────────────────────────────────────────
   const loginMutation = useLoginUser({
@@ -90,35 +72,69 @@ export default function Login() {
     loginMutation.mutate({ data: { username, password } });
   };
 
-  // ── Handle ?authToken= from bot deep-link (direct login) ───
+  // Existing session wins over a stale Telegram code (re-open Mini App).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const authToken = params.get("authToken");
+    const tgCode = params.get("tg_code");
+    const storedToken = localStorage.getItem("barber_token");
+
     if (authToken) {
       localStorage.setItem("barber_token", authToken);
       window.history.replaceState({}, "", window.location.pathname);
       navigate("/dashboard");
+      return;
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Handle ?tg_code= from bot link (new browser context) ────
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tgCode = params.get("tg_code");
-    if (tgCode && !getStoredCode()) {
-      localStorage.setItem("telegram_auth_code", tgCode);
-      localStorage.setItem("telegram_auth_code_ts", String(Date.now()));
-      setTgState("waiting");
-      // Clean up URL without triggering a reload
+    let cancelled = false;
+
+    async function bootstrap() {
+      if (storedToken) {
+        try {
+          const r = await fetch("/api/auth/me", {
+            headers: { Authorization: `Bearer ${storedToken}` },
+          });
+          if (cancelled) return;
+          if (r.ok) {
+            window.history.replaceState({}, "", window.location.pathname);
+            navigate("/dashboard");
+            return;
+          }
+        } catch {
+          // fall through to login / telegram code
+        }
+        if (cancelled) return;
+        localStorage.removeItem("barber_token");
+        localStorage.removeItem("barber_user");
+      }
+
+      const codeToWait = tgCode || getStoredCode();
+      if (!codeToWait) return;
+
+      localStorage.setItem("telegram_auth_code", codeToWait);
+      if (tgCode) {
+        localStorage.setItem("telegram_auth_code_ts", String(Date.now()));
+        waitUntilRef.current = Date.now() + 12_000;
+      } else {
+        const ts = Number(localStorage.getItem("telegram_auth_code_ts") || Date.now());
+        waitUntilRef.current = ts + 10 * 60 * 1000;
+      }
       window.history.replaceState({}, "", window.location.pathname);
+      setTgState("waiting");
     }
-  }, []);
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Telegram login ──────────────────────────────────────────
   function startTelegramLogin() {
     const code = generateAuthCode();
     localStorage.setItem("telegram_auth_code", code);
     localStorage.setItem("telegram_auth_code_ts", String(Date.now()));
+    waitUntilRef.current = Date.now() + 10 * 60 * 1000;
     setTgState("waiting");
 
     const botUrl = `tg://resolve?domain=BARBERUZ_YORDAMCHI_BOT&start=auth_${code}_${lang}`;
@@ -174,8 +190,15 @@ export default function Login() {
 
     checkStatus(); // immediate first check
     pollRef.current = setInterval(checkStatus, 2000);
+    const remain = Math.max(waitUntilRef.current - Date.now(), 0);
+    const timeoutId = window.setTimeout(() => {
+      cancelTelegramLogin();
+    }, remain || 12_000);
 
-    return stopPolling;
+    return () => {
+      window.clearTimeout(timeoutId);
+      stopPolling();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tgState]);
 
