@@ -31,7 +31,7 @@ export const translations = {
     'register.error.pwd_mismatch': "Parollar mos kelmayapti",
     'register.error.fill_required': "Majburiy maydonlarni to'ldiring",
     'register.error.register_failed': "Ro'yxatdan o'tishda xatolik yuz berdi. Qayta urinib ko'ring.",
-    'login.error.invalid_credentials': "Ism yoki parol noto'g'ri. Qayta urinib ko'ring.",
+    'login.error.invalid_credentials': "Telefon raqam yoki parol noto'g'ri. Qayta urinib ko'ring.",
 
     // Login
     'login.title': "Tizimga kirish",
@@ -328,7 +328,7 @@ export const translations = {
     'register.error.pwd_mismatch': "Пароли не совпадают",
     'register.error.fill_required': "Заполните обязательные поля",
     'register.error.register_failed': "Ошибка регистрации. Попробуйте ещё раз.",
-    'login.error.invalid_credentials': "Неверное имя или пароль. Попробуйте ещё раз.",
+    'login.error.invalid_credentials': "Неверный номер телефона или пароль. Попробуйте ещё раз.",
 
     // Login
     'login.title': "Вход в систему",

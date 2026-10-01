@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { randomBytes } from "crypto";
 import { db, usersTable } from "@workspace/db";
-import { eq, ilike, or } from "drizzle-orm";
+import { eq, ilike, or, sql } from "drizzle-orm";
 import { hashPassword, legacyHash, generateToken, authenticate, getUser, secretsEqual } from "../lib/auth";
 import { getTelegramLoginResult, storeLoginToken } from "../lib/telegram-bot";
 
@@ -39,21 +39,16 @@ async function findUserForLogin(identifier: string) {
   const trimmed = identifier.trim();
   const digits = trimmed.replace(/\D/g, "");
   if (digits.length >= 9) {
-    const local = digits.startsWith("998") ? digits.slice(3) : digits;
-    const nine = local.slice(-9);
-    const variants = Array.from(new Set([
-      trimmed,
-      trimmed.replace(/\s+/g, ""),
-      digits,
-      `+${digits}`,
-      `+998${nine}`,
-      `998${nine}`,
-      nine,
-    ]));
-    for (const candidate of variants) {
-      const [byPhone] = await db.select().from(usersTable).where(eq(usersTable.phone, candidate)).limit(1);
-      if (byPhone) return byPhone;
-    }
+    const nine = (digits.startsWith("998") ? digits.slice(3) : digits).slice(-9);
+    const [byPhone] = await db
+      .select()
+      .from(usersTable)
+      .where(
+        sql`length(regexp_replace(coalesce(${usersTable.phone}, ''), '[^0-9]', '', 'g')) >= 9
+          and right(regexp_replace(coalesce(${usersTable.phone}, ''), '[^0-9]', '', 'g'), 9) = ${nine}`,
+      )
+      .limit(1);
+    if (byPhone) return byPhone;
   }
   const [user] = await db.select().from(usersTable)
     .where(or(eq(usersTable.username, trimmed), ilike(usersTable.name, trimmed)))
