@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, bookingsTable, clientsTable, servicesTable } from "@workspace/db";
-import { eq, and, sql, or, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, sql, or, gte, lte, inArray, ne } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 import { sendDirectBookingNotification } from "../lib/telegram-bot";
 
@@ -107,6 +107,32 @@ router.post("/", authenticate, async (req, res) => {
     const { clientId, clientPhone, clientName, serviceId, date, startTime, endTime, price, notes } = req.body;
     if (!clientName || !date || !startTime || !endTime) {
       res.status(400).json({ error: "validation", message: "Missing required fields" });
+      return;
+    }
+
+    const timeToMins = (t: string) => {
+      const [h, m] = String(t).split(":").map(Number);
+      return (h || 0) * 60 + (m || 0);
+    };
+    const reqStart = timeToMins(startTime);
+    const reqEnd = timeToMins(endTime);
+    const existingOnDate = await db
+      .select({ startTime: bookingsTable.startTime, endTime: bookingsTable.endTime })
+      .from(bookingsTable)
+      .where(
+        and(
+          eq(bookingsTable.barberId, user.id),
+          eq(bookingsTable.date, date),
+          ne(bookingsTable.status, "cancelled"),
+        ),
+      );
+    const hasConflict = existingOnDate.some((b) => {
+      const s = timeToMins(b.startTime);
+      const e = timeToMins(b.endTime);
+      return reqStart < e && reqEnd > s;
+    });
+    if (hasConflict) {
+      res.status(409).json({ error: "conflict", message: "Tanlangan vaqt allaqachon band" });
       return;
     }
 

@@ -941,6 +941,15 @@ async function handleBarberContact(
   const { userId, name, shopName } = pending;
   console.log(`[TelegramBot] Barber contact: chatId=${chatId} userId=${userId} phone=${phone}`);
 
+  if (phone) {
+    const existing = await findUserByPhone(phone);
+    if (existing && existing.id !== userId) {
+      pendingBarberVerifications.delete(chatId);
+      await sendPhoneAlreadyRegistered(chatId, existing, phone);
+      return;
+    }
+  }
+
   try {
     await db.update(usersTable).set({
       telegramVerified: true,

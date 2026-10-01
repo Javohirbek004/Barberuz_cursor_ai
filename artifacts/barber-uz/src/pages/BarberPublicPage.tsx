@@ -83,7 +83,18 @@ function generatePublicSlots(
   barber: BarberData,
   busySlots: { startTime: string; endTime: string }[] = [],
   nowMins: number | null = null,
+  dateIso?: string,
 ): string[] {
+  if (dateIso) {
+    try {
+      const days = JSON.parse(barber.scheduleJson || "{}").workDays;
+      if (Array.isArray(days) && days.length > 0) {
+        const d = new Date(`${dateIso}T12:00:00+05:00`);
+        const key = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][d.getDay()];
+        if (!days.includes(key)) return [];
+      }
+    } catch { /* keep generating */ }
+  }
   const start = toMins(barber.workingHoursStart || "09:00");
   const end = toMins(barber.workingHoursEnd || "20:00");
   const busy: { s: number; e: number }[] = [];
@@ -146,7 +157,23 @@ function PublicBookingModal({
   totalPrice: number;
   onClose: () => void;
 }) {
-  const sevenDays   = sevenDaysFromToday();
+  const sevenDays   = (() => {
+    const days: string[] = [];
+    for (let i = 0; i < 21 && days.length < 7; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      const iso = d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+      try {
+        const wd = JSON.parse(barber.scheduleJson || "{}").workDays;
+        if (Array.isArray(wd) && wd.length > 0) {
+          const key = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][new Date(`${iso}T12:00:00+05:00`).getDay()];
+          if (!wd.includes(key)) continue;
+        }
+      } catch { /* include day */ }
+      days.push(iso);
+    }
+    return days.length > 0 ? days : sevenDaysFromToday();
+  })();
   const todayISO    = sevenDays[0]!;
   const tomorrowISO = sevenDays[1]!;
 
@@ -187,7 +214,7 @@ function PublicBookingModal({
   const nowMins = dateOpt === todayISO
     ? (() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); })()
     : null;
-  const slots = generatePublicSlots(totalDuration, barber, busySlots, nowMins);
+  const slots = generatePublicSlots(totalDuration, barber, busySlots, nowMins, dateOpt);
 
   // If the previously selected time is no longer in the available slots (e.g.
   // because the date changed or new busy data arrived), clear the selection so

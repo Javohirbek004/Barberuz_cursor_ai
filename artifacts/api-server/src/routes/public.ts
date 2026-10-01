@@ -36,17 +36,17 @@ function timeToMins(t: string): number {
 }
 
 function getBotUsername(): string {
-  return process.env.TELEGRAM_BOT_USERNAME || "Barberuz_yordamchi_bot";
+  return process.env.TELEGRAM_BOT_USERNAME || "BARBERUZ_YORDAMCHI_BOT";
 }
 
 function getAppUrl(): string {
   if (process.env.NODE_ENV === "development") {
     if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   const firstDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
   if (firstDomain) return `https://${firstDomain}`;
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
-  return "https://barberuz.replit.app";
+  return "https://barberuz-lovat.vercel.app";
 }
 
 async function expireOldSessions() {

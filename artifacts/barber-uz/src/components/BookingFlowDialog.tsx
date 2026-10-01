@@ -1002,9 +1002,30 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
 
   // ── Existing bookings (conflict detection) ────────────────────────────────
   const { data: bookingsData } = useListBookings({ date: form.date });
-  const busy = (bookingsData?.bookings ?? []).filter(
-    (b) => b.status !== "cancelled"
-  );
+  const busy = [
+    ...(bookingsData?.bookings ?? []).filter((b) => b.status !== "cancelled"),
+    ...((profile as { lunchBreakEnabled?: boolean; lunchBreakStart?: string | null; lunchBreakEnd?: string | null } | undefined)
+      ?.lunchBreakEnabled &&
+    (profile as { lunchBreakStart?: string | null })?.lunchBreakStart &&
+    (profile as { lunchBreakEnd?: string | null })?.lunchBreakEnd
+      ? [{
+          startTime: (profile as { lunchBreakStart: string }).lunchBreakStart,
+          endTime: (profile as { lunchBreakEnd: string }).lunchBreakEnd,
+        }]
+      : []),
+  ];
+
+  let isOffDay = false;
+  try {
+    const days = JSON.parse((profile as { scheduleJson?: string | null } | undefined)?.scheduleJson || "{}").workDays;
+    if (Array.isArray(days) && days.length > 0) {
+      const d = new Date(`${form.date}T12:00:00+05:00`);
+      const key = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][d.getDay()];
+      isOffDay = !days.includes(key);
+    }
+  } catch {
+    isOffDay = false;
+  }
 
   // ── Create booking ────────────────────────────────────────────────────────
   const createBookingMut = useCreateBooking();
@@ -1033,9 +1054,9 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
     : null;
 
   const standardSlots =
-    duration > 0 ? generateSlots(duration, busy, workStart, workEnd, nowMins) : [];
+    !isOffDay && duration > 0 ? generateSlots(duration, busy, workStart, workEnd, nowMins) : [];
   const afterSlots =
-    duration > 0
+    !isOffDay && duration > 0
       ? generateSlots(duration, busy, workEnd, 23 * 60 + 30, nowMins)
       : [];
 

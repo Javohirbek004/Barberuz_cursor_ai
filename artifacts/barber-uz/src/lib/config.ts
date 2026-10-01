@@ -1,4 +1,4 @@
-const PROD_ORIGIN = "https://barberuz.replit.app";
+const PROD_ORIGIN = "https://barberuz-lovat.vercel.app";
 export const APP_ORIGIN = import.meta.env.DEV
   ? window.location.origin
   : PROD_ORIGIN;

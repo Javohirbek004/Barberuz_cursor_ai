@@ -61,7 +61,12 @@ function calcNextBookingInfo(
   now: Date,
 ): { main: string; sub: string; nextId: string | null } {
   const nowMins = now.getHours() * 60 + now.getMinutes();
+  const today = now.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
   for (const b of upcomingBookings) {
+    if (b.date > today) {
+      return { main: b.startTime.slice(0, 5), sub: b.date, nextId: b.id };
+    }
+    if (b.date !== today) continue;
     const start = toMins(b.startTime);
     const end = toMins(b.endTime);
     if (nowMins >= start && nowMins < end) {
@@ -76,6 +81,28 @@ function calcNextBookingInfo(
     }
   }
   return { main: "Bugun tugadi", sub: "Ish yakunlandi", nextId: null };
+}
+
+function parseDashNotes(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const lines = raw.split("\n");
+  if (lines[0]?.startsWith("Tel: ")) return lines.slice(1).join("\n").trim();
+  return raw.trim();
+}
+
+function workKeyFromIso(iso: string): string {
+  const d = new Date(`${iso}T12:00:00+05:00`);
+  return ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][d.getDay()] || "mon";
+}
+
+function isScheduledWorkDay(scheduleJson: string | null | undefined, iso: string): boolean {
+  try {
+    const days = JSON.parse(scheduleJson || "{}").workDays;
+    if (!Array.isArray(days) || days.length === 0) return true;
+    return days.includes(workKeyFromIso(iso));
+  } catch {
+    return true;
+  }
 }
 
 // ── Static team barbers ───────────────────────────────────────────────────────
@@ -342,16 +369,17 @@ function IndividualDashboard() {
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
   const { data: bookingsData, isLoading: bookingsLoading, refetch } = useListBookings({ date: today });
   // Separate query for the "Yaqin bronlar" list — shows today + future bookings
-  const { data: upcomingData, isLoading: upcomingLoading } = useListBookings({ date: "upcoming" as any });
+  const { data: upcomingData, isLoading: upcomingLoading, refetch: refetchUpcoming } = useListBookings({ date: "upcoming" as any });
 
   // Periodic auto-refresh every 60 s so Telegram-confirmed bookings appear without reload
   useEffect(() => {
     const id = setInterval(() => {
       refetch();
       refetchStats();
+      void refetchUpcoming();
     }, 60_000);
     return () => clearInterval(id);
-  }, [refetch, refetchStats]);
+  }, [refetch, refetchStats, refetchUpcoming]);
 
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -385,9 +413,23 @@ function IndividualDashboard() {
   // Compute free time windows from actual working hours and today's bookings
   const workStart = toMins(profile?.workingHoursStart ?? "09:00");
   const workEnd   = toMins(profile?.workingHoursEnd   ?? "20:00");
+  const extraProfile = profile as {
+    lunchBreakEnabled?: boolean;
+    lunchBreakStart?: string | null;
+    lunchBreakEnd?: string | null;
+    scheduleJson?: string | null;
+  } | undefined;
   const todayBusy = bookings.filter(b => b.status !== "cancelled");
-  const freeWindows = computeFreeWindows(workStart, workEnd, todayBusy);
-  const freeSlots   = freeWindows.reduce((s, w) => s + Math.floor((w.end - w.start) / 30), 0);
+  const lunchBusy =
+    extraProfile?.lunchBreakEnabled && extraProfile.lunchBreakStart && extraProfile.lunchBreakEnd
+      ? [{ startTime: extraProfile.lunchBreakStart, endTime: extraProfile.lunchBreakEnd }]
+      : [];
+  const isOffDay = !isScheduledWorkDay(extraProfile?.scheduleJson, today);
+  const freeWindows = isOffDay
+    ? []
+    : computeFreeWindows(workStart, workEnd, [...todayBusy, ...lunchBusy]);
+  const SLOT_MIN = 30;
+  const freeSlots   = freeWindows.reduce((s, w) => s + Math.floor((w.end - w.start) / SLOT_MIN), 0);
 
   // Stats for TodayStatsModal
   const todayTotal      = todayBusy.length;
@@ -398,7 +440,7 @@ function IndividualDashboard() {
 
   const durationLabel = calcTotalDuration(todayUpcoming);
 
-  const { main: nextMain, sub: nextSub, nextId } = calcNextBookingInfo(todayUpcoming, now);
+  const { main: nextMain, sub: nextSub, nextId } = calcNextBookingInfo(upcomingBookings, now);
 
   const handleScrollToNext = () => {
     if (!nextId) return;
@@ -439,6 +481,7 @@ function IndividualDashboard() {
         <StatCard
           label="Bugungi daromad"
           value={statsLoading ? "..." : `${(activeStats?.todayRevenue ?? 0).toLocaleString()} so'm`}
+          secondValue={statsLoading ? undefined : `Oy: ${Number((activeStats as { monthRevenue?: number } | undefined)?.monthRevenue ?? 0).toLocaleString()} so'm`}
           icon={Wallet}
           iconColor="text-emerald-400"
           loading={statsLoading}
@@ -509,6 +552,11 @@ function IndividualDashboard() {
                     <div className="text-xs text-muted-foreground truncate">
                       {b.serviceName || t("dash.service_fallback")}
                     </div>
+                    {parseDashNotes(b.notes) ? (
+                      <div className="text-[11px] text-amber-200/80 truncate mt-0.5">
+                        📝 {parseDashNotes(b.notes)}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="text-right flex-shrink-0">
                     <div className="text-sm font-semibold text-primary">
@@ -549,7 +597,7 @@ function IndividualDashboard() {
           <BookingDetailModal
             booking={selectedBooking}
             onClose={() => setSelectedBooking(null)}
-            onRefetch={refetch}
+            onRefetch={() => { void refetch(); void refetchUpcoming(); }}
             onRefetchStats={refetchStats}
           />
         )}

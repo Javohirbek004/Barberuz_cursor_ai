@@ -38,7 +38,23 @@ router.get("/dashboard", authenticate, async (req, res) => {
       .where(and(eq(bookingsTable.barberId, user.id), eq(bookingsTable.date, today)));
 
     const todayRevenue = todayBookings
-      .filter(b => b.status === "completed" || b.status === "confirmed")
+      .filter(b => b.status === "completed")
+      .reduce((sum, b) => sum + Number(b.price), 0);
+
+    const monthStart = (() => {
+      const d = new Date();
+      d.setDate(1);
+      return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+    })();
+
+    const monthBookings = await db.select().from(bookingsTable)
+      .where(and(
+        eq(bookingsTable.barberId, user.id),
+        gte(bookingsTable.date, monthStart),
+        lte(bookingsTable.date, today)
+      ));
+    const monthRevenue = monthBookings
+      .filter(b => b.status === "completed")
       .reduce((sum, b) => sum + Number(b.price), 0);
 
     const weekStart = (() => {
@@ -55,17 +71,11 @@ router.get("/dashboard", authenticate, async (req, res) => {
       ));
 
     const weekRevenue = weekBookings
-      .filter(b => b.status === "completed" || b.status === "confirmed")
+      .filter(b => b.status === "completed")
       .reduce((sum, b) => sum + Number(b.price), 0);
 
     const [{ value: totalClients }] = await db.select({ value: count() })
       .from(clientsTable).where(eq(clientsTable.barberId, user.id));
-
-    const monthStart = (() => {
-      const d = new Date();
-      d.setDate(1);
-      return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
-    })();
 
     const [{ value: newClientsThisMonth }] = await db.select({ value: count() })
       .from(clientsTable)
@@ -82,6 +92,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
       todayBookings: todayBookings.filter(b => b.status !== "cancelled").length,
       todayCompleted,
       todayRevenue,
+      monthRevenue,
       weekBookings: weekBookings.filter(b => b.status !== "cancelled").length,
       weekRevenue,
       totalClients: Number(totalClients),
