@@ -22,7 +22,7 @@
 import { randomBytes } from "crypto";
 import { db, usersTable, bookingSessionsTable, bookingsTable, clientsTable } from "@workspace/db";
 import { eq, and, or, isNull, desc, sql } from "drizzle-orm";
-import { generateToken } from "./auth";
+import { generateToken, hashPassword } from "./auth";
 
 function getToken(): string {
   return process.env.TELEGRAM_BOT_TOKEN || "";
@@ -57,6 +57,12 @@ function getAppUrl(): string {
   return "https://barberuz.replit.app";
 }
 
+function publicSiteUrl(): string {
+  const env = process.env.APP_URL?.replace(/\/$/, "");
+  if (env && /^https?:\/\//i.test(env)) return env;
+  return "https://barberuz-lovat.vercel.app";
+}
+
 // ──────────────────────────────────────────────────────────────
 // In-memory state maps
 // ──────────────────────────────────────────────────────────────
@@ -75,6 +81,14 @@ const pendingNoPayloadLogins = new Map<number, Date>();
 
 /** Customer booking phone verification: chatId → sessionId */
 const pendingBookingVerifications = new Map<number, string>();
+
+type PasswordResetState =
+  | { step: "phone"; expiresAt: number }
+  | { step: "new_password"; userId: string; expiresAt: number }
+  | { step: "confirm_password"; userId: string; firstPassword: string; expiresAt: number };
+
+const RESET_TTL_MS = 10 * 60 * 1000;
+const pendingPasswordResets = new Map<number, PasswordResetState>();
 
 /** Login result: code → { token, userId, expiresAt } (kept 10 min so polling doesn't miss) */
 interface LoginResult {
@@ -109,6 +123,167 @@ export function getTelegramLoginResult(code: string): LoginResult | null {
     return null;
   }
   return result;
+}
+
+function getPasswordReset(chatId: number): PasswordResetState | null {
+  const pending = pendingPasswordResets.get(chatId);
+  if (!pending) return null;
+  if (Date.now() > pending.expiresAt) {
+    pendingPasswordResets.delete(chatId);
+    return null;
+  }
+  return pending;
+}
+
+async function findUserByPhone(phone: string) {
+  const trimmed = phone.replace(/\s+/g, "");
+  const digits = trimmed.replace(/^\+/, "");
+  const variants = Array.from(new Set([trimmed, digits, `+${digits}`]));
+  for (const candidate of variants) {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.phone, candidate)).limit(1);
+    if (user) return user;
+  }
+  return null;
+}
+
+function beginPasswordReset(chatId: number) {
+  pendingAuthLogins.delete(chatId);
+  pendingNoPayloadLogins.delete(chatId);
+  pendingVerifications.delete(chatId);
+  pendingPasswordResets.set(chatId, { step: "phone", expiresAt: Date.now() + RESET_TTL_MS });
+}
+
+async function handlePasswordResetStart(chatId: number) {
+  beginPasswordReset(chatId);
+  log("password_reset_start", { chatId });
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: "\uD83D\uDCF1 Profilingizga kirish uchun pastdagi 'Raqamni yuborish' tugmasini bosing:",
+    reply_markup: {
+      keyboard: [[{ text: "\uD83D\uDCF1 Telefon raqamni yuborish", request_contact: true }]],
+      resize_keyboard: true,
+      one_time_keyboard: true,
+    },
+  });
+}
+
+async function handlePasswordResetContact(chatId: number, phone: string | null) {
+  if (!phone) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Raqam olinmadi. Iltimos, pastdagi tugma orqali raqamingizni yuboring.",
+    });
+    return;
+  }
+
+  const foundUser = await findUserByPhone(phone);
+  if (!foundUser) {
+    pendingPasswordResets.delete(chatId);
+    log("password_reset_not_found", { chatId });
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "\u274C Ushbu telefon raqamiga ochilgan profil topilmadi! Siz hali ro\u02BByxatdan o\u02BBtmagan bo\u02BBlishingiz mumkin.",
+      reply_markup: {
+        remove_keyboard: true,
+        inline_keyboard: [[
+          { text: "\uD83D\uDCDD Ro\u02BByxatdan o\u02BBtish", url: `${publicSiteUrl()}/register` },
+        ]],
+      },
+    });
+    return;
+  }
+
+  pendingPasswordResets.set(chatId, {
+    step: "new_password",
+    userId: foundUser.id,
+    expiresAt: Date.now() + RESET_TTL_MS,
+  });
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: "\uD83D\uDD11 Raqamingiz tasdiqlandi! Profilingiz uchun yangi parol kiriting (eng kamida 6 ta belgi bo\u02BBlishi kerak):",
+    reply_markup: { remove_keyboard: true },
+  });
+}
+
+async function handlePasswordResetText(
+  chatId: number,
+  pending: PasswordResetState,
+  rawText: string,
+) {
+  const text = rawText.trim();
+
+  if (pending.step === "phone") {
+    await handlePasswordResetStart(chatId);
+    return;
+  }
+
+  if (pending.step === "new_password") {
+    if (text.length < 6) {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "\u26A0\uFE0F Parol juda qisqa! Parol eng kamida 6 ta belgidan iborat bo\u02BBlishi kerak. Qaytadan kiriting:",
+      });
+      return;
+    }
+    if (text.length > 128) {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "\u26A0\uFE0F Parol juda uzun. Iltimos, qisqaroq parol kiriting:",
+      });
+      return;
+    }
+    pendingPasswordResets.set(chatId, {
+      step: "confirm_password",
+      userId: pending.userId,
+      firstPassword: text,
+      expiresAt: Date.now() + RESET_TTL_MS,
+    });
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "\uD83D\uDD04 Parolni tasdiqlash uchun qayta kiriting:",
+    });
+    return;
+  }
+
+  if (text !== pending.firstPassword) {
+    pendingPasswordResets.set(chatId, {
+      step: "new_password",
+      userId: pending.userId,
+      expiresAt: Date.now() + RESET_TTL_MS,
+    });
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "\u274C Parollar bir-biriga mos kelmadi. Qaytadan boshidan kiriting:",
+    });
+    return;
+  }
+
+  try {
+    await db
+      .update(usersTable)
+      .set({ passwordHash: hashPassword(text), updatedAt: new Date() })
+      .where(eq(usersTable.id, pending.userId));
+  } catch (err) {
+    console.error("[TelegramBot] Password reset update failed:", err);
+    pendingPasswordResets.delete(chatId);
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko\u02BBring.",
+    });
+    return;
+  }
+
+  pendingPasswordResets.delete(chatId);
+  log("password_reset_done", { chatId, userId: pending.userId });
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: "\uD83C\uDF89 Yangi parolingiz tasdiqlandi \u2705 Profilingizga kirishingiz mumkin.",
+    reply_markup: {
+      inline_keyboard: [[
+        { text: "\uD83D\uDE80 Ilovaga kirish", url: `${publicSiteUrl()}/login` },
+      ]],
+    },
+  });
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -194,7 +369,10 @@ type LogAction =
   | "cancel_client_notified"
   | "direct_booking_notified" | "direct_booking_notify_error"
   | "booking_contact_recovered"
-  | "reminder_sent";
+  | "reminder_sent"
+  | "password_reset_start"
+  | "password_reset_not_found"
+  | "password_reset_done";
 
 function log(
   action: LogAction,
@@ -422,14 +600,18 @@ export async function handleTelegramUpdate(update: unknown) {
   const chatId = (message.chat as Record<string, unknown>).id as number;
   const text   = (message.text as string) || "";
   const from   = message.from as Record<string, unknown> | undefined;
-
-  console.log(`[TelegramBot] Update from chatId=${chatId} text="${text.slice(0, 80)}"`);
+  const resetPendingForLog = getPasswordReset(chatId);
+  const hideText = !!resetPendingForLog && resetPendingForLog.step !== "phone";
+  console.log(`[TelegramBot] Update from chatId=${chatId} text="${hideText ? "[hidden]" : text.slice(0, 80)}"`);
 
   // ── /start ──────────────────────────────────────────────────
   if (text.startsWith("/start")) {
     const payload = text.split(" ")[1]?.trim() || "";
 
-    // Registration deep-link
+    if (payload === "reset_password") {
+      await handlePasswordResetStart(chatId);
+      return;
+    }
     const regParsed = parseRegPayload(payload);
     if (regParsed) {
       await handleRegStart(chatId, regParsed.userId, regParsed.lang, from);
@@ -475,6 +657,29 @@ export async function handleTelegramUpdate(update: unknown) {
     const phone    = (contact.phone_number as string) || null;
     const tgUserId = String((contact.user_id as number) || chatId);
     const tgUsername = (from?.username as string) || null;
+
+    const resetPending = getPasswordReset(chatId);
+    if (resetPending && resetPending.step === "phone") {
+      const contactUserId = contact.user_id as number | undefined;
+      if (contactUserId && from?.id && Number(contactUserId) !== Number(from.id)) {
+        await callTelegram("sendMessage", {
+          chat_id: chatId,
+          text: "Iltimos, o\u02BBzingizning telefon raqamingizni yuboring.",
+        });
+        return;
+      }
+      await handlePasswordResetContact(chatId, phone);
+      return;
+    }
+
+    const resetTyping = getPasswordReset(chatId);
+    if (resetTyping) {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "Iltimos, yangi parolni yozib yuboring.",
+      });
+      return;
+    }
 
     // Check if this is a booking phone verification flow (MUST come first).
     // Primary: in-memory map. Fallback: DB lookup by clientTelegramId (handles
@@ -534,6 +739,11 @@ export async function handleTelegramUpdate(update: unknown) {
   // Telegram always shows a text input alongside the keyboard — users may
   // accidentally type instead of pressing the contact button. Re-prompt them.
   if (text && !text.startsWith("/")) {
+    const resetText = getPasswordReset(chatId);
+    if (resetText) {
+      await handlePasswordResetText(chatId, resetText, text);
+      return;
+    }
     const authPendingText = pendingAuthLogins.get(chatId);
     if (authPendingText && authPendingText.step === "phone") {
       await sendAuthPhoneRequest(chatId, authPendingText.lang);
