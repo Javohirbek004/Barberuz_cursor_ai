@@ -137,11 +137,31 @@ function getPasswordReset(chatId: number): PasswordResetState | null {
 }
 
 async function findUserByPhone(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length >= 9) {
+    const nine = (digits.startsWith("998") ? digits.slice(3) : digits).slice(-9);
+    const [byDigits] = await db
+      .select()
+      .from(usersTable)
+      .where(
+        and(
+          isNull(usersTable.deletedAt),
+          sql`length(regexp_replace(coalesce(${usersTable.phone}, ''), '[^0-9]', '', 'g')) >= 9
+            and right(regexp_replace(coalesce(${usersTable.phone}, ''), '[^0-9]', '', 'g'), 9) = ${nine}`,
+        ),
+      )
+      .limit(1);
+    if (byDigits) return byDigits;
+  }
   const trimmed = phone.replace(/\s+/g, "");
-  const digits = trimmed.replace(/^\+/, "");
-  const variants = Array.from(new Set([trimmed, digits, `+${digits}`]));
+  const noPlus = trimmed.replace(/^\+/, "");
+  const variants = Array.from(new Set([trimmed, noPlus, `+${noPlus}`]));
   for (const candidate of variants) {
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.phone, candidate)).limit(1);
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(and(isNull(usersTable.deletedAt), eq(usersTable.phone, candidate)))
+      .limit(1);
     if (user) return user;
   }
   return null;
@@ -155,6 +175,37 @@ function formatPhoneForUser(phone: string): string {
     return phone.startsWith("+") ? phone : `+${digits || phone}`;
   }
   return `+998 ${nine.slice(0, 2)} ${nine.slice(2, 5)}-${nine.slice(5, 7)}-${nine.slice(7, 9)}`;
+}
+
+async function sendPhoneAlreadyRegistered(
+  chatId: number,
+  existing: { id: string; phone: string | null },
+  sharedPhone: string,
+) {
+  pendingVerifications.delete(chatId);
+  pendingPasswordResets.set(chatId, {
+    step: "new_password",
+    userId: existing.id,
+    phone: existing.phone || sharedPhone,
+    expiresAt: Date.now() + RESET_TTL_MS,
+  });
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text:
+      "\uD83D\uDCF1 <b>Ushbu telefon raqami allaqachon ro\u02BByxatdan o\u02BBtgan!</b>\n\n" +
+      "Siz tizimda mavjudsiz. Profilingizga kirish uchun <b>\"\uD83D\uDD11 Kirish sahifasiga o\u02BBtish\"</b> tugmasini bosing.\n\n" +
+      "\uD83D\uDCA1 <i>Agar parolingizni unutgan bo\u02BBlsangiz, shunchaki yangi parolingizni shu yerga yuboring, uni yangilab beramiz.</i>",
+    parse_mode: "HTML",
+    reply_markup: {
+      remove_keyboard: true,
+      inline_keyboard: [[
+        {
+          text: "\uD83D\uDD11 Kirish sahifasiga o\u02BBtish",
+          url: "https://barberuz-lovat.vercel.app/login",
+        },
+      ]],
+    },
+  });
 }
 
 function beginPasswordReset(chatId: number) {
@@ -1225,6 +1276,14 @@ async function handleRegContact(
   }
 
   console.log(`[TelegramBot] Reg contact: chatId=${chatId} userId=${userId} phone=${phone}`);
+
+  if (phone) {
+    const existing = await findUserByPhone(phone);
+    if (existing && existing.id !== userId) {
+      await sendPhoneAlreadyRegistered(chatId, existing, phone);
+      return;
+    }
+  }
 
   try {
     await db.update(usersTable).set({
