@@ -1567,6 +1567,24 @@ async function handleCustomerConfirmCancel(chatId: number, sessionId: string) {
 // Barber notification (exported — called when session confirmed)
 // ──────────────────────────────────────────────────────────────
 
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Phone number that opens the dialer when tapped. */
+function phoneLinkHtml(raw: string | null): string {
+  if (!raw) return "—";
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "—";
+  const e164 = `+${digits}`;
+  let pretty = e164;
+  if (digits.startsWith("998") && digits.length >= 12) {
+    const local = digits.slice(3, 12);
+    pretty = `+998 ${local.slice(0, 2)} ${local.slice(2, 5)} ${local.slice(5, 7)} ${local.slice(7, 9)}`;
+  }
+  return `<a href="tel:${e164}">${pretty}</a>`;
+}
+
 export async function sendBarberBookingNotification(
   barberId: string,
   sessionId: string,
@@ -1598,36 +1616,28 @@ export async function sendBarberBookingNotification(
     }
 
     const serviceNames = data.services.map(s => s.name).join(", ");
-    const phoneShown = clientPhone ? (clientPhone.startsWith("+") ? clientPhone : `+${clientPhone.replace(/\D/g, "")}`) : "—";
     const text =
       `\u2702\uFE0F <b>YANGI BRON TUSHDI!</b>\n\n` +
-      `\uD83D\uDC64 <b>Mijoz:</b> ${clientName}\n` +
-      `\uD83D\uDCDE <b>Tel:</b> ${phoneShown}\n` +
-      `\uD83D\uDC88 <b>Xizmat:</b> ${serviceNames}\n` +
+      `\uD83D\uDC64 <b>Mijoz:</b> ${escapeHtml(clientName)}\n` +
+      `\uD83D\uDCDE <b>Tel:</b> ${phoneLinkHtml(clientPhone)}\n` +
+      `\uD83D\uDC88 <b>Xizmat:</b> ${escapeHtml(serviceNames)}\n` +
       `\uD83D\uDCC5 <b>Sana:</b> ${formatDateLabel(data.date)}\n` +
       `\u23F0 <b>Vaqt:</b> ${data.time}\n` +
       `\uD83D\uDCB5 <b>Narxi:</b> ${Number(data.totalPrice || 0).toLocaleString()} SO\u02BBM\n\n` +
       `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
       `\uD83C\uDF10 <i>Ushbu bron mijoz tomonidan web-sahifa orqali band qilindi va CRM kalendaringizga qo\u02BBshildi.</i>`;
 
-    const buttons: { text: string; callback_data?: string; url?: string }[][] = [];
-    const row: { text: string; callback_data?: string; url?: string }[] = [];
-    if (clientPhone) {
-      // Telegram requires tel: URLs with a leading + for international numbers.
-      // contact.phone_number from Telegram arrives without the + (e.g. "998901234567").
-      const digits = clientPhone.replace(/[\s\-()+]/g, "");
-      const telUrl = `tel:+${digits}`;
-      row.push({ text: "\uD83D\uDCDE Qo\u02BBng\u02BBiroq", url: telUrl });
-    }
-    row.push({ text: "\u274C Bekor qilish", callback_data: `cancel_booking_${sessionId}` });
-    buttons.push(row);
-
-    await callTelegram("sendMessage", {
+    const sent = await callTelegram("sendMessage", {
       chat_id: Number(barber.telegramId),
       text,
       parse_mode: "HTML",
-      reply_markup: { inline_keyboard: buttons },
-    });
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "\u274C Bekor qilish", callback_data: `cancel_booking_${sessionId}` },
+        ]],
+      },
+    }) as { ok?: boolean } | null;
+    if (!sent?.ok) return;
 
     await db
       .update(bookingSessionsTable)
@@ -1665,7 +1675,6 @@ export async function sendDirectBookingNotification(params: {
 
     if (!barber?.telegramId) return;
 
-    const phoneLine = params.clientPhone ? `\uD83D\uDCDE Tel: ${params.clientPhone}\n` : "";
     const serviceLine = params.serviceName || "Belgilanmagan";
 
     // Format date: "2026-07-23" → "23-Iyul"
@@ -1676,9 +1685,9 @@ export async function sendDirectBookingNotification(params: {
 
     const text =
       `\u2702\uFE0F <b>YANGI BRON TUSHDI!</b>\n\n` +
-      `\uD83D\uDC64 Mijoz: ${params.clientName}\n` +
-      `${phoneLine}` +
-      `\uD83D\uDC88 Xizmat: ${serviceLine}\n` +
+      `\uD83D\uDC64 Mijoz: ${escapeHtml(params.clientName)}\n` +
+      `\uD83D\uDCDE Tel: ${phoneLinkHtml(params.clientPhone)}\n` +
+      `\uD83D\uDC88 Xizmat: ${escapeHtml(serviceLine)}\n` +
       `\uD83D\uDCC5 Sana: ${dateLabel}\n` +
       `\u23F0 Vaqt: ${params.time}\n` +
       `\uD83D\uDCB5 Narxi: ${params.price.toLocaleString()} SO\u02BCM\n\n` +
