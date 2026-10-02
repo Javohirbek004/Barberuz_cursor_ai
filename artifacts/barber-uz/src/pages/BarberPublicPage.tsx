@@ -261,14 +261,16 @@ function PublicBookingModal({
       }
       if (!res.ok) throw new Error("Session creation failed");
       const data = await res.json();
+      const link = typeof data.deepLink === "string" && data.deepLink.startsWith("https://t.me/")
+        ? data.deepLink
+        : data.bookingId
+          ? `https://t.me/BARBERUZ_YORDAMCHI_BOT?start=bk_${data.bookingId}`
+          : "";
       setSessionId(data.sessionId);
-      setDeepLink(data.deepLink);
-
-      // Update state FIRST — before any navigation (iOS Safari freezes JS after tg:// redirect)
+      setDeepLink(link || null);
       setStep("verifying");
       setSubmitting(false);
 
-      // Start polling — handles confirmed, expired, and any unexpected state
       pollingRef.current = setInterval(async () => {
         try {
           const poll = await fetch(`/api/public/sessions/${data.sessionId}`).then(r => r.json());
@@ -277,16 +279,12 @@ function PublicBookingModal({
           } else if (poll.status === "expired" || poll.status === "cancelled" || poll.error) {
             stopPolling(); setStep("confirm");
           }
-          // "pending" → keep polling
         } catch {
           // Network error — keep polling silently
         }
       }, 3000);
 
-      // Open Telegram AFTER state is set — use window.open to avoid page navigation
-      if (data.deepLink) {
-        setTimeout(() => { window.open(data.deepLink!, "_blank"); }, 100);
-      }
+      if (link) window.location.assign(link);
     } catch {
       setSubmitting(false);
     }
@@ -439,7 +437,7 @@ function PublicBookingModal({
               <motion.div key="verifying" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-10">
                 <div className="w-20 h-20 rounded-3xl bg-[#2AABEE]/10 border border-[#2AABEE]/20 flex items-center justify-center text-4xl mx-auto mb-5">💬</div>
                 <h2 className="text-lg font-bold mb-1">Telegram bot kutilmoqda</h2>
-                <p className="text-sm text-muted-foreground mb-6">Botda <b>📱 Telefon raqamni yuborish</b> tugmasini bosing</p>
+                <p className="text-sm text-muted-foreground mb-6">Botda <b>📱 Raqamimni yuborish</b> tugmasini bosing</p>
                 <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-6">
                   {[0, 0.2, 0.4].map((d, i) => (
                     <span key={i} className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: `${d}s` }} />
@@ -447,10 +445,10 @@ function PublicBookingModal({
                   <span className="ml-1">Tasdiq kutilmoqda</span>
                 </div>
                 {deepLink && (
-                  <button onClick={() => { window.location.href = deepLink; }}
+                  <a href={deepLink}
                     className="w-full h-12 rounded-2xl bg-[#2AABEE]/15 border border-[#2AABEE]/30 text-[#2AABEE] font-semibold text-sm flex items-center justify-center gap-2 mb-3">
                     <Send className="w-4 h-4" /> Telegram botni qayta ochish
-                  </button>
+                  </a>
                 )}
                 <button onClick={() => { stopPolling(); setStep("confirm"); }}
                   className="text-xs text-muted-foreground underline">Bekor qilish</button>

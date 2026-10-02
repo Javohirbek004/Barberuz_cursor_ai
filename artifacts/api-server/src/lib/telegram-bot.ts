@@ -720,7 +720,7 @@ export async function handleTelegramUpdate(update: unknown) {
     // Customer booking deep-link
     const bookingParsed = parseBookingPayload(payload);
     if (bookingParsed) {
-      await handleBookingStart(chatId, bookingParsed.sessionId, from);
+      await handleBookingStart(chatId, bookingParsed, from);
       return;
     }
 
@@ -1598,17 +1598,17 @@ export async function sendBarberBookingNotification(
     }
 
     const serviceNames = data.services.map(s => s.name).join(", ");
-    const phoneLine = clientPhone ? `\uD83D\uDCDE Tel: ${clientPhone}\n` : "";
+    const phoneShown = clientPhone ? (clientPhone.startsWith("+") ? clientPhone : `+${clientPhone.replace(/\D/g, "")}`) : "—";
     const text =
       `\u2702\uFE0F <b>YANGI BRON TUSHDI!</b>\n\n` +
-      `\uD83D\uDC64 Mijoz: ${clientName}\n` +
-      `${phoneLine}` +
-      `\uD83D\uDC88 Xizmat: ${serviceNames}\n` +
-      `\uD83D\uDCC5 Sana: ${formatDateLabel(data.date)}\n` +
-      `\u23F0 Vaqt: ${data.time}\n` +
-      `\uD83D\uDCB5 Narxi: ${data.totalPrice.toLocaleString()} SO\u02BCM\n\n` +
+      `\uD83D\uDC64 <b>Mijoz:</b> ${clientName}\n` +
+      `\uD83D\uDCDE <b>Tel:</b> ${phoneShown}\n` +
+      `\uD83D\uDC88 <b>Xizmat:</b> ${serviceNames}\n` +
+      `\uD83D\uDCC5 <b>Sana:</b> ${formatDateLabel(data.date)}\n` +
+      `\u23F0 <b>Vaqt:</b> ${data.time}\n` +
+      `\uD83D\uDCB5 <b>Narxi:</b> ${Number(data.totalPrice || 0).toLocaleString()} SO\u02BBM\n\n` +
       `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
-      `\uD83D\uDCA1 Ushbu bron avtomatik tarzda CRM kalendaringizga qo\u02BBshildi.`;
+      `\uD83C\uDF10 <i>Ushbu bron mijoz tomonidan web-sahifa orqali band qilindi va CRM kalendaringizga qo\u02BBshildi.</i>`;
 
     const buttons: { text: string; callback_data?: string; url?: string }[][] = [];
     const row: { text: string; callback_data?: string; url?: string }[] = [];
@@ -1715,10 +1715,12 @@ interface BookingData {
   services:       { name: string; price: number; duration: number }[];
 }
 
-function parseBookingPayload(payload: string): { sessionId: string } | null {
-  const match = payload.match(/^booking_([a-f0-9]{8,20})$/i);
-  if (!match) return null;
-  return { sessionId: match[1]! };
+function parseBookingPayload(payload: string): { sessionId?: string; bookingId?: string } | null {
+  const legacy = payload.match(/^booking_([a-f0-9]{8,20})$/i);
+  if (legacy) return { sessionId: legacy[1] };
+  const web = payload.match(/^bk_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+  if (web) return { bookingId: web[1] };
+  return null;
 }
 
 const UZ_MONTHS = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
@@ -1910,13 +1912,14 @@ async function confirmBookingSession(
   // Insert into bookings table.
   // Skip if the fast-path (tgCustomer) already created the row and linked it
   // via session.bookingId — prevents duplicate entries in dashboard/analytics.
+  const shownName = session.clientName || firstName;
   if (!session.bookingId) {
     try {
       const totalDur = data.services.reduce((a, s) => a + (s.duration || 0), 0);
       await db.insert(bookingsTable).values({
         barberId: session.barberId,
         clientId: clientId || null,
-        clientName: firstName,
+        clientName: shownName,
         serviceName: data.services.map(s => s.name).join(", "),
         date: toISODate(data.date),
         startTime: data.time,
@@ -1927,27 +1930,30 @@ async function confirmBookingSession(
     } catch (err) {
       console.warn("[Bot] bookings insert skipped:", (err as Error).message);
     }
-  } else if (clientId) {
-    // Fast-path row exists — backfill clientId now that we have it resolved
-    db.update(bookingsTable)
-      .set({ clientId, updatedAt: new Date() })
-      .where(eq(bookingsTable.id, session.bookingId))
-      .catch(() => {});
+  } else {
+    await db.update(bookingsTable)
+      .set({
+        status: "confirmed",
+        clientName: shownName,
+        ...(clientId ? { clientId } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(bookingsTable.id, session.bookingId));
   }
 
   log("booking_confirmed", { sessionId, telegramUserId: tgUserId, barberId: session.barberId });
 
   const serviceNames = data.services.map((s: { name: string }) => s.name).join(", ");
-  const teamLine = data.isTeam && data.teamBarberName ? `\n\uD83D\uDC88 Usta: <b>${data.teamBarberName}</b>` : "";
-
+  const place = data.barberAddress?.trim();
   const confirmText =
-    `\uD83C\uDF89 <b>${firstName}, sizning navbatingiz muvaffaqiyatli band qilindi!</b>${teamLine}\n\n` +
-    `\uD83D\uDC87\u200D\u2642\uFE0F Usta: <b>${data.barberName}</b>\n` +
-    `\uD83D\uDEE0 Xizmat: ${serviceNames}\n` +
-    `\uD83D\uDCB8 Narx: ${data.totalPrice.toLocaleString()} so\u02BCm\n` +
-    `\uD83D\uDCC5 Sana: ${formatDateLabel(data.date)}\n` +
-    `\u23F0 Vaqt: <b>${data.time}</b>\n\n` +
-    `Uchrashuvdan 10 daqiqa oldin kelishingizni so\u02BBraymiz. Agar rejalaringiz o\u02BBzgarsa, iltimos, bot orqali bekor qiling.`;
+    `\u2705 <b>Broningiz muvaffaqiyatli tasdiqlandi!</b>\n\n` +
+    `\uD83D\uDC88 <b>Barber:</b> ${data.barberName}\n` +
+    `\u2702\uFE0F <b>Xizmat:</b> ${serviceNames}\n` +
+    `\uD83D\uDCC5 <b>Sana:</b> ${formatDateLabel(data.date)}\n` +
+    `\u23F0 <b>Vaqt:</b> ${data.time}\n` +
+    `\uD83D\uDCB0 <b>Narxi:</b> ${Number(data.totalPrice || 0).toLocaleString()} SO\u02BBM\n` +
+    (place ? `\uD83D\uDCCD <b>Manzil:</b> ${place}\n\n` : `\n`) +
+    `<i>Uchrashuv vaqtidan 10 daqiqa oldin yetib kelishingizni so\u02BBraymiz. \uD83D\uDE0A</i>`;
 
   await callTelegram("sendMessage", {
     chat_id: chatId,
@@ -1963,22 +1969,19 @@ async function confirmBookingSession(
 
   // Notify barber
   sendBarberBookingNotification(
-    session.barberId, sessionId, data, firstName, effectivePhone,
+    session.barberId, sessionId, data, shownName, effectivePhone,
   ).catch(err => console.error("[Bot] barber notification failed:", err));
 }
 
 async function handleBookingStart(
   chatId: number,
-  sessionId: string,
-  from: Record<string, unknown> | undefined,
+  ref: { sessionId?: string; bookingId?: string },
+  _from: Record<string, unknown> | undefined,
 ) {
-  const firstName = (from?.first_name as string) || "Mijoz";
-
-  const [session] = await db
-    .select()
-    .from(bookingSessionsTable)
-    .where(eq(bookingSessionsTable.sessionId, sessionId))
-    .limit(1);
+  const [session] = ref.bookingId
+    ? await db.select().from(bookingSessionsTable).where(eq(bookingSessionsTable.bookingId, ref.bookingId)).limit(1)
+    : await db.select().from(bookingSessionsTable).where(eq(bookingSessionsTable.sessionId, ref.sessionId || "")).limit(1);
+  const sessionId = session?.sessionId || ref.sessionId || "";
 
   if (!session || session.status === "expired" || new Date() > session.expiresAt) {
     await sendExpiredSession(chatId);
@@ -1991,8 +1994,6 @@ async function handleBookingStart(
     await sendBookingAlreadyDone(chatId, data);
     return;
   }
-
-  const clientName = session.clientName || firstName;
 
   pendingBookingVerifications.delete(chatId);
   pendingBookingVerifications.set(chatId, sessionId);
@@ -2012,10 +2013,9 @@ async function handleBookingStart(
 
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: `Assalomu alaykum, <b>${clientName}</b>! \uD83D\uDE0A\n\nNavbat olishni yakunlash uchun pastdagi tugmani bosib, telefon raqamingizni tasdiqlang:`,
-    parse_mode: "HTML",
+    text: "Assalomu alaykum! \uD83D\uDC4B\nBroningizni tasdiqlash uchun pastdagi \u00AB\uD83D\uDCF1 Raqamimni yuborish\u00BB tugmasini bosing.",
     reply_markup: {
-      keyboard: [[{ text: "\uD83D\uDCF1 Telefon raqamni yuborish", request_contact: true }]],
+      keyboard: [[{ text: "\uD83D\uDCF1 Raqamimni yuborish", request_contact: true }]],
       resize_keyboard: true,
       one_time_keyboard: true,
     },

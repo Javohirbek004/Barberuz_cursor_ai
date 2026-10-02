@@ -8,7 +8,7 @@
 
 import { Router } from "express";
 import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable, clientsTable } from "@workspace/db";
-import { eq, and, lt, isNull, ne, or, sql } from "drizzle-orm";
+import { eq, and, lt, isNull, ne, or, sql, inArray } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendBarberBookingNotification } from "../lib/telegram-bot";
 
@@ -51,7 +51,7 @@ function getAppUrl(): string {
 
 async function expireOldSessions() {
   try {
-    await db
+    const expired = await db
       .update(bookingSessionsTable)
       .set({ status: "expired" })
       .where(
@@ -59,7 +59,15 @@ async function expireOldSessions() {
           eq(bookingSessionsTable.status, "pending"),
           lt(bookingSessionsTable.expiresAt, new Date()),
         ),
-      );
+      )
+      .returning({ bookingId: bookingSessionsTable.bookingId });
+    const held = expired.map((row) => row.bookingId).filter((id): id is string => !!id);
+    if (held.length > 0) {
+      await db
+        .update(bookingsTable)
+        .set({ status: "cancelled", updatedAt: new Date() })
+        .where(and(inArray(bookingsTable.id, held), eq(bookingsTable.status, "pending")));
+    }
   } catch {
   }
 }
@@ -276,9 +284,28 @@ router.post("/sessions", async (req, res) => {
       ? req.body.clientName.trim()
       : null;
 
+    const durationMins = Math.max(Number(totalDuration) || 30, 1);
+    const endMins = reqStart + durationMins;
+    const endTimeStr = `${String(Math.floor(endMins / 60)).padStart(2, "0")}:${String(endMins % 60).padStart(2, "0")}`;
+    const svcName = Array.isArray(services)
+      ? (services as Array<{ name: string }>).map((s) => s.name).filter(Boolean).join(", ")
+      : null;
+
+    const [pendingBooking] = await db.insert(bookingsTable).values({
+      barberId,
+      clientName: safeClientName || "Mijoz",
+      serviceName: svcName,
+      date: isoDate,
+      startTime: time,
+      endTime: endTimeStr,
+      price: String(Number(totalPrice) || 0),
+      status: "pending",
+    }).returning({ id: bookingsTable.id });
+
     await db.insert(bookingSessionsTable).values({
       sessionId,
       barberId,
+      bookingId: pendingBooking?.id ?? null,
       bookingData: JSON.stringify(bookingData),
       clientPhone: safeClientPhone,
       clientName: safeClientName,
@@ -286,10 +313,10 @@ router.post("/sessions", async (req, res) => {
       expiresAt,
     });
 
-    const botUsername = getBotUsername();
-    const deepLink = `tg://resolve?domain=${botUsername}&start=booking_${sessionId}`;
+    const bookingId = pendingBooking?.id || sessionId;
+    const deepLink = `https://t.me/BARBERUZ_YORDAMCHI_BOT?start=bk_${bookingId}`;
 
-    res.json({ sessionId, deepLink, status: "pending" });
+    res.json({ sessionId, bookingId, deepLink, status: "pending" });
   } catch (err) {
     console.error("[PublicAPI] POST /sessions error:", err);
     res.status(500).json({ error: "server_error" });
