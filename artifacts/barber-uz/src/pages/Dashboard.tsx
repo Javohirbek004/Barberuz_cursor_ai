@@ -30,7 +30,9 @@ const RU_MONTHS = [
 const RU_DAYS = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"];
 
 function formatDateLocale(lang: string): string {
-  const now = new Date();
+  const iso = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+  const [y, m, d] = iso.split("-").map(Number);
+  const now = new Date(y || 1970, (m || 1) - 1, d || 1);
   const day = now.getDate();
   const month = now.getMonth();
   const weekday = now.getDay();
@@ -468,11 +470,11 @@ function IndividualDashboard() {
         {/* Card 1: Bugungi bronlar */}
         <InteractiveCard
           label="Bugungi bronlar"
-          value={`${activeStats?.todayBookings ?? 0} ta`}
+          value={`${todayBusy.length} ta`}
           pillLabel="Tafsilotlar"
           icon={CalendarDays}
           iconColor="text-amber-400"
-          loading={statsLoading}
+          loading={bookingsLoading}
           delay={0}
           onClick={() => setShowBronModal(true)}
         />

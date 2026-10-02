@@ -29,7 +29,6 @@ import {
   useCreateBooking,
   useListBookings,
   useGetProfile,
-  getListBookingsQueryKey,
   getGetDashboardStatsQueryKey,
   getListServicesQueryKey,
   getListClientsQueryKey,
@@ -1034,7 +1033,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
 
   useEffect(() => {
     if (open) {
-      setForm(EMPTY_FORM);
+      setForm({ ...EMPTY_FORM, date: todayStr() });
       setShowAddService(false);
       setShowAfterHours(false);
       setPendingAfterHours(false);
@@ -1116,12 +1115,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
           setSaving(false);
           setSaved(true);
           // Invalidate bookings (Calendar + Dashboard) and clients list
-          queryClient.invalidateQueries({
-            queryKey: getListBookingsQueryKey({ date: form.date }),
-          });
-          queryClient.invalidateQueries({
-            queryKey: getListBookingsQueryKey(),
-          });
+          queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
           queryClient.invalidateQueries({
             queryKey: getGetDashboardStatsQueryKey(),
           });

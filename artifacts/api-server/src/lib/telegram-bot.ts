@@ -1755,13 +1755,11 @@ function formatDateLabel(dateStr: string): string {
 }
 
 function toISODate(dateStr: string): string {
-  if (dateStr === "today" || dateStr === "bugun") {
-    return new Date().toISOString().split("T")[0]!;
-  }
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+  if (dateStr === "today" || dateStr === "bugun") return today;
   if (dateStr === "tomorrow" || dateStr === "ertaga") {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().split("T")[0]!;
+    const [y, m, d] = today.split("-").map(Number);
+    return new Date(Date.UTC(y || 1970, (m || 1) - 1, (d || 1) + 1)).toISOString().slice(0, 10);
   }
   return dateStr;
 }

@@ -22,6 +22,13 @@ function toISO(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/** Same calendar day the booking form and API use (Tashkent), not the computer clock. */
+function tashkentTodayDate(): Date {
+  const iso = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y || 1970, (m || 1) - 1, d || 1);
+}
+
 function isSameDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -76,7 +83,7 @@ function MonthNav({
   selected: Date;
   onSelect: (d: Date) => void;
 }) {
-  const today = new Date();
+  const today = tashkentTodayDate();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
 
@@ -160,7 +167,7 @@ function MonthNav({
 
 // ── Individual Calendar ───────────────────────────────────────────────────────
 function IndividualCalendar() {
-  const today = new Date();
+  const today = tashkentTodayDate();
   const [selectedDate, setSelectedDate] = useState(today);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
