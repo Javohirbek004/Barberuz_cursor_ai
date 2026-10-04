@@ -4,7 +4,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, Send, MapPin, Instagram, Phone, X, ArrowLeft } from "lucide-react";
 import { SlotPeriodTabs } from "@/components/SlotPeriodTabs";
+import { ShopTimeHint } from "@/components/ShopTimeHint";
 import {
+  TODAY_PASSED_MESSAGE,
+  todaySlotsExhausted,
   addDaysISO,
   bookingsToIntervals,
   filterSlotsByPeriod,
@@ -171,18 +174,25 @@ function PublicBookingModal({
   const bufferMins = normalizeBuffer(barber.bufferTime);
   // Filter out past/current slots when today is selected (Tashkent clock)
   const nowMins = dateOpt === todayISO ? tashkentNowMinutes() : null;
-  const allSlots = daySchedule.enabled
-    ? generateSmartSlots({
-        duration: totalDuration,
-        buffer: bufferMins,
-        rangeStart: toMins(daySchedule.start),
-        rangeEnd: toMins(daySchedule.end),
-        bookings: bookingsToIntervals(busySlots),
-        fixedBreaks: lunchInterval(barber),
-        nowMins,
-      })
-    : [];
+  const slotInput = {
+    duration: totalDuration,
+    buffer: bufferMins,
+    rangeStart: toMins(daySchedule.start),
+    rangeEnd: toMins(daySchedule.end),
+    bookings: bookingsToIntervals(busySlots),
+    fixedBreaks: lunchInterval(barber),
+  };
+  const allSlots = daySchedule.enabled ? generateSmartSlots({ ...slotInput, nowMins }) : [];
   const slots = filterSlotsByPeriod(allSlots, period);
+  // "Bugun" with every working hour already behind us.
+  const todayPassed = todaySlotsExhausted({
+    isToday: dateOpt === todayISO,
+    dayOpen: daySchedule.enabled,
+    slotsNow: allSlots.length,
+    slotsIgnoringNow: daySchedule.enabled ? generateSmartSlots({ ...slotInput, nowMins: null }).length : 0,
+    nowMins,
+    dayEnd: toMins(daySchedule.end),
+  });
 
   // If the previously selected time is no longer in the available slots (e.g.
   // because the date changed or new busy data arrived), clear the selection so
@@ -329,6 +339,7 @@ function PublicBookingModal({
                     className="sr-only" min={todayISO} value={dateOpt}
                     onChange={e => { if (e.target.value) { setDateOpt(e.target.value); setSelectedTime(null); } }} />
                 </div>
+                <ShopTimeHint />
                 {!slotsLoading && allSlots.length > 0 && (
                   <SlotPeriodTabs value={period} onChange={setPeriod} />
                 )}
@@ -338,6 +349,8 @@ function PublicBookingModal({
                   </div>
                 ) : !daySchedule.enabled ? (
                   <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">Bu kun dam olish kuni 😴</div>
+                ) : todayPassed ? (
+                  <div data-testid="today-passed-notice" className="text-center py-10 px-4 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">{TODAY_PASSED_MESSAGE}</div>
                 ) : allSlots.length === 0 ? (
                   <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">Bu kun bo'sh vaqt yo'q 😔</div>
                 ) : slots.length === 0 ? (

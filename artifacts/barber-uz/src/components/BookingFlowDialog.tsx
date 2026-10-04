@@ -37,7 +37,10 @@ import type { Service } from "@workspace/api-client-react";
 import { ServiceForm } from "@/components/ServiceForm";
 import type { ServiceFormData } from "@/components/ServiceForm";
 import { SlotPeriodTabs } from "@/components/SlotPeriodTabs";
+import { ShopTimeHint } from "@/components/ShopTimeHint";
 import {
+  TODAY_PASSED_MESSAGE,
+  todaySlotsExhausted,
   bookingsToIntervals,
   filterSlotsByPeriod,
   generateSmartSlots,
@@ -455,6 +458,7 @@ function TimePicker({
   afterSlots,
   showAfterHours,
   onToggleAfterHours,
+  todayPassed,
   value,
   onChange,
   workEndStr,
@@ -463,6 +467,7 @@ function TimePicker({
   afterSlots: string[];
   showAfterHours: boolean;
   onToggleAfterHours: () => void;
+  todayPassed: boolean;
   value: string;
   onChange: (t: string) => void;
   workEndStr: string;
@@ -478,9 +483,19 @@ function TimePicker({
 
   return (
     <div>
+      <ShopTimeHint />
       {hasAnySlots && <SlotPeriodTabs value={period} onChange={setPeriod} />}
 
-      {!hasStandard && !showAfterHours && (
+      {todayPassed && !hasStandard && (
+        <p
+          data-testid="today-passed-notice"
+          className="text-sm text-muted-foreground py-2 text-center"
+        >
+          {TODAY_PASSED_MESSAGE}
+        </p>
+      )}
+
+      {!todayPassed && !hasStandard && !showAfterHours && (
         <p className="text-sm text-muted-foreground py-2 text-center">
           {allStandard.length > 0 ? "Bu vaqt oralig'ida bo'sh joy yo'q" : "Ish vaqtida bo'sh joy qolmadi"}
         </p>
@@ -817,6 +832,7 @@ function BookingFormContent({
   afterSlots,
   showAfterHours,
   onToggleAfterHours,
+  todayPassed,
   workEndStr,
   isValid,
   saving,
@@ -834,6 +850,7 @@ function BookingFormContent({
   afterSlots: string[];
   showAfterHours: boolean;
   onToggleAfterHours: () => void;
+  todayPassed: boolean;
   workEndStr: string;
   isValid: boolean;
   saving: boolean;
@@ -918,6 +935,7 @@ function BookingFormContent({
             afterSlots={afterSlots}
             showAfterHours={showAfterHours}
             onToggleAfterHours={onToggleAfterHours}
+            todayPassed={todayPassed}
             value={form.time}
             onChange={(t) => onChange({ time: t })}
             workEndStr={workEndStr}
@@ -1047,18 +1065,27 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
   const nowMins = form.date === todayStr() ? tashkentNowMinutes() : null;
 
   // Slot End = Start + Duration + Buffer; first slot after a booking is anchored to its end.
+  const standardInput = {
+    duration,
+    buffer: bufferMins,
+    rangeStart: workStart,
+    rangeEnd: workEnd,
+    bookings: bookedIntervals,
+    fixedBreaks: lunchInterval(sched),
+  };
   const standardSlots =
-    !isOffDay && duration > 0
-      ? generateSmartSlots({
-          duration,
-          buffer: bufferMins,
-          rangeStart: workStart,
-          rangeEnd: workEnd,
-          bookings: bookedIntervals,
-          fixedBreaks: lunchInterval(sched),
-          nowMins,
-        })
-      : [];
+    !isOffDay && duration > 0 ? generateSmartSlots({ ...standardInput, nowMins }) : [];
+  // "Bugun" with every working hour already behind us.
+  const todayPassed =
+    duration > 0 &&
+    todaySlotsExhausted({
+      isToday: form.date === todayStr(),
+      dayOpen: !isOffDay,
+      slotsNow: standardSlots.length,
+      slotsIgnoringNow: !isOffDay ? generateSmartSlots({ ...standardInput, nowMins: null }).length : 0,
+      nowMins,
+      dayEnd: workEnd,
+    });
   // "+ Ish vaqtidan tashqari xizmat": everything after closing (the whole day on a day off).
   const afterSlots =
     duration > 0
@@ -1256,6 +1283,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
                     afterSlots={afterSlots}
                     showAfterHours={showAfterHours}
                     onToggleAfterHours={() => setShowAfterHours((v) => !v)}
+                    todayPassed={todayPassed}
                     workEndStr={workEndStr}
                     isValid={isValid}
                     saving={saving}

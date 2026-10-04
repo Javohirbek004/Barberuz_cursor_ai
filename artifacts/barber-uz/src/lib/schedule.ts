@@ -100,6 +100,39 @@ export function tashkentNowMinutes(now: Date = new Date()): number {
   return h * 60 + m;
 }
 
+export const TODAY_PASSED_MESSAGE =
+  "Bugun uchun barcha ish vaqtlari tugagan. Iltimos, ertangi kunni tanlang!";
+
+/**
+ * True when "Bugun" is an open day whose slots are all in the past
+ * (not merely fully booked): shows the "ertangi kunni tanlang" notice.
+ */
+export function todaySlotsExhausted(args: {
+  isToday: boolean;
+  dayOpen: boolean;
+  /** Slots still available now. */
+  slotsNow: number;
+  /** Slots the same day would have had if the clock were ignored. */
+  slotsIgnoringNow: number;
+  nowMins: number | null;
+  /** Closing time in minutes. */
+  dayEnd: number;
+}): boolean {
+  if (!args.isToday || !args.dayOpen || args.slotsNow > 0) return false;
+  if (args.slotsIgnoringNow > 0) return true;
+  return args.nowMins != null && args.nowMins >= args.dayEnd;
+}
+
+/** Tashkent wall clock as HH:MM. */
+export function tashkentClockLabel(now: Date = new Date()): string {
+  return fmtMins(tashkentNowMinutes(now));
+}
+
+/** True when the device clock is not on Tashkent time (UTC+5). */
+export function deviceOutsideTashkentZone(now: Date = new Date()): boolean {
+  return now.getTimezoneOffset() !== -300;
+}
+
 /** ISO date + N days (pure calendar arithmetic, timezone-free). */
 export function addDaysISO(iso: string, days: number): string {
   const [y = 1970, m = 1, d = 1] = iso.split("-").map(Number);

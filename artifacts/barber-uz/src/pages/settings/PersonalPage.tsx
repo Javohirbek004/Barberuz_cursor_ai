@@ -953,7 +953,7 @@ function AsosiyTab({
         </div>
 
         {/* Buffer time (same value as settings/profile) */}
-        <BufferTimeField value={profile.bufferTime} onChange={v => set("bufferTime", v)} />
+        <BufferTimeField showInfo value={profile.bufferTime} onChange={v => set("bufferTime", v)} />
       </div>
 
       {/* Social */}
