@@ -126,10 +126,12 @@ router.post("/", authenticate, async (req, res) => {
           ne(bookingsTable.status, "cancelled"),
         ),
       );
+    // "Oraliq tanaffus": keep the barber's preparation gap between two services.
+    const bufferMins = typeof user.bufferTime === "number" ? user.bufferTime : 10;
     const hasConflict = existingOnDate.some((b) => {
       const s = timeToMins(b.startTime);
       const e = timeToMins(b.endTime);
-      return reqStart < e && reqEnd > s;
+      return reqStart < e + bufferMins && reqEnd + bufferMins > s;
     });
     if (hasConflict) {
       res.status(409).json({ error: "conflict", message: "Tanlangan vaqt allaqachon band" });

@@ -3,6 +3,22 @@ import { useParams, useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, Send, MapPin, Instagram, Phone, X, ArrowLeft } from "lucide-react";
+import { SlotPeriodTabs } from "@/components/SlotPeriodTabs";
+import {
+  addDaysISO,
+  bookingsToIntervals,
+  filterSlotsByPeriod,
+  generateSmartSlots,
+  isWorkingDate,
+  lunchInterval,
+  normalizeBuffer,
+  readOpenDaysShort,
+  resolveDaySchedule,
+  tashkentNowMinutes,
+  tashkentTodayISO,
+  toMins,
+  type SlotPeriod,
+} from "@/lib/schedule";
 
 interface BarberData {
   id: string;
@@ -21,6 +37,7 @@ interface BarberData {
   lunchBreakEnabled: boolean;
   lunchBreakStart: string | null;
   lunchBreakEnd: string | null;
+  bufferTime?: number | null;
   telegramUsername: string | null;
   username: string;
   address: string | null;
@@ -71,79 +88,25 @@ function formatPrice(n: number) {
   return n.toLocaleString("uz-UZ") + " so'm";
 }
 
-function toMins(t: string): number {
-  const [h = 0, m = 0] = t.split(":").map(Number);
-  return h * 60 + m;
-}
-function fmtTime(m: number): string {
-  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-}
-function generatePublicSlots(
-  duration: number,
-  barber: BarberData,
-  busySlots: { startTime: string; endTime: string }[] = [],
-  nowMins: number | null = null,
-  dateIso?: string,
-): string[] {
-  if (dateIso) {
-    try {
-      const days = JSON.parse(barber.scheduleJson || "{}").workDays;
-      if (Array.isArray(days) && days.length > 0) {
-        const d = new Date(`${dateIso}T12:00:00+05:00`);
-        const key = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][d.getDay()];
-        if (!days.includes(key)) return [];
-      }
-    } catch { /* keep generating */ }
-  }
-  const start = toMins(barber.workingHoursStart || "09:00");
-  const end = toMins(barber.workingHoursEnd || "20:00");
-  const busy: { s: number; e: number }[] = [];
-  if (barber.lunchBreakEnabled && barber.lunchBreakStart && barber.lunchBreakEnd) {
-    busy.push({ s: toMins(barber.lunchBreakStart), e: toMins(barber.lunchBreakEnd) });
-  }
-  for (const b of busySlots) {
-    busy.push({ s: toMins(b.startTime), e: toMins(b.endTime) });
-  }
-  const slots: string[] = [];
-  for (let t = start; t + duration <= end; t += 30) {
-    if (nowMins !== null && t <= nowMins) continue; // filter past/current times for today
-    const slotEnd = t + duration;
-    if (!busy.some(b => t < b.e && slotEnd > b.s)) {
-      slots.push(fmtTime(t));
-    }
-  }
-  return slots;
-}
-
 // ── Date-picker helpers ───────────────────────────────────────────────────────
 const UZ_SHORT_DAYS_PUB = ["Ya", "Du", "Se", "Ch", "Pa", "Ju", "Sh"];
 const UZ_FULL_DAYS_PUB  = ["Yakshanba", "Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"];
 const UZ_MONTHS_PUB     = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
 
-function sevenDaysFromToday(): string[] {
-  const days: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    days.push(d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" }));
-  }
-  return days;
-}
-
 /** Short label for the date-picker button: "Bugun" / "Ertaga" / "Du 28" */
 function dateBtnLabel(iso: string, todayISO: string, tomorrowISO: string): string {
   if (iso === todayISO) return "Bugun";
   if (iso === tomorrowISO) return "Ertaga";
-  const d = new Date(`${iso}T12:00:00+05:00`);
-  return `${UZ_SHORT_DAYS_PUB[d.getDay()]} ${d.getDate()}`;
+  const d = new Date(`${iso}T12:00:00Z`);
+  return `${UZ_SHORT_DAYS_PUB[d.getUTCDay()]} ${d.getUTCDate()}`;
 }
 
 /** Full human-readable label used in confirm / done steps */
 function dateFullLabel(iso: string, todayISO: string, tomorrowISO: string): string {
   if (iso === todayISO) return "Bugun";
   if (iso === tomorrowISO) return "Ertaga";
-  const d = new Date(`${iso}T12:00:00+05:00`);
-  return `${UZ_FULL_DAYS_PUB[d.getDay()]}, ${d.getDate()}-${UZ_MONTHS_PUB[d.getMonth()]}`;
+  const d = new Date(`${iso}T12:00:00Z`);
+  return `${UZ_FULL_DAYS_PUB[d.getUTCDay()]}, ${d.getUTCDate()}-${UZ_MONTHS_PUB[d.getUTCMonth()]}`;
 }
 
 type PubBookingStep = "time" | "name" | "confirm" | "verifying" | "done";
@@ -157,28 +120,21 @@ function PublicBookingModal({
   totalPrice: number;
   onClose: () => void;
 }) {
-  const sevenDays   = (() => {
-    const days: string[] = [];
-    for (let i = 0; i < 21 && days.length < 7; i++) {
-      const d = new Date();
-      d.setDate(d.getDate() + i);
-      const iso = d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
-      try {
-        const wd = JSON.parse(barber.scheduleJson || "{}").workDays;
-        if (Array.isArray(wd) && wd.length > 0) {
-          const key = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][new Date(`${iso}T12:00:00+05:00`).getDay()];
-          if (!wd.includes(key)) continue;
-        }
-      } catch { /* include day */ }
-      days.push(iso);
+  // Calendar days are always Tashkent days, whatever the client's device timezone is.
+  const todayISO    = tashkentTodayISO();
+  const tomorrowISO = addDaysISO(todayISO, 1);
+  // Start on the first day the barber actually works (today, or the next open day).
+  const firstOpenISO = (() => {
+    for (let i = 0; i < 14; i++) {
+      const iso = addDaysISO(todayISO, i);
+      if (isWorkingDate(barber, iso)) return iso;
     }
-    return days.length > 0 ? days : sevenDaysFromToday();
+    return todayISO;
   })();
-  const todayISO    = sevenDays[0]!;
-  const tomorrowISO = sevenDays[1]!;
 
   const [step, setStep] = useState<PubBookingStep>("time");
-  const [dateOpt, setDateOpt] = useState<string>(todayISO);
+  const [dateOpt, setDateOpt] = useState<string>(firstOpenISO);
+  const [period, setPeriod] = useState<SlotPeriod>("all");
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [clientName, setClientName] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -210,20 +166,33 @@ function PublicBookingModal({
   const dateInputRef = useRef<HTMLInputElement>(null);
   const displayName = barber.brandName || barber.name;
   const dateLabel   = dateFullLabel(dateOpt, todayISO, tomorrowISO);
-  // Filter out past/current slots when today is selected
-  const nowMins = dateOpt === todayISO
-    ? (() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); })()
-    : null;
-  const slots = generatePublicSlots(totalDuration, barber, busySlots, nowMins, dateOpt);
+  // Hours, lunch and buffer come from the barber's saved settings for THIS weekday.
+  const daySchedule = resolveDaySchedule(barber, dateOpt);
+  const bufferMins = normalizeBuffer(barber.bufferTime);
+  // Filter out past/current slots when today is selected (Tashkent clock)
+  const nowMins = dateOpt === todayISO ? tashkentNowMinutes() : null;
+  const allSlots = daySchedule.enabled
+    ? generateSmartSlots({
+        duration: totalDuration,
+        buffer: bufferMins,
+        rangeStart: toMins(daySchedule.start),
+        rangeEnd: toMins(daySchedule.end),
+        bookings: bookingsToIntervals(busySlots),
+        fixedBreaks: lunchInterval(barber),
+        nowMins,
+      })
+    : [];
+  const slots = filterSlotsByPeriod(allSlots, period);
 
   // If the previously selected time is no longer in the available slots (e.g.
   // because the date changed or new busy data arrived), clear the selection so
   // the user cannot silently advance with a taken slot.
   useEffect(() => {
-    if (selectedTime && !slots.includes(selectedTime)) {
+    if (selectedTime && !allSlots.includes(selectedTime)) {
       setSelectedTime(null);
     }
-  }, [slots, selectedTime]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allSlots.join("|"), selectedTime]);
 
   async function handleConfirm() {
     if (submitting || !selectedTime || !clientName.trim()) return;
@@ -360,14 +329,21 @@ function PublicBookingModal({
                     className="sr-only" min={todayISO} value={dateOpt}
                     onChange={e => { if (e.target.value) { setDateOpt(e.target.value); setSelectedTime(null); } }} />
                 </div>
+                {!slotsLoading && allSlots.length > 0 && (
+                  <SlotPeriodTabs value={period} onChange={setPeriod} />
+                )}
                 {slotsLoading ? (
                   <div className="flex justify-center py-10">
                     <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   </div>
-                ) : slots.length === 0 ? (
+                ) : !daySchedule.enabled ? (
+                  <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">Bu kun dam olish kuni 😴</div>
+                ) : allSlots.length === 0 ? (
                   <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">Bu kun bo'sh vaqt yo'q 😔</div>
+                ) : slots.length === 0 ? (
+                  <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">Bu vaqt oralig'ida bo'sh joy yo'q</div>
                 ) : (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2" data-testid="public-slot-grid">
                     {slots.map(slot => (
                       <button key={slot} onClick={() => setSelectedTime(slot)}
                         className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all ${selectedTime === slot ? "border-primary bg-primary/20 text-primary" : "border-white/12 bg-background/50 text-muted-foreground hover:bg-white/8"}`}>
@@ -520,9 +496,7 @@ function PublicView({ barber }: { barber: BarberData }) {
   const coverImage = galleryImages[0] || "";
   const gradIdx = displayName.charCodeAt(0) % COVER_GRADS.length;
 
-  const workDays: string[] = (() => {
-    try { return JSON.parse(barber.scheduleJson || "{}").workDays || []; } catch { return []; }
-  })();
+  const workDays: string[] = readOpenDaysShort(barber.scheduleJson);
   const workDaysLabel = workDays.length > 0
     ? workDays.map(k => DAY_LABELS[k] || k).join(", ")
     : null;

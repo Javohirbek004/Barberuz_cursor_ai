@@ -27,6 +27,8 @@ export const usersTable = pgTable(
     lunchBreakEnabled: boolean("lunch_break_enabled").notNull().default(false),
     lunchBreakStart: text("lunch_break_start"),
     lunchBreakEnd: text("lunch_break_end"),
+    /** Preparation gap (minutes) added after every service. Allowed: 0, 5, 10, 15, 20. */
+    bufferTime: integer("buffer_time").notNull().default(10),
     address: text("address"),
     mapLink: text("map_link"),
     latitude: text("latitude"),

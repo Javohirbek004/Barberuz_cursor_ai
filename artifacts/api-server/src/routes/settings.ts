@@ -6,6 +6,7 @@ import { authenticate, getUser, hashPassword } from "../lib/auth";
 const router = Router();
 
 const SLUG_REGEX = /^[a-z0-9-]{3,30}$/;
+const ALLOWED_BUFFER_MINUTES = [0, 5, 10, 15, 20];
 
 function formatProfile(user: typeof usersTable.$inferSelect) {
   return {
@@ -28,6 +29,7 @@ function formatProfile(user: typeof usersTable.$inferSelect) {
     lunchBreakEnabled: user.lunchBreakEnabled,
     lunchBreakStart: user.lunchBreakStart,
     lunchBreakEnd: user.lunchBreakEnd,
+    bufferTime: user.bufferTime,
     address: user.address,
     mapLink: user.mapLink,
     latitude: user.latitude,
@@ -52,9 +54,14 @@ router.put("/profile", authenticate, async (req, res) => {
       workingHoursStart, workingHoursEnd, bio, avatarUrl,
       specializations, scheduleJson,
       lunchBreakEnabled, lunchBreakStart, lunchBreakEnd,
+      bufferTime: rawBufferTime,
       address, mapLink: rawMapLink, latitude, longitude,
       instagram: rawInstagram, galleryImages,
     } = req.body;
+    // Only the supported gap sizes are accepted; anything else is ignored.
+    const bufferTime = typeof rawBufferTime === "number" && ALLOWED_BUFFER_MINUTES.includes(rawBufferTime)
+      ? rawBufferTime
+      : undefined;
     const mapLink = typeof rawMapLink === "string"
       ? (/^https?:\/\//i.test(rawMapLink.trim()) ? rawMapLink.trim() : "")
       : rawMapLink;
@@ -78,6 +85,7 @@ router.put("/profile", authenticate, async (req, res) => {
         ...(lunchBreakEnabled !== undefined && { lunchBreakEnabled }),
         ...(lunchBreakStart !== undefined && { lunchBreakStart }),
         ...(lunchBreakEnd !== undefined && { lunchBreakEnd }),
+        ...(bufferTime !== undefined && { bufferTime }),
         ...(address !== undefined && { address }),
         ...(mapLink !== undefined && { mapLink }),
         ...(latitude !== undefined && { latitude }),

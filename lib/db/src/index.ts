@@ -29,9 +29,24 @@ function postgresPoolConfig(rawUrl: string) {
   };
 }
 
+/**
+ * Additive, idempotent schema upgrades that must exist before the app serves requests.
+ * Each statement uses IF NOT EXISTS, so running it on every start is safe.
+ */
+const ENSURE_SCHEMA_SQL = [
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "buffer_time" integer DEFAULT 10 NOT NULL`,
+];
+
 async function createDb() {
   if (!useLocalDb) {
     const pool = new Pool(postgresPoolConfig(process.env.DATABASE_URL!));
+    for (const statement of ENSURE_SCHEMA_SQL) {
+      try {
+        await pool.query(statement);
+      } catch (err) {
+        console.error("[db] Schema upgrade failed:", statement, err);
+      }
+    }
     return { pool, db: drizzlePg(pool, { schema }) };
   }
 

@@ -125,6 +125,14 @@ router.post("/sessions", async (req, res) => {
     const reqStart = timeToMins(time);
     const reqEnd   = reqStart + Math.max(Number(totalDuration) || 0, 1);
 
+    // "Oraliq tanaffus": every service keeps a preparation gap before the next one.
+    const [barberRow] = await db
+      .select({ bufferTime: usersTable.bufferTime })
+      .from(usersTable)
+      .where(eq(usersTable.id, barberId))
+      .limit(1);
+    const bufferMins = barberRow?.bufferTime ?? 10;
+
     const existingOnDate = await db
       .select({ startTime: bookingsTable.startTime, endTime: bookingsTable.endTime })
       .from(bookingsTable)
@@ -139,7 +147,7 @@ router.post("/sessions", async (req, res) => {
     const hasConflict = existingOnDate.some(b => {
       const s = timeToMins(b.startTime);
       const e = timeToMins(b.endTime);
-      return reqStart < e && reqEnd > s;
+      return reqStart < e + bufferMins && reqEnd + bufferMins > s;
     });
 
     if (hasConflict) {
@@ -508,6 +516,7 @@ router.get("/barber/:slug", async (req, res) => {
       lunchBreakEnabled: barber.lunchBreakEnabled,
       lunchBreakStart: barber.lunchBreakStart,
       lunchBreakEnd: barber.lunchBreakEnd,
+      bufferTime: barber.bufferTime,
       telegramUsername: barber.telegramUsername,
       username: barber.username,
       address: barber.address,

@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
   lunch_break_enabled boolean NOT NULL DEFAULT false,
   lunch_break_start text,
   lunch_break_end text,
+  buffer_time integer NOT NULL DEFAULT 10,
   address text,
   map_link text,
   latitude text,
@@ -37,6 +38,9 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz
 );
+-- Older local databases were created before buffer_time existed.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS buffer_time integer NOT NULL DEFAULT 10;
+
 CREATE INDEX IF NOT EXISTS users_phone_idx ON users (phone);
 CREATE INDEX IF NOT EXISTS users_telegram_id_idx ON users (telegram_id);
 

@@ -36,6 +36,25 @@ import {
 import type { Service } from "@workspace/api-client-react";
 import { ServiceForm } from "@/components/ServiceForm";
 import type { ServiceFormData } from "@/components/ServiceForm";
+import { SlotPeriodTabs } from "@/components/SlotPeriodTabs";
+import {
+  bookingsToIntervals,
+  filterSlotsByPeriod,
+  generateSmartSlots,
+  lunchInterval,
+  normalizeBuffer,
+  resolveDaySchedule,
+  tashkentNowMinutes,
+  type ScheduleSource,
+  type SlotPeriod,
+} from "@/lib/schedule";
+
+type ProfileSchedule = ScheduleSource & {
+  lunchBreakEnabled?: boolean | null;
+  lunchBreakStart?: string | null;
+  lunchBreakEnd?: string | null;
+  bufferTime?: number | null;
+};
 import {
   useListCategories,
   useCreateCategory,
@@ -86,27 +105,6 @@ const UZ_MONTHS_DIALOG = ["Yanv","Fevr","Mart","Apr","May","Iyun","Iyul","Avg","
 function fmtDateUzShort(iso: string): string {
   const d = new Date(`${iso}T12:00:00`);
   return `${d.getDate()}-${UZ_MONTHS_DIALOG[d.getMonth()]}`;
-}
-
-function generateSlots(
-  duration: number,
-  busy: { startTime: string; endTime: string }[],
-  rangeStart: number,
-  rangeEnd: number,
-  nowMins: number | null = null,
-): string[] {
-  const slots: string[] = [];
-  for (let t = rangeStart; t + duration <= rangeEnd; t += 30) {
-    if (nowMins !== null && t <= nowMins) continue; // filter past/current slots for today
-    const end = t + duration;
-    const free = !busy.some((b) => {
-      const bs = toMins(b.startTime);
-      const be = toMins(b.endTime);
-      return t < be && end > bs;
-    });
-    if (free) slots.push(fmtMins(t));
-  }
-  return slots;
 }
 
 // ── Form state ────────────────────────────────────────────────────────────────
@@ -469,20 +467,28 @@ function TimePicker({
   onChange: (t: string) => void;
   workEndStr: string;
 }) {
-  const hasStandard = standardSlots.length > 0;
-  const hasAfter = afterSlots.length > 0;
+  const [period, setPeriod] = useState<SlotPeriod>("all");
+  const allStandard = standardSlots;
+  const allAfter = afterSlots;
+  const filteredStandard = filterSlotsByPeriod(allStandard, period);
+  const filteredAfter = filterSlotsByPeriod(allAfter, period);
+  const hasStandard = filteredStandard.length > 0;
+  const hasAfter = filteredAfter.length > 0;
+  const hasAnySlots = allStandard.length > 0 || (showAfterHours && allAfter.length > 0);
 
   return (
     <div>
+      {hasAnySlots && <SlotPeriodTabs value={period} onChange={setPeriod} />}
+
       {!hasStandard && !showAfterHours && (
         <p className="text-sm text-muted-foreground py-2 text-center">
-          Ish vaqtida bo'sh joy qolmadi
+          {allStandard.length > 0 ? "Bu vaqt oralig'ida bo'sh joy yo'q" : "Ish vaqtida bo'sh joy qolmadi"}
         </p>
       )}
 
       {hasStandard && (
-        <div className="flex flex-wrap gap-2">
-          {standardSlots.map((s) => (
+        <div className="flex flex-wrap gap-2" data-testid="admin-slot-grid">
+          {filteredStandard.map((s) => (
             <button
               key={s}
               type="button"
@@ -503,7 +509,7 @@ function TimePicker({
       {showAfterHours && (
         <div className={`flex flex-wrap gap-2 ${hasStandard ? "mt-2 pt-2 border-t border-white/5" : ""}`}>
           {hasAfter ? (
-            afterSlots.map((s) => (
+            filteredAfter.map((s) => (
               <button
                 key={s}
                 type="button"
@@ -519,7 +525,9 @@ function TimePicker({
             ))
           ) : (
             <p className="text-xs text-muted-foreground/60 py-1">
-              {workEndStr} dan keyin bo'sh joy yo'q
+              {allAfter.length > 0
+                ? "Bu vaqt oralig'ida bo'sh joy yo'q"
+                : `${workEndStr} dan keyin bo'sh joy yo'q`}
             </p>
           )}
         </div>
@@ -972,12 +980,11 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<ActiveTab>("bron");
 
-  // ── Profile (working hours) ───────────────────────────────────────────────
+  const { toast } = useToast();
+
+  // ── Profile (working hours, lunch, buffer) ────────────────────────────────
   const { data: profile } = useGetProfile();
-  const workStartStr = profile?.workingHoursStart ?? "09:00";
-  const workEndStr = profile?.workingHoursEnd ?? "20:00";
-  const workStart = toMins(workStartStr);
-  const workEnd = toMins(workEndStr);
+  const sched = (profile ?? {}) as ProfileSchedule;
 
   // ── Services ──────────────────────────────────────────────────────────────
   const {
@@ -1001,30 +1008,19 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
 
   // ── Existing bookings (conflict detection) ────────────────────────────────
   const { data: bookingsData } = useListBookings({ date: form.date });
-  const busy = [
-    ...(bookingsData?.bookings ?? []).filter((b) => b.status !== "cancelled"),
-    ...((profile as { lunchBreakEnabled?: boolean; lunchBreakStart?: string | null; lunchBreakEnd?: string | null } | undefined)
-      ?.lunchBreakEnabled &&
-    (profile as { lunchBreakStart?: string | null })?.lunchBreakStart &&
-    (profile as { lunchBreakEnd?: string | null })?.lunchBreakEnd
-      ? [{
-          startTime: (profile as { lunchBreakStart: string }).lunchBreakStart,
-          endTime: (profile as { lunchBreakEnd: string }).lunchBreakEnd,
-        }]
-      : []),
-  ];
+  const bookedIntervals = bookingsToIntervals(
+    (bookingsData?.bookings ?? []).filter((b) => b.status !== "cancelled"),
+  );
 
-  let isOffDay = false;
-  try {
-    const days = JSON.parse((profile as { scheduleJson?: string | null } | undefined)?.scheduleJson || "{}").workDays;
-    if (Array.isArray(days) && days.length > 0) {
-      const d = new Date(`${form.date}T12:00:00+05:00`);
-      const key = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][d.getDay()];
-      isOffDay = !days.includes(key);
-    }
-  } catch {
-    isOffDay = false;
-  }
+  // Hours for the chosen weekday (Monday and Friday can differ).
+  const dayHours = resolveDaySchedule(sched, form.date);
+  const isOffDay = !dayHours.enabled;
+  const globalStart = sched.workingHoursStart || "09:00";
+  const workStartStr = isOffDay ? globalStart : dayHours.start;
+  const workEndStr = isOffDay ? globalStart : dayHours.end;
+  const workStart = toMins(workStartStr);
+  const workEnd = toMins(workEndStr);
+  const bufferMins = normalizeBuffer(sched.bufferTime);
 
   // ── Create booking ────────────────────────────────────────────────────────
   const createBookingMut = useCreateBooking();
@@ -1047,20 +1043,37 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
   const selectedSvc = services.find((s) => s.id === form.serviceId);
   const duration = selectedSvc?.duration ?? 0;
 
-  // Filter past/current time slots when booking for today
-  const nowMins = form.date === todayStr()
-    ? (() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); })()
-    : null;
+  // Filter past/current time slots when booking for today (Tashkent clock)
+  const nowMins = form.date === todayStr() ? tashkentNowMinutes() : null;
 
+  // Slot End = Start + Duration + Buffer; first slot after a booking is anchored to its end.
   const standardSlots =
-    !isOffDay && duration > 0 ? generateSlots(duration, busy, workStart, workEnd, nowMins) : [];
-  const afterSlots =
     !isOffDay && duration > 0
-      ? generateSlots(duration, busy, workEnd, 23 * 60 + 30, nowMins)
+      ? generateSmartSlots({
+          duration,
+          buffer: bufferMins,
+          rangeStart: workStart,
+          rangeEnd: workEnd,
+          bookings: bookedIntervals,
+          fixedBreaks: lunchInterval(sched),
+          nowMins,
+        })
+      : [];
+  // "+ Ish vaqtidan tashqari xizmat": everything after closing (the whole day on a day off).
+  const afterSlots =
+    duration > 0
+      ? generateSmartSlots({
+          duration,
+          buffer: bufferMins,
+          rangeStart: workEnd,
+          rangeEnd: 23 * 60 + 30,
+          bookings: bookedIntervals,
+          nowMins,
+        })
       : [];
 
   const isAfterHoursTime =
-    form.time !== "" && toMins(form.time) >= workEnd;
+    form.time !== "" && (isOffDay || toMins(form.time) >= workEnd);
 
   const phoneDigits = form.phone.replace(/\D/g, "");
   const isValid =
@@ -1124,7 +1137,16 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
           });
           setTimeout(() => close(), 1200);
         },
-        onError: () => setSaving(false),
+        onError: (err) => {
+          setSaving(false);
+          if ((err as { status?: number } | null)?.status === 409) {
+            toast({
+              title: "Bu vaqt band",
+              description: "Boshqa vaqtni tanlang — tanaffus vaqti ham hisobga olinadi.",
+              variant: "destructive",
+            });
+          }
+        },
       }
     );
   }

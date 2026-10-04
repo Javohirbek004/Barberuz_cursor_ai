@@ -5,6 +5,14 @@ import { Layout } from "@/components/Layout";
 import { Link, useLocation } from "wouter";
 import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { BufferTimeField } from "@/components/BufferTimeField";
+import {
+  hasSavedSchedule,
+  normalizeBuffer,
+  readWeekSchedule,
+  summarizeHours,
+  writeScheduleJson,
+} from "@/lib/schedule";
 
 type Section = "info" | "specializations" | "bio" | "schedule";
 
@@ -29,9 +37,12 @@ interface ProfileData {
   avatarUrl?: string | null;
   specializations?: string | null;
   scheduleJson?: string | null;
+  workingHoursStart?: string | null;
+  workingHoursEnd?: string | null;
   lunchBreakEnabled?: boolean;
   lunchBreakStart?: string | null;
   lunchBreakEnd?: string | null;
+  bufferTime?: number | null;
 }
 
 const DAY_KEY_TO_T: Record<DayKey, string> = {
@@ -68,37 +79,27 @@ async function saveProfile(patch: Partial<ProfileData> & Record<string, unknown>
   return res.ok;
 }
 
-function parseSchedule(raw: string | null | undefined): WeekSchedule {
-  const fallback = (): WeekSchedule => ({
-    monday:    { ...DEFAULT_SCHEDULE.monday },
-    tuesday:   { ...DEFAULT_SCHEDULE.tuesday },
-    wednesday: { ...DEFAULT_SCHEDULE.wednesday },
-    thursday:  { ...DEFAULT_SCHEDULE.thursday },
-    friday:    { ...DEFAULT_SCHEDULE.friday },
-    saturday:  { ...DEFAULT_SCHEDULE.saturday },
-    sunday:    { ...DEFAULT_SCHEDULE.sunday },
-  });
-  if (!raw) return fallback();
-  try {
-    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return fallback();
-    // Personal page stores { workDays: [...] } in the same column — not a week grid.
-    if ("workDays" in parsed && !("monday" in parsed)) return fallback();
-    const result = fallback();
-    for (const key of DAY_KEYS) {
-      const d = (parsed as Record<string, unknown>)[key];
-      if (!d || typeof d !== "object") continue;
-      const day = d as { enabled?: unknown; start?: unknown; end?: unknown };
-      result[key] = {
-        enabled: Boolean(day.enabled),
-        start: typeof day.start === "string" && day.start ? day.start : result[key].start,
-        end: typeof day.end === "string" && day.end ? day.end : result[key].end,
-      };
-    }
-    return result;
-  } catch {
-    return fallback();
+/**
+ * Reads the shared schedule (same data "Mening sahifam" edits).
+ * Nothing saved yet → suggested defaults, which are only stored once the barber saves.
+ */
+function parseSchedule(profile: ProfileData): WeekSchedule {
+  if (!hasSavedSchedule(profile.scheduleJson)) {
+    return {
+      monday:    { ...DEFAULT_SCHEDULE.monday },
+      tuesday:   { ...DEFAULT_SCHEDULE.tuesday },
+      wednesday: { ...DEFAULT_SCHEDULE.wednesday },
+      thursday:  { ...DEFAULT_SCHEDULE.thursday },
+      friday:    { ...DEFAULT_SCHEDULE.friday },
+      saturday:  { ...DEFAULT_SCHEDULE.saturday },
+      sunday:    { ...DEFAULT_SCHEDULE.sunday },
+    };
   }
+  return readWeekSchedule({
+    scheduleJson: profile.scheduleJson,
+    workingHoursStart: profile.workingHoursStart,
+    workingHoursEnd: profile.workingHoursEnd,
+  });
 }
 
 function parseSpecializations(raw: string | null | undefined): string[] {
@@ -548,10 +549,11 @@ function ScheduleForm({
   onSaved: (patch: Partial<ProfileData>) => void;
 }) {
   const { t } = useTranslation();
-  const [sched, setSched] = useState<WeekSchedule>(() => parseSchedule(profile.scheduleJson));
+  const [sched, setSched] = useState<WeekSchedule>(() => parseSchedule(profile));
   const [lunchOn, setLunchOn] = useState(profile.lunchBreakEnabled ?? false);
   const [lunchStart, setLunchStart] = useState(profile.lunchBreakStart ?? "12:00");
   const [lunchEnd, setLunchEnd]     = useState(profile.lunchBreakEnd   ?? "13:00");
+  const [bufferTime, setBufferTime] = useState(() => normalizeBuffer(profile.bufferTime));
   const [dirty, setDirty] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -594,11 +596,15 @@ function ScheduleForm({
   async function handleSave(): Promise<boolean> {
     if (!validate()) return false;
     setSaving(true);
+    const summary = summarizeHours(sched);
     const patch = {
-      scheduleJson:       JSON.stringify(sched),
+      scheduleJson:       writeScheduleJson(sched),
+      workingHoursStart:  summary.start,
+      workingHoursEnd:    summary.end,
       lunchBreakEnabled:  lunchOn,
       lunchBreakStart:    lunchStart,
       lunchBreakEnd:      lunchEnd,
+      bufferTime,
     };
     const ok = await saveProfile(patch);
     setSaving(false);
@@ -616,38 +622,44 @@ function ScheduleForm({
     <>
       <SectionHeader title={`🕒 ${t("profile.section.schedule")}`} onBack={handleBack} />
 
-      <div className="space-y-2 mb-5">
+      <div className="space-y-2 mb-5 overflow-x-hidden" data-testid="weekly-schedule">
         {DAY_KEYS.map(day => (
-          <div key={day} className="flex items-center gap-3 bg-card border border-white/6 rounded-2xl px-4 py-3">
-            <button
-              onClick={() => updateDay(day, "enabled", !sched[day].enabled)}
-              className={`relative w-11 h-6 rounded-full transition-all shrink-0 ${sched[day].enabled ? "bg-primary" : "bg-white/10"}`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                  sched[day].enabled ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </button>
+          <div
+            key={day}
+            data-testid={`day-row-${day}`}
+            className="flex items-center gap-2 bg-card border border-white/6 rounded-2xl px-2.5 py-3 min-w-0"
+          >
+            <div className="flex items-center gap-1.5 min-w-[110px] max-w-[120px] shrink-0">
+              <button
+                onClick={() => updateDay(day, "enabled", !sched[day].enabled)}
+                className={`relative w-9 h-5 rounded-full transition-all shrink-0 ${sched[day].enabled ? "bg-primary" : "bg-white/10"}`}
+              >
+                <span
+                  className={`absolute top-[2px] left-[2px] w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                    sched[day].enabled ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
 
-            <span className={`text-sm font-medium w-24 shrink-0 ${sched[day].enabled ? "text-foreground" : "text-muted-foreground/50"}`}>
-              {t(DAY_KEY_TO_T[day])}
-            </span>
+              <span className={`text-[13px] tracking-tight font-medium truncate ${sched[day].enabled ? "text-foreground" : "text-muted-foreground/50"}`}>
+                {t(DAY_KEY_TO_T[day])}
+              </span>
+            </div>
 
             {sched[day].enabled ? (
-              <div className="flex items-center gap-2 flex-1">
+              <div className="flex items-center gap-1.5 flex-1 min-w-0 justify-end">
                 <input
                   type="time"
                   value={sched[day].start}
                   onChange={e => updateDay(day, "start", e.target.value)}
-                  className="flex-1 h-9 px-2 rounded-xl bg-background/60 border border-white/8 text-foreground text-sm focus:outline-none focus:border-primary/40"
+                  className="flex-1 min-w-0 max-w-[85px] h-9 px-2 py-1.5 rounded-xl bg-background/60 border border-white/8 text-foreground text-xs focus:outline-none focus:border-primary/40"
                 />
-                <span className="text-muted-foreground text-xs">–</span>
+                <span className="text-muted-foreground text-xs shrink-0">–</span>
                 <input
                   type="time"
                   value={sched[day].end}
                   onChange={e => updateDay(day, "end", e.target.value)}
-                  className="flex-1 h-9 px-2 rounded-xl bg-background/60 border border-white/8 text-foreground text-sm focus:outline-none focus:border-primary/40"
+                  className="flex-1 min-w-0 max-w-[85px] h-9 px-2 py-1.5 rounded-xl bg-background/60 border border-white/8 text-foreground text-xs focus:outline-none focus:border-primary/40"
                 />
               </div>
             ) : (
@@ -690,6 +702,10 @@ function ScheduleForm({
             />
           </div>
         )}
+      </div>
+
+      <div className="mt-3">
+        <BufferTimeField value={bufferTime} onChange={v => { setBufferTime(v); setDirty(true); }} />
       </div>
 
       {errors.length > 0 && (
@@ -874,7 +890,7 @@ export default function ProfileSettings() {
     );
   }
 
-  const sched = parseSchedule(profile.scheduleJson);
+  const sched = parseSchedule(profile);
   const specs  = parseSpecializations(profile.specializations);
 
   const soloSections: { key: Section; emoji: string; title: string; preview: string }[] = [

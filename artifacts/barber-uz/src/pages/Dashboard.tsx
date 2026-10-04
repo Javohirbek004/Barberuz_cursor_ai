@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BookingDetailModal } from "@/components/BookingDetailModal";
+import { resolveDaySchedule, type ScheduleSource } from "@/lib/schedule";
 
 // ── Uzbek date formatter ──────────────────────────────────────────────────────
 const UZ_MONTHS = [
@@ -92,21 +93,6 @@ function parseDashNotes(raw: string | null | undefined): string {
   return raw.trim();
 }
 
-function workKeyFromIso(iso: string): string {
-  const d = new Date(`${iso}T12:00:00+05:00`);
-  return ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][d.getDay()] || "mon";
-}
-
-function isScheduledWorkDay(scheduleJson: string | null | undefined, iso: string): boolean {
-  try {
-    const days = JSON.parse(scheduleJson || "{}").workDays;
-    if (!Array.isArray(days) || days.length === 0) return true;
-    return days.includes(workKeyFromIso(iso));
-  } catch {
-    return true;
-  }
-}
-
 // ── Static team barbers ───────────────────────────────────────────────────────
 const TEAM_BARBERS = [
   { id: "1", name: "Ali Karimov",    bookings: 4, active: true  },
@@ -137,11 +123,13 @@ function computeFreeWindows(
   const windows: { start: number; end: number }[] = [];
   let cursor = workStart;
   for (const b of busy) {
-    if (b.s > cursor) windows.push({ start: cursor, end: b.s });
+    // Bookings outside working hours (after-hours override) must not stretch the free time.
+    if (b.s > cursor) windows.push({ start: cursor, end: Math.min(b.s, workEnd) });
     cursor = Math.max(cursor, b.e);
+    if (cursor >= workEnd) break;
   }
   if (cursor < workEnd) windows.push({ start: cursor, end: workEnd });
-  return windows;
+  return windows.filter((w) => w.end > w.start);
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
@@ -412,21 +400,21 @@ function IndividualDashboard() {
     .filter((b) => b.status !== "cancelled" && b.status !== "completed")
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-  // Compute free time windows from actual working hours and today's bookings
-  const workStart = toMins(profile?.workingHoursStart ?? "09:00");
-  const workEnd   = toMins(profile?.workingHoursEnd   ?? "20:00");
-  const extraProfile = profile as {
+  // Compute free time windows from today's own working hours (per weekday) and bookings
+  const extraProfile = (profile ?? {}) as ScheduleSource & {
     lunchBreakEnabled?: boolean;
     lunchBreakStart?: string | null;
     lunchBreakEnd?: string | null;
-    scheduleJson?: string | null;
-  } | undefined;
+  };
+  const todayHours = resolveDaySchedule(extraProfile, today);
+  const workStart = toMins(todayHours.start);
+  const workEnd   = toMins(todayHours.end);
   const todayBusy = bookings.filter(b => b.status !== "cancelled");
   const lunchBusy =
-    extraProfile?.lunchBreakEnabled && extraProfile.lunchBreakStart && extraProfile.lunchBreakEnd
+    extraProfile.lunchBreakEnabled && extraProfile.lunchBreakStart && extraProfile.lunchBreakEnd
       ? [{ startTime: extraProfile.lunchBreakStart, endTime: extraProfile.lunchBreakEnd }]
       : [];
-  const isOffDay = !isScheduledWorkDay(extraProfile?.scheduleJson, today);
+  const isOffDay = !todayHours.enabled;
   const freeWindows = isOffDay
     ? []
     : computeFreeWindows(workStart, workEnd, [...todayBusy, ...lunchBusy]);

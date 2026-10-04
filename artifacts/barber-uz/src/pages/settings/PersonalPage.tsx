@@ -1,6 +1,8 @@
 import "leaflet/dist/leaflet.css";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { APP_ORIGIN, APP_DISPLAY_HOST } from "@/lib/config";
+import { BufferTimeField } from "@/components/BufferTimeField";
+import { mergeScheduleFromDayChips, normalizeBuffer, readOpenDaysShort } from "@/lib/schedule";
 import { ServiceForm } from "@/components/ServiceForm";
 import type { ServiceFormData } from "@/components/ServiceForm";
 import {
@@ -46,6 +48,12 @@ export interface ProfileData {
   lunchEnabled: boolean;
   lunchStart: string;
   lunchEnd: string;
+  /** Preparation gap after every service (minutes). Same value as settings/profile. */
+  bufferTime: number;
+  /** Raw stored schedule + the hours it was loaded with, so per-day hours are never lost on save. */
+  scheduleJson: string;
+  baseWorkStart: string;
+  baseWorkEnd: string;
   telegram: string;     // read-only (from Telegram verification)
   instagram: string;
   avatarUrl: string;
@@ -116,6 +124,7 @@ const EMPTY_PROFILE: ProfileData = {
   phone: "", phoneVisible: true, address: "", mapLink: "", latitude: "", longitude: "",
   workDays: [], workStart: "09:00", workEnd: "20:00",
   lunchEnabled: false, lunchStart: "13:00", lunchEnd: "14:00",
+  bufferTime: 10, scheduleJson: "", baseWorkStart: "09:00", baseWorkEnd: "20:00",
   telegram: "", instagram: "", avatarUrl: "", galleryImages: [],
 };
 
@@ -221,8 +230,9 @@ function apiToProfile(api: Record<string, unknown>): ProfileData {
   try { galleryImages = JSON.parse((api.galleryImages as string) || "[]"); } catch {}
   let speciality: string[] = [];
   try { speciality = ((api.specializations as string) || "").split(",").map((s: string) => s.trim()).filter(Boolean); } catch {}
-  let workDays: string[] = [];
-  try { workDays = JSON.parse((api.scheduleJson as string) || "{}").workDays || []; } catch {}
+  const workDays: string[] = readOpenDaysShort((api.scheduleJson as string) || "");
+  const workStart = (api.workingHoursStart as string) || "09:00";
+  const workEnd = (api.workingHoursEnd as string) || "20:00";
   return {
     name: (api.name as string) || "",
     brandName: (api.brandName as string) || "",
@@ -235,11 +245,15 @@ function apiToProfile(api: Record<string, unknown>): ProfileData {
     latitude: (api.latitude as string) || "",
     longitude: (api.longitude as string) || "",
     workDays,
-    workStart: (api.workingHoursStart as string) || "09:00",
-    workEnd: (api.workingHoursEnd as string) || "20:00",
+    workStart,
+    workEnd,
     lunchEnabled: !!(api.lunchBreakEnabled),
     lunchStart: (api.lunchBreakStart as string) || "13:00",
     lunchEnd: (api.lunchBreakEnd as string) || "14:00",
+    bufferTime: normalizeBuffer(api.bufferTime),
+    scheduleJson: (api.scheduleJson as string) || "",
+    baseWorkStart: workStart,
+    baseWorkEnd: workEnd,
     telegram: (api.telegramUsername as string) || "",
     instagram: (api.instagram as string) || "",
     avatarUrl: (api.avatarUrl as string) || "",
@@ -265,7 +279,15 @@ function profileToApi(p: ProfileData) {
     lunchBreakEnabled: p.lunchEnabled,
     lunchBreakStart: p.lunchStart,
     lunchBreakEnd: p.lunchEnd,
-    scheduleJson: JSON.stringify({ workDays: p.workDays }),
+    bufferTime: p.bufferTime,
+    scheduleJson: mergeScheduleFromDayChips({
+      currentJson: p.scheduleJson,
+      workDays: p.workDays,
+      workStart: p.workStart,
+      workEnd: p.workEnd,
+      baseStart: p.baseWorkStart,
+      baseEnd: p.baseWorkEnd,
+    }),
     address: p.address,
     mapLink: safeUrl(p.mapLink) ?? "",
     latitude: p.latitude || null,
@@ -929,6 +951,9 @@ function AsosiyTab({
             </div>
           )}
         </div>
+
+        {/* Buffer time (same value as settings/profile) */}
+        <BufferTimeField value={profile.bufferTime} onChange={v => set("bufferTime", v)} />
       </div>
 
       {/* Social */}
