@@ -333,9 +333,6 @@ function DateRangePicker({
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
-      <p data-testid="picker-hint" className="text-center text-[11px] leading-snug text-[#9CA3AF] mb-2 px-1">
-        Bitta kunni tanlash uchun ustiga bosing yoki oraliqni belgilang
-      </p>
       <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-muted-foreground mb-1">
         {WEEKDAYS.map((w) => (
           <div key={w}>{w}</div>
@@ -521,7 +518,7 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
   return (
     <BottomSheet title="Mijozlar tahlili" onClose={onClose}>
       <TimeNav
-        mode={mode}
+        mode={pickerOpen || mode === "sana" ? "sana" : mode}
         label={label}
         forwardDisabled={forwardDisabled}
         onMode={chooseMode}
@@ -538,6 +535,9 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
 
       {pickerOpen && (
         <div ref={pickerRef}>
+          <p data-testid="picker-hint" className="text-center text-xs font-medium text-[#F59E0B] mb-2 px-2">
+            Bitta kunni tanlash uchun ustiga bosing yoki oraliqni belgilang
+          </p>
           <DateRangePicker
             today={today}
             initial={mode === "sana" ? range : null}
