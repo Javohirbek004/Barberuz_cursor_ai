@@ -338,18 +338,28 @@ function daysBetweenISO(from: string, to: string): number {
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
 }
 
+function isISODate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y = 0, m = 0, d = 0] = value.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
 /**
  * Calendar periods in Tashkent time:
- *  today = current day, week = Monday → today, month = 1st of the month → today.
+ *  today = current day, week = Monday → Sunday, month = 1st → last day.
  */
 function clientPeriodRange(period: string, today: string): { start: string; end: string } {
   if (period === "week") {
     const [y = 1970, m = 1, d = 1] = today.split("-").map(Number);
     const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sunday
-    return { start: addDaysISO(today, -((dow + 6) % 7)), end: today };
+    const start = addDaysISO(today, -((dow + 6) % 7));
+    return { start, end: addDaysISO(start, 6) };
   }
   if (period === "month") {
-    return { start: `${today.slice(0, 7)}-01`, end: today };
+    const [y = 1970, m = 1] = today.split("-").map(Number);
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return { start: `${today.slice(0, 7)}-01`, end: `${today.slice(0, 7)}-${String(last).padStart(2, "0")}` };
   }
   return { start: today, end: today };
 }
@@ -357,21 +367,34 @@ function clientPeriodRange(period: string, today: string): { start: string; end:
 type ClientSegment = "regular" | "new" | "lost" | null;
 
 /**
- * GET /api/analytics/clients?period=today|week|month
+ * GET /api/analytics/clients?from=YYYY-MM-DD&to=YYYY-MM-DD
+ * Also accepts ?period=today|week|month when from/to are omitted.
  *
  * A "visit" is a confirmed or completed booking that is not in the future.
- *  - all     : clients with at least one visit in the period
+ *  - all     : clients with at least one visit in the selected range
  *  - regular : of those, clients with 2+ visits in the last 30 days
- *  - new     : clients whose very first visit falls in the period
- *  - lost    : clients who visited before, last visit 30+ days ago, nothing booked ahead
+ *  - new     : clients whose very first visit falls in the selected range
+ *  - lost    : visited before, last visit 30+ days ago, nothing booked ahead.
+ *              Ranges that include today show every such client. A past range
+ *              counts only clients whose last visit sits inside that range.
  */
 router.get("/clients", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
-    const requested = String(req.query.period ?? "today");
-    const period = ["today", "week", "month"].includes(requested) ? requested : "today";
     const today = todayStr();
-    const { start, end } = clientPeriodRange(period, today);
+    const fromQ = typeof req.query.from === "string" ? req.query.from : "";
+    const toQ = typeof req.query.to === "string" ? req.query.to : "";
+    let period = "range";
+    let start: string;
+    let end: string;
+    if (isISODate(fromQ) && isISODate(toQ)) {
+      start = fromQ <= toQ ? fromQ : toQ;
+      end = fromQ <= toQ ? toQ : fromQ;
+    } else {
+      const requested = String(req.query.period ?? "today");
+      period = ["today", "week", "month"].includes(requested) ? requested : "today";
+      ({ start, end } = clientPeriodRange(period, today));
+    }
     const last30Start = addDaysISO(today, -29);
     const lostBefore = addDaysISO(today, -30);
 
@@ -432,8 +455,10 @@ router.get("/clients", authenticate, async (req, res) => {
       const isRegular = inLast30 >= 2;
       const isNew = first.date >= start && first.date <= end;
       const isLost = last.date <= lostBefore && !agg.hasUpcoming;
+      const rangeIncludesToday = start <= today && today <= end;
+      const lostInThisRange = rangeIncludesToday || (last.date >= start && last.date <= end);
 
-      if (isLost) segmentCounts.lost++;
+      if (isLost && lostInThisRange) segmentCounts.lost++;
       if (inPeriod.length === 0) continue;
 
       segmentCounts.all++;

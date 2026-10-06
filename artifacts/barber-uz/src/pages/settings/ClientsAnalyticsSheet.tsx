@@ -1,17 +1,24 @@
-import { useEffect, useRef, useState } from "react";
-import { Info, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Info, X } from "lucide-react";
 import { BottomSheet } from "@/components/BottomSheet";
+import { addDaysISO, tashkentTodayISO } from "@/lib/schedule";
 
-type Period = "bugun" | "hafta" | "oy";
+type Mode = "bugun" | "hafta" | "oy" | "sana";
 type SegmentKey = "regular" | "new" | "lost";
 
-const PERIOD_API: Record<Period, string> = { bugun: "today", hafta: "week", oy: "month" };
-
-const PERIODS: { key: Period; label: string }[] = [
+const MODES: { key: Mode; label: string }[] = [
   { key: "bugun", label: "Bugun" },
   { key: "hafta", label: "Hafta" },
   { key: "oy", label: "Oy" },
+  { key: "sana", label: "📅 Sana" },
 ];
+
+const MONTHS = [
+  "Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
+  "Iyul", "Avgust", "Sentyabr", "Oktabr", "Noyabr", "Dekabr",
+];
+
+const WEEKDAYS = ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"];
 
 const SEGMENT_INFO: Record<SegmentKey, { label: string; emoji: string; text: string; badge: string }> = {
   regular: {
@@ -47,20 +54,99 @@ interface TopClient {
 interface ClientsResponse {
   period: string;
   today: string;
+  range?: { start: string; end: string };
   segments: { all: number; regular: number; new: number; lost: number };
   topClients: TopClient[];
+}
+
+interface DateRange {
+  start: string;
+  end: string;
 }
 
 function getToken() {
   return localStorage.getItem("barber_token") ?? "";
 }
 
-async function fetchClients(period: Period): Promise<ClientsResponse> {
-  const res = await fetch(`/api/analytics/clients?period=${PERIOD_API[period]}`, {
+async function fetchClients(range: DateRange): Promise<ClientsResponse> {
+  const res = await fetch(`/api/analytics/clients?from=${range.start}&to=${range.end}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!res.ok) throw new Error("fetch_error");
   return res.json();
+}
+
+function daysBetweenISO(from: string, to: string): number {
+  const [fy = 1970, fm = 1, fd = 1] = from.split("-").map(Number);
+  const [ty = 1970, tm = 1, td = 1] = to.split("-").map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
+}
+
+function mondayOf(iso: string): string {
+  const [y = 1970, m = 1, d = 1] = iso.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return addDaysISO(iso, -((dow + 6) % 7));
+}
+
+function monthRange(anchor: string, delta: number): DateRange {
+  const [y = 1970, m = 1] = anchor.split("-").map(Number);
+  const startDt = new Date(Date.UTC(y, m - 1 + delta, 1));
+  const endDt = new Date(Date.UTC(y, m + delta, 0));
+  return { start: startDt.toISOString().slice(0, 10), end: endDt.toISOString().slice(0, 10) };
+}
+
+function viewedRange(mode: Mode, offset: number, custom: DateRange | null, today: string): DateRange {
+  if (mode === "hafta") {
+    const start = addDaysISO(mondayOf(today), offset * 7);
+    return { start, end: addDaysISO(start, 6) };
+  }
+  if (mode === "oy") return monthRange(today, offset);
+  if (mode === "sana" && custom) {
+    const span = daysBetweenISO(custom.start, custom.end) + 1;
+    const start = addDaysISO(custom.start, offset * span);
+    return { start, end: addDaysISO(start, span - 1) };
+  }
+  const day = addDaysISO(today, offset);
+  return { start: day, end: day };
+}
+
+function dmy(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}.${m}.${y}`;
+}
+
+function dm(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${d}.${m}`;
+}
+
+function monthTitle(iso: string): string {
+  const [y, m] = iso.split("-").map(Number);
+  return `${MONTHS[(m ?? 1) - 1]} ${y}`;
+}
+
+/** The words next to the arrows, without the "Tanlangan vaqt:" prefix. */
+export function timeRangeLabel(mode: Mode, range: DateRange, today: string): string {
+  if (mode === "sana") return `${dmy(range.start)} — ${dmy(range.end)}`;
+  if (mode === "bugun") {
+    if (range.start === today) return `Bugun, ${dmy(range.start)}`;
+    if (range.start === addDaysISO(today, -1)) return `Kecha, ${dmy(range.start)}`;
+    return dmy(range.start);
+  }
+  if (mode === "hafta") {
+    const current = mondayOf(today);
+    const previous = addDaysISO(current, -7);
+    const inner = `${dm(range.start)} — ${dm(range.end)}`;
+    if (range.start === current) return `Shu hafta: ${inner}`;
+    if (range.start === previous) return `O'tgan hafta: ${inner}`;
+    return inner;
+  }
+  const currentMonth = monthRange(today, 0).start;
+  const previousMonth = monthRange(today, -1).start;
+  const name = monthTitle(range.start);
+  if (range.start === currentMonth) return `Shu oy: ${name}`;
+  if (range.start === previousMonth) return `O'tgan oy: ${name}`;
+  return name;
 }
 
 function lastVisitLabel(c: TopClient): string {
@@ -82,30 +168,204 @@ function SegmentBadge({ segment }: { segment: SegmentKey | null }) {
   );
 }
 
-function PeriodTabs({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
+function TimeNav({
+  mode,
+  label,
+  forwardDisabled,
+  onMode,
+  onPrev,
+  onNext,
+}: {
+  mode: Mode;
+  label: string;
+  forwardDisabled: boolean;
+  onMode: (mode: Mode) => void;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
   return (
-    <div
-      role="tablist"
-      data-testid="clients-period-tabs"
-      className="flex gap-1.5 bg-background/60 p-1 rounded-2xl border border-white/6 mb-4"
-    >
-      {PERIODS.map(({ key, label }) => (
+    <div className="mb-4 space-y-2.5" data-testid="time-nav">
+      <div
+        role="tablist"
+        data-testid="clients-period-tabs"
+        className="flex gap-1 bg-background/60 p-1 rounded-2xl border border-white/6"
+      >
+        {MODES.map(({ key, label: tabLabel }) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={mode === key}
+            data-period={key}
+            onClick={() => onMode(key)}
+            className={`flex-1 py-2 px-1 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all ${
+              mode === key
+                ? "bg-primary text-black shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {tabLabel}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-1.5">
         <button
-          key={key}
           type="button"
-          role="tab"
-          aria-selected={value === key}
-          data-period={key}
-          onClick={() => onChange(key)}
-          className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${
-            value === key
-              ? "bg-primary text-black shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+          data-testid="time-prev"
+          aria-label="Oldingi davr"
+          onClick={onPrev}
+          className="shrink-0 w-9 h-9 rounded-full border border-white/10 bg-white/5 flex items-center justify-center text-foreground hover:bg-white/10"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <div
+          data-testid="time-label"
+          className="flex-1 min-w-0 text-center text-xs sm:text-sm font-medium text-foreground leading-snug"
+        >
+          Tanlangan vaqt: {label}
+        </div>
+        <button
+          type="button"
+          data-testid="time-next"
+          aria-label="Keyingi davr"
+          aria-disabled={forwardDisabled}
+          data-disabled={forwardDisabled ? "true" : "false"}
+          onClick={onNext}
+          className={`shrink-0 w-9 h-9 rounded-full border border-white/10 bg-white/5 flex items-center justify-center text-foreground hover:bg-white/10 ${
+            forwardDisabled ? "opacity-30 pointer-events-none" : ""
           }`}
         >
-          {label}
+          <ChevronRight className="w-4 h-4" />
         </button>
-      ))}
+      </div>
+    </div>
+  );
+}
+
+function DateRangePicker({
+  today,
+  initial,
+  onApply,
+  onCancel,
+}: {
+  today: string;
+  initial: DateRange | null;
+  onApply: (range: DateRange) => void;
+  onCancel: () => void;
+}) {
+  const [cursor, setCursor] = useState(() => (initial?.start ?? today).slice(0, 7));
+  const [draftStart, setDraftStart] = useState<string | null>(initial?.start ?? null);
+  const [draftEnd, setDraftEnd] = useState<string | null>(initial?.end ?? null);
+  const [year, month] = cursor.split("-").map(Number);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const firstDow = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const lead = (firstDow + 6) % 7;
+
+  function pick(iso: string) {
+    if (!draftStart || (draftStart && draftEnd)) {
+      setDraftStart(iso);
+      setDraftEnd(null);
+      return;
+    }
+    if (iso < draftStart) {
+      setDraftEnd(draftStart);
+      setDraftStart(iso);
+      return;
+    }
+    setDraftEnd(iso);
+  }
+
+  const cells: Array<string | null> = [
+    ...Array.from({ length: lead }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, i) => {
+      const day = String(i + 1).padStart(2, "0");
+      return `${cursor}-${day}`;
+    }),
+  ];
+
+  return (
+    <div
+      data-testid="date-range-picker"
+      className="mb-4 rounded-2xl border border-white/10 bg-background p-3"
+    >
+      <div className="flex items-center justify-between mb-2">
+        <button
+          type="button"
+          aria-label="Oldingi oy"
+          data-testid="picker-prev-month"
+          onClick={() => setCursor(monthRange(`${cursor}-01`, -1).start.slice(0, 7))}
+          className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <div className="text-sm font-semibold">{monthTitle(`${cursor}-01`)}</div>
+        <button
+          type="button"
+          aria-label="Keyingi oy"
+          data-testid="picker-next-month"
+          onClick={() => setCursor(monthRange(`${cursor}-01`, 1).start.slice(0, 7))}
+          className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-muted-foreground mb-1">
+        {WEEKDAYS.map((w) => (
+          <div key={w}>{w}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((iso, i) => {
+          if (!iso) return <div key={`e-${i}`} />;
+          const selected =
+            iso === draftStart || iso === draftEnd
+              ? "bg-primary text-black font-bold"
+              : draftStart && draftEnd && iso > draftStart && iso < draftEnd
+                ? "bg-primary/20 text-foreground"
+                : iso === today
+                  ? "border border-primary/50 text-foreground"
+                  : "text-foreground/80 hover:bg-white/10";
+          return (
+            <button
+              key={iso}
+              type="button"
+              data-testid="picker-day"
+              data-date={iso}
+              onClick={() => pick(iso)}
+              className={`h-8 rounded-lg text-xs ${selected}`}
+            >
+              {Number(iso.slice(8))}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-3 text-center text-xs text-muted-foreground" data-testid="picker-draft">
+        {draftStart && draftEnd
+          ? `${dmy(draftStart)} — ${dmy(draftEnd)}`
+          : draftStart
+            ? `${dmy(draftStart)} — tugash sanasini tanlang`
+            : "Boshlanish va tugash sanasini tanlang"}
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          data-testid="picker-cancel"
+          onClick={onCancel}
+          className="flex-1 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground"
+        >
+          Bekor qilish
+        </button>
+        <button
+          type="button"
+          data-testid="picker-apply"
+          disabled={!draftStart || !draftEnd}
+          onClick={() => draftStart && draftEnd && onApply({ start: draftStart, end: draftEnd })}
+          className="flex-1 py-2 rounded-xl bg-primary text-black text-sm font-semibold disabled:opacity-30"
+        >
+          Tanlash
+        </button>
+      </div>
     </div>
   );
 }
@@ -154,20 +414,30 @@ function SegmentCard({
 
 /** "Mijozlar tahlili" – segment counters and top clients, powered by real bookings. */
 export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
-  const [period, setPeriod] = useState<Period>("bugun");
-  const [cache, setCache] = useState<Partial<Record<Period, ClientsResponse>>>({});
+  const today = tashkentTodayISO();
+  const [mode, setMode] = useState<Mode>("bugun");
+  const [offset, setOffset] = useState(0);
+  const [custom, setCustom] = useState<DateRange | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [cache, setCache] = useState<Record<string, ClientsResponse>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [infoKey, setInfoKey] = useState<SegmentKey | null>(null);
   const infoWrapRef = useRef<HTMLDivElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  const range = useMemo(() => viewedRange(mode, offset, custom, today), [mode, offset, custom, today]);
+  const rangeKey = `${range.start}|${range.end}`;
+  const forwardDisabled = mode !== "sana" && offset >= 0;
+  const label = timeRangeLabel(mode, range, today);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(false);
-    fetchClients(period)
+    fetchClients(range)
       .then((res) => {
-        if (!cancelled) setCache((c) => ({ ...c, [period]: res }));
+        if (!cancelled) setCache((c) => ({ ...c, [rangeKey]: res }));
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -178,13 +448,17 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [period]);
+  }, [rangeKey, range.start, range.end]);
 
-  // Tap outside the segment grid / its note closes the definition note.
   useEffect(() => {
-    if (!infoKey) return;
+    if (!infoKey && !pickerOpen) return;
     function onDown(e: MouseEvent | TouchEvent) {
-      if (infoWrapRef.current && !infoWrapRef.current.contains(e.target as Node)) setInfoKey(null);
+      const target = e.target as Node;
+      const el = target instanceof Element ? target : target.parentElement;
+      if (infoKey && infoWrapRef.current && !infoWrapRef.current.contains(target)) setInfoKey(null);
+      if (pickerOpen && pickerRef.current && el && !pickerRef.current.contains(el)) {
+        if (!el.closest("[data-period='sana']")) setPickerOpen(false);
+      }
     }
     document.addEventListener("mousedown", onDown);
     document.addEventListener("touchstart", onDown);
@@ -192,20 +466,56 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("touchstart", onDown);
     };
-  }, [infoKey]);
+  }, [infoKey, pickerOpen]);
 
-  const data = cache[period];
+  const data = cache[rangeKey];
   const toggleInfo = (k: SegmentKey) => setInfoKey((cur) => (cur === k ? null : k));
+
+  function chooseMode(next: Mode) {
+    setInfoKey(null);
+    if (next === "sana") {
+      setPickerOpen(true);
+      return;
+    }
+    setPickerOpen(false);
+    setMode(next);
+    setOffset(0);
+  }
 
   return (
     <BottomSheet title="Mijozlar tahlili" onClose={onClose}>
-      <PeriodTabs
-        value={period}
-        onChange={(p) => {
-          setInfoKey(null);
-          setPeriod(p);
+      <TimeNav
+        mode={mode}
+        label={label}
+        forwardDisabled={forwardDisabled}
+        onMode={chooseMode}
+        onPrev={() => {
+          setPickerOpen(false);
+          setOffset((n) => n - 1);
+        }}
+        onNext={() => {
+          if (forwardDisabled) return;
+          setPickerOpen(false);
+          setOffset((n) => n + 1);
         }}
       />
+
+      {pickerOpen && (
+        <div ref={pickerRef}>
+          <DateRangePicker
+            today={today}
+            initial={mode === "sana" ? custom : null}
+            onCancel={() => setPickerOpen(false)}
+            onApply={(picked) => {
+              setCustom(picked);
+              setMode("sana");
+              setOffset(0);
+              setPickerOpen(false);
+              setInfoKey(null);
+            }}
+          />
+        </div>
+      )}
 
       {!data && loading && (
         <div className="space-y-3" data-testid="clients-loading">

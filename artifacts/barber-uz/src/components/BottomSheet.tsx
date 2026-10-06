@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { motion, useDragControls } from "framer-motion";
 import { X } from "lucide-react";
 
@@ -23,9 +24,9 @@ export function BottomSheet({ title, onClose, children }: Props) {
     return () => document.removeEventListener("keydown", fn);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <motion.div
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className="fixed inset-0 z-[70] flex items-end justify-center"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -80,6 +81,7 @@ export function BottomSheet({ title, onClose, children }: Props) {
         {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 px-5 py-4 pb-12">{children}</div>
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body,
   );
 }
