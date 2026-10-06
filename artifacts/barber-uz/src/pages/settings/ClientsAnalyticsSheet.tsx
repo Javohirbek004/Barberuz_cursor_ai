@@ -132,7 +132,10 @@ function monthTitle(iso: string): string {
 
 /** The words next to the arrows, without the "Tanlangan vaqt:" prefix. */
 export function timeRangeLabel(mode: Mode, range: DateRange, today: string): string {
-  if (mode === "sana") return `${dmy(range.start)} — ${dmy(range.end)}`;
+  if (mode === "sana") {
+    if (range.start === range.end) return dmy(range.start);
+    return `${dmy(range.start)} — ${dmy(range.end)}`;
+  }
   if (mode === "bugun") {
     if (range.start === today) return `Bugun, ${dmy(range.start)}`;
     if (range.start === addDaysISO(today, -1)) return `Kecha, ${dmy(range.start)}`;
@@ -261,24 +264,33 @@ function DateRangePicker({
 }) {
   const [cursor, setCursor] = useState(() => (initial?.start ?? today).slice(0, 7));
   const [draftStart, setDraftStart] = useState<string | null>(initial?.start ?? null);
-  const [draftEnd, setDraftEnd] = useState<string | null>(initial?.end ?? null);
+  const [draftEnd, setDraftEnd] = useState<string | null>(
+    initial && initial.end !== initial.start ? initial.end : null,
+  );
+  // A finished selection (one day or a full range) is ready to apply.
+  // The next tap starts over; the tap after that sets the other end of a range.
+  const [awaitingEnd, setAwaitingEnd] = useState(false);
   const [year, month] = cursor.split("-").map(Number);
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const firstDow = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
   const lead = (firstDow + 6) % 7;
 
   function pick(iso: string) {
-    if (!draftStart || (draftStart && draftEnd)) {
+    if (iso > today) return;
+    if (!awaitingEnd || !draftStart) {
       setDraftStart(iso);
       setDraftEnd(null);
+      setAwaitingEnd(true);
       return;
     }
+    if (iso === draftStart) return;
     if (iso < draftStart) {
       setDraftEnd(draftStart);
       setDraftStart(iso);
-      return;
+    } else {
+      setDraftEnd(iso);
     }
-    setDraftEnd(iso);
+    setAwaitingEnd(false);
   }
 
   const cells: Array<string | null> = [
@@ -309,12 +321,21 @@ function DateRangePicker({
           type="button"
           aria-label="Keyingi oy"
           data-testid="picker-next-month"
-          onClick={() => setCursor(monthRange(`${cursor}-01`, 1).start.slice(0, 7))}
-          className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center"
+          aria-disabled={cursor >= today.slice(0, 7)}
+          onClick={() => {
+            if (cursor >= today.slice(0, 7)) return;
+            setCursor(monthRange(`${cursor}-01`, 1).start.slice(0, 7));
+          }}
+          className={`w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center ${
+            cursor >= today.slice(0, 7) ? "opacity-30 pointer-events-none" : ""
+          }`}
         >
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
+      <p data-testid="picker-hint" className="text-center text-[11px] leading-snug text-[#9CA3AF] mb-2 px-1">
+        Bitta kunni tanlash uchun ustiga bosing yoki oraliqni belgilang
+      </p>
       <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-muted-foreground mb-1">
         {WEEKDAYS.map((w) => (
           <div key={w}>{w}</div>
@@ -323,8 +344,10 @@ function DateRangePicker({
       <div className="grid grid-cols-7 gap-1">
         {cells.map((iso, i) => {
           if (!iso) return <div key={`e-${i}`} />;
-          const selected =
-            iso === draftStart || iso === draftEnd
+          const future = iso > today;
+          const selected = future
+            ? "text-foreground/80"
+            : iso === draftStart || iso === draftEnd
               ? "bg-primary text-black font-bold"
               : draftStart && draftEnd && iso > draftStart && iso < draftEnd
                 ? "bg-primary/20 text-foreground"
@@ -337,20 +360,22 @@ function DateRangePicker({
               type="button"
               data-testid="picker-day"
               data-date={iso}
+              disabled={future}
+              aria-disabled={future}
               onClick={() => pick(iso)}
-              className={`h-8 rounded-lg text-xs ${selected}`}
+              className={`h-8 rounded-lg text-xs ${selected} ${future ? "opacity-30 pointer-events-none" : ""}`}
             >
               {Number(iso.slice(8))}
             </button>
           );
         })}
       </div>
-      <div className="mt-3 text-center text-xs text-muted-foreground" data-testid="picker-draft">
-        {draftStart && draftEnd
-          ? `${dmy(draftStart)} — ${dmy(draftEnd)}`
+      <div className="mt-3 text-center text-xs text-muted-foreground min-h-4" data-testid="picker-draft">
+        {draftStart && draftEnd && draftEnd !== draftStart
+          ? `Tanlangan oraliq: ${dmy(draftStart)} — ${dmy(draftEnd)}`
           : draftStart
-            ? `${dmy(draftStart)} — tugash sanasini tanlang`
-            : "Boshlanish va tugash sanasini tanlang"}
+            ? `Tanlangan sana: ${dmy(draftStart)}`
+            : ""}
       </div>
       <div className="mt-3 flex gap-2">
         <button
@@ -364,8 +389,12 @@ function DateRangePicker({
         <button
           type="button"
           data-testid="picker-apply"
-          disabled={!draftStart || !draftEnd}
-          onClick={() => draftStart && draftEnd && onApply({ start: draftStart, end: draftEnd })}
+          disabled={!draftStart}
+          onClick={() => {
+            if (!draftStart) return;
+            const end = draftEnd && draftEnd !== draftStart ? draftEnd : draftStart;
+            onApply({ start: draftStart, end });
+          }}
           className="flex-1 py-2 rounded-xl bg-primary text-black text-sm font-semibold disabled:opacity-30"
         >
           Tanlash
@@ -433,7 +462,9 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
 
   const range = useMemo(() => viewedRange(mode, offset, custom, today), [mode, offset, custom, today]);
   const rangeKey = `${range.start}|${range.end}`;
-  const forwardDisabled = mode !== "sana" && offset >= 0;
+  const spanDays = daysBetweenISO(range.start, range.end) + 1;
+  const forwardDisabled =
+    mode === "sana" ? addDaysISO(range.end, spanDays) > today : offset >= 0;
   const label = timeRangeLabel(mode, range, today);
 
   useEffect(() => {
@@ -509,7 +540,7 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
         <div ref={pickerRef}>
           <DateRangePicker
             today={today}
-            initial={mode === "sana" ? custom : null}
+            initial={mode === "sana" ? range : null}
             onCancel={() => setPickerOpen(false)}
             onApply={(picked) => {
               setCustom(picked);
