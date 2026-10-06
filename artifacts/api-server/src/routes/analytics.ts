@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, bookingsTable, usersTable, expensesTable } from "@workspace/db";
-import { eq, and, gte, lte, isNull } from "drizzle-orm";
+import { eq, and, gte, lte, isNull, inArray } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 
 const router = Router();
@@ -319,6 +319,150 @@ router.get("/detail", authenticate, async (req, res) => {
       }));
 
     res.json({ completedBookings });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+// ── Clients analytics ("Mijozlar tahlili") ─────────────────────────────────────
+
+function addDaysISO(iso: string, days: number): string {
+  const [y = 1970, m = 1, d = 1] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+function daysBetweenISO(from: string, to: string): number {
+  const [fy = 1970, fm = 1, fd = 1] = from.split("-").map(Number);
+  const [ty = 1970, tm = 1, td = 1] = to.split("-").map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
+}
+
+/**
+ * Calendar periods in Tashkent time:
+ *  today = current day, week = Monday → today, month = 1st of the month → today.
+ */
+function clientPeriodRange(period: string, today: string): { start: string; end: string } {
+  if (period === "week") {
+    const [y = 1970, m = 1, d = 1] = today.split("-").map(Number);
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sunday
+    return { start: addDaysISO(today, -((dow + 6) % 7)), end: today };
+  }
+  if (period === "month") {
+    return { start: `${today.slice(0, 7)}-01`, end: today };
+  }
+  return { start: today, end: today };
+}
+
+type ClientSegment = "regular" | "new" | "lost" | null;
+
+/**
+ * GET /api/analytics/clients?period=today|week|month
+ *
+ * A "visit" is a confirmed or completed booking that is not in the future.
+ *  - all     : clients with at least one visit in the period
+ *  - regular : of those, clients with 2+ visits in the last 30 days
+ *  - new     : clients whose very first visit falls in the period
+ *  - lost    : clients who visited before, last visit 30+ days ago, nothing booked ahead
+ */
+router.get("/clients", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const requested = String(req.query.period ?? "today");
+    const period = ["today", "week", "month"].includes(requested) ? requested : "today";
+    const today = todayStr();
+    const { start, end } = clientPeriodRange(period, today);
+    const last30Start = addDaysISO(today, -29);
+    const lostBefore = addDaysISO(today, -30);
+
+    const rows = await db
+      .select({
+        clientId: bookingsTable.clientId,
+        clientName: bookingsTable.clientName,
+        date: bookingsTable.date,
+        startTime: bookingsTable.startTime,
+        status: bookingsTable.status,
+      })
+      .from(bookingsTable)
+      .where(
+        and(
+          eq(bookingsTable.barberId, user.id),
+          isNull(bookingsTable.deletedAt),
+          inArray(bookingsTable.status, ["completed", "confirmed", "pending"]),
+        ),
+      );
+
+    interface Visit { date: string; time: string }
+    interface Agg { name: string; visits: Visit[]; hasUpcoming: boolean }
+    const clients = new Map<string, Agg>();
+
+    for (const r of rows) {
+      const nameKey = (r.clientName || "").trim().toLowerCase();
+      const key = r.clientId ? `id:${r.clientId}` : `name:${nameKey}`;
+      if (!r.clientId && !nameKey) continue;
+      let agg = clients.get(key);
+      if (!agg) {
+        agg = { name: r.clientName || "Mijoz", visits: [], hasUpcoming: false };
+        clients.set(key, agg);
+      }
+      if (r.date > today) {
+        agg.hasUpcoming = true;
+      } else if (r.status === "completed" || r.status === "confirmed") {
+        agg.visits.push({ date: r.date, time: r.startTime });
+      }
+    }
+
+    const segmentCounts = { all: 0, regular: 0, new: 0, lost: 0 };
+    const active: Array<{
+      name: string;
+      visitsInPeriod: number;
+      segment: ClientSegment;
+      lastVisit: Visit;
+      daysAgo: number;
+    }> = [];
+
+    for (const agg of clients.values()) {
+      if (agg.visits.length === 0) continue;
+      agg.visits.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+      const first = agg.visits[0]!;
+      const last = agg.visits[agg.visits.length - 1]!;
+      const inPeriod = agg.visits.filter((v) => v.date >= start && v.date <= end);
+      const inLast30 = agg.visits.filter((v) => v.date >= last30Start).length;
+
+      const isRegular = inLast30 >= 2;
+      const isNew = first.date >= start && first.date <= end;
+      const isLost = last.date <= lostBefore && !agg.hasUpcoming;
+
+      if (isLost) segmentCounts.lost++;
+      if (inPeriod.length === 0) continue;
+
+      segmentCounts.all++;
+      if (isRegular) segmentCounts.regular++;
+      if (isNew) segmentCounts.new++;
+
+      active.push({
+        name: agg.name,
+        visitsInPeriod: inPeriod.length,
+        segment: isRegular ? "regular" : isNew ? "new" : isLost ? "lost" : null,
+        lastVisit: last,
+        daysAgo: Math.max(daysBetweenISO(last.date, today), 0),
+      });
+    }
+
+    active.sort(
+      (a, b) =>
+        b.visitsInPeriod - a.visitsInPeriod ||
+        b.lastVisit.date.localeCompare(a.lastVisit.date) ||
+        b.lastVisit.time.localeCompare(a.lastVisit.time),
+    );
+
+    res.json({
+      period,
+      range: { start, end },
+      today,
+      segments: segmentCounts,
+      topClients: active.slice(0, 5),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "server_error" });

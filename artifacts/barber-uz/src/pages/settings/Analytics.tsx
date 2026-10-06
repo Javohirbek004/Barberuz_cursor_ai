@@ -2,8 +2,14 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
-import { ChevronLeft, ChevronRight, X, Loader2, Check } from "lucide-react";
+import {
+  ChevronLeft, ChevronRight, X, Loader2, Check,
+  Wallet, Users, Receipt, TrendingUp,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import type { LucideIcon } from "lucide-react";
+import { BottomSheet } from "@/components/BottomSheet";
+import { ClientsAnalyticsSheet } from "@/pages/settings/ClientsAnalyticsSheet";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -208,9 +214,17 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: "oy", label: "Oy" },
 ];
 
-function PeriodFilter({ period, onChange }: { period: Period; onChange: (p: Period) => void }) {
+function PeriodFilter({
+  period,
+  onChange,
+  className = "mb-6",
+}: {
+  period: Period;
+  onChange: (p: Period) => void;
+  className?: string;
+}) {
   return (
-    <div className="flex gap-1.5 bg-card p-1 rounded-2xl border border-white/6 mb-6">
+    <div className={`flex gap-1.5 bg-card p-1 rounded-2xl border border-white/6 ${className}`}>
       {PERIODS.map(({ key, label }) => (
         <button
           key={key}
@@ -228,61 +242,58 @@ function PeriodFilter({ period, onChange }: { period: Period; onChange: (p: Peri
   );
 }
 
-// ── Bottom Sheet ───────────────────────────────────────────────────────────────
+// ── Entry card (icon + title + hint, whole card opens its sheet) ───────────────
 
-function BottomSheet({
+const ENTRY_TONES: Record<string, { box: string; icon: string }> = {
+  amber: { box: "bg-amber-400/10 border-amber-400/20", icon: "text-amber-400" },
+  blue: { box: "bg-sky-400/10 border-sky-400/20", icon: "text-sky-400" },
+  red: { box: "bg-red-400/10 border-red-400/20", icon: "text-red-400" },
+  green: { box: "bg-emerald-400/10 border-emerald-400/20", icon: "text-emerald-400" },
+};
+
+function AnalyticsEntryCard({
+  icon: Icon,
   title,
-  onClose,
-  children,
+  tone,
+  index,
+  testId,
+  onClick,
 }: {
+  icon: LucideIcon;
   title: string;
-  onClose: () => void;
-  children: React.ReactNode;
+  tone: keyof typeof ENTRY_TONES;
+  index: number;
+  testId: string;
+  onClick: () => void;
 }) {
-  useEffect(() => {
-    const fn = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", fn);
-    return () => document.removeEventListener("keydown", fn);
-  }, [onClose]);
-
+  const t = ENTRY_TONES[tone];
   return (
-    <motion.div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+    <motion.button
+      type="button"
+      data-testid={testId}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.05 + index * 0.04 }}
+      whileTap={{ scale: 0.96 }}
+      onClick={onClick}
+      className="bg-card border border-white/6 rounded-2xl p-4 text-left w-full min-h-[132px] flex flex-col justify-between hover:bg-white/4 active:bg-white/6 transition-colors"
     >
-      <motion.div
-        className="absolute inset-0 bg-black/65 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <motion.div
-        initial={{ y: "100%" }}
-        animate={{ y: 0 }}
-        exit={{ y: "100%" }}
-        transition={{ type: "spring", damping: 28, stiffness: 260 }}
-        className="relative w-full max-w-md bg-card rounded-t-3xl z-10 max-h-[92vh] flex flex-col shadow-2xl"
-      >
-        {/* Drag handle */}
-        <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 shrink-0" />
+      <div className={`w-11 h-11 rounded-2xl border flex items-center justify-center ${t.box}`}>
+        <Icon className={`w-5 h-5 ${t.icon}`} />
+      </div>
+      <div>
+        <div className="font-display font-bold text-base text-foreground">{title}</div>
+        <div className="text-xs text-primary/80 font-medium mt-1">Tahlilni ko'rish ➔</div>
+      </div>
+    </motion.button>
+  );
+}
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-3 pb-3 shrink-0">
-          <h2 className="font-display font-bold text-lg text-foreground">{title}</h2>
-          <button
-            onClick={onClose}
-            className="w-9 h-9 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-white/8 transition-all"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="h-px bg-white/6 mx-5 shrink-0" />
-
-        {/* Scrollable body */}
-        <div className="overflow-y-auto flex-1 px-5 py-4 pb-12">{children}</div>
-      </motion.div>
-    </motion.div>
+function SheetSpinner() {
+  return (
+    <div className="flex justify-center py-16" data-testid="sheet-spinner">
+      <Loader2 className="w-6 h-6 animate-spin text-primary" />
+    </div>
   );
 }
 
@@ -445,17 +456,24 @@ function ExpenseEditModal({
 function DaromadModal({
   data,
   bookings,
+  period,
+  onPeriodChange,
+  loading,
   onClose,
 }: {
-  data: SoloData;
+  data: SoloData | null;
   bookings: CompletedBooking[];
+  period: Period;
+  onPeriodChange: (p: Period) => void;
+  loading: boolean;
   onClose: () => void;
 }) {
+  const revenue = data?.revenue ?? 0;
   const avgCheck =
-    bookings.length > 0 ? Math.round(data.revenue / bookings.length) : 0;
+    bookings.length > 0 ? Math.round(revenue / bookings.length) : 0;
   const topSvcPct =
-    data.topService && data.revenue > 0
-      ? Math.round((data.topService.revenue / data.revenue) * 100)
+    data?.topService && revenue > 0
+      ? Math.round((data.topService.revenue / revenue) * 100)
       : 0;
 
   // Group by date desc; within each group sort by startTime asc
@@ -471,6 +489,11 @@ function DaromadModal({
 
   return (
     <BottomSheet title="💰 Daromad tahlili" onClose={onClose}>
+      <PeriodFilter period={period} onChange={onPeriodChange} className="mb-4" />
+      {loading || !data ? (
+        <SheetSpinner />
+      ) : (
+      <>
       {/* Top metrics */}
       <div className="flex gap-2 mb-5">
         <MetricPill label="O'rtacha chek" value={fmtFull(avgCheck)} />
@@ -529,77 +552,7 @@ function DaromadModal({
           })}
         </div>
       )}
-    </BottomSheet>
-  );
-}
-
-// ── Mijozlar Modal ────────────────────────────────────────────────────────────
-
-function MijozlarModal({
-  bookings,
-  onClose,
-}: {
-  bookings: CompletedBooking[];
-  onClose: () => void;
-}) {
-  const clientMap: Record<string, { visits: number; totalSpent: number }> = {};
-  for (const b of bookings) {
-    const key = b.clientName || "Noma'lum";
-    if (!clientMap[key]) clientMap[key] = { visits: 0, totalSpent: 0 };
-    clientMap[key].visits++;
-    clientMap[key].totalSpent += b.price;
-  }
-  const ranked = Object.entries(clientMap)
-    .map(([name, v]) => ({ name, ...v }))
-    .sort((a, b) => b.visits - a.visits || b.totalSpent - a.totalSpent);
-
-  const uniqueCount = ranked.length;
-  const returningCount = ranked.filter(c => c.visits > 1).length;
-  const returningRate =
-    uniqueCount > 0 ? Math.round((returningCount / uniqueCount) * 100) : 0;
-
-  function badge(rank: number) {
-    if (rank === 1) return <span className="text-lg leading-none">🥇</span>;
-    if (rank === 2) return <span className="text-lg leading-none">🥈</span>;
-    if (rank === 3) return <span className="text-lg leading-none">🥉</span>;
-    return <span className="text-xs font-bold text-muted-foreground">{rank}</span>;
-  }
-
-  return (
-    <BottomSheet title="👥 Mijozlar tahlili" onClose={onClose}>
-      <div className="flex gap-2 mb-5">
-        <MetricPill label="Jami mijozlar" value={`${uniqueCount} ta`} />
-        <MetricPill
-          label="Qayta kelganlar"
-          value={`${returningRate}%`}
-          valueColor={returningRate >= 30 ? "text-green-400" : "text-foreground"}
-        />
-      </div>
-
-      {ranked.length === 0 ? (
-        <div className="text-center py-10 text-sm text-muted-foreground">
-          Mijozlar yo'q
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          {ranked.map((c, i) => (
-            <div
-              key={c.name}
-              className="flex items-center gap-3 py-2.5 px-3 rounded-2xl bg-white/3 border border-white/5"
-            >
-              <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center shrink-0">
-                {badge(i + 1)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-foreground truncate">{c.name}</div>
-                <div className="text-xs text-muted-foreground">{c.visits} marta</div>
-              </div>
-              <div className="text-sm font-bold text-primary tabular-nums shrink-0">
-                {fmtFull(c.totalSpent)}
-              </div>
-            </div>
-          ))}
-        </div>
+      </>
       )}
     </BottomSheet>
   );
@@ -610,10 +563,16 @@ function MijozlarModal({
 function XarajatlarModal({
   expenses,
   onExpensesChange,
+  period,
+  onPeriodChange,
+  loading,
   onClose,
 }: {
   expenses: Expense[];
   onExpensesChange: (updated: Expense[]) => void;
+  period: Period;
+  onPeriodChange: (p: Period) => void;
+  loading: boolean;
   onClose: () => void;
 }) {
   const [editingExp, setEditingExp] = useState<Expense | null>(null);
@@ -652,7 +611,10 @@ function XarajatlarModal({
   return (
     <>
       <BottomSheet title="💸 Xarajatlar tahlili" onClose={onClose}>
-        {expenses.length === 0 ? (
+        <PeriodFilter period={period} onChange={onPeriodChange} className="mb-4" />
+        {loading ? (
+          <SheetSpinner />
+        ) : expenses.length === 0 ? (
           <div className="text-center py-10 text-sm text-muted-foreground">
             Xarajatlar yo'q
           </div>
@@ -784,31 +746,40 @@ function SofFoydaModal({
   totalExpenses,
   netProfit,
   period,
+  onPeriodChange,
+  loading,
   onClose,
 }: {
-  data: SoloData;
+  data: SoloData | null;
   totalExpenses: number;
   netProfit: number;
   period: Period;
+  onPeriodChange: (p: Period) => void;
+  loading: boolean;
   onClose: () => void;
 }) {
-  const profitMargin =
-    data.revenue > 0 ? Math.round((netProfit / data.revenue) * 100) : 0;
+  const revenue = data?.revenue ?? 0;
+  const revChange = data?.revChange ?? 0;
+  const profitMargin = revenue > 0 ? Math.round((netProfit / revenue) * 100) : 0;
   const netPositive = netProfit >= 0;
   const netColor = netPositive ? "text-green-400" : "text-red-400";
   const netBg = netPositive
     ? "bg-green-500/8 border-green-500/20"
     : "bg-red-500/8 border-red-500/20";
-  const trendSign = data.revChange > 0 ? "+" : "";
+  const trendSign = revChange > 0 ? "+" : "";
   const trendColor =
-    data.revChange > 0
+    revChange > 0
       ? "text-green-400"
-      : data.revChange < 0
+      : revChange < 0
         ? "text-red-400"
         : "text-muted-foreground";
 
   return (
     <BottomSheet title="📈 Sof foyda tahlili" onClose={onClose}>
+      <PeriodFilter period={period} onChange={onPeriodChange} className="mb-4" />
+      {loading || !data ? (
+        <SheetSpinner />
+      ) : (
       <div className="space-y-4">
         {/* Financial summary */}
         <div className="bg-white/3 border border-white/8 rounded-2xl p-4 space-y-3">
@@ -839,7 +810,7 @@ function SofFoydaModal({
           <div className="flex-1 bg-white/4 border border-white/8 rounded-2xl p-4">
             <div className="text-xs text-muted-foreground mb-1">O'sish ko'rsatkichi</div>
             <div className={`font-bold text-2xl tabular-nums ${trendColor}`}>
-              {trendSign}{data.revChange}%
+              {trendSign}{revChange}%
             </div>
             <div className="text-xs text-muted-foreground mt-1">
               {PERIOD_COMPARE_LABEL[period]}
@@ -847,6 +818,7 @@ function SofFoydaModal({
           </div>
         </div>
       </div>
+      )}
     </BottomSheet>
   );
 }
@@ -877,16 +849,23 @@ function Section({
 
 // ── YAKKA MODE UI ─────────────────────────────────────────────────────────────
 
-function YakkaAnalytics({ period }: { period: Period }) {
+function YakkaAnalytics() {
+  const [activeModal, setActiveModal] = useState<ModalKind>(null);
+  // Each money sheet has its own Bugun / Hafta / Oy tabs; the cards themselves show no numbers.
+  const [period, setPeriod]     = useState<Period>("bugun");
   const [data, setData]         = useState<SoloData | null>(null);
   const [bookings, setBookings] = useState<CompletedBooking[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [activeModal, setActiveModal] = useState<ModalKind>(null);
+  const [loading, setLoading]   = useState(false);
 
+  const moneySheetOpen =
+    activeModal === "daromad" || activeModal === "xarajatlar" || activeModal === "sof-foyda";
+
+  // Load figures only while a money sheet is open, and again when its period changes.
   useEffect(() => {
+    if (!moneySheetOpen) return;
+    let cancelled = false;
     setLoading(true);
-    setActiveModal(null);
     const apiPeriod = PERIOD_API[period];
     Promise.all([
       fetchSolo(apiPeriod),
@@ -894,106 +873,82 @@ function YakkaAnalytics({ period }: { period: Period }) {
       fetchExpenses(apiPeriod),
     ])
       .then(([solo, detail, exp]) => {
+        if (cancelled) return;
         setData(solo);
         setBookings(detail);
         setExpenses(exp);
       })
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, [period]);
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [moneySheetOpen, period]);
 
-  // Re-fetch whenever the user navigates back to this page
-  useEffect(() => {
-    function onVisibility() {
-      if (document.visibilityState !== "visible") return;
-      const apiPeriod = PERIOD_API[period];
-      setLoading(true);
-      Promise.all([
-        fetchSolo(apiPeriod),
-        fetchDetail(apiPeriod),
-        fetchExpenses(apiPeriod),
-      ])
-        .then(([solo, detail, exp]) => {
-          setData(solo);
-          setBookings(detail);
-          setExpenses(exp);
-        })
-        .catch(() => {})
-        .finally(() => setLoading(false));
-    }
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [period]);
-
-  // Derive locally so edits/deletes in XarajatlarModal update cards instantly
+  // Derive locally so edits/deletes in XarajatlarModal update the totals instantly
   const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
   const netProfit     = (data?.revenue ?? 0) - totalExpenses;
-  const netColor      = netProfit >= 0 ? "text-green-400" : "text-red-400";
-
-  if (loading) return <SkeletonKPI />;
-  if (!data) return (
-    <div className="text-center py-10 text-sm text-muted-foreground">
-      Ma'lumot yuklanmadi
-    </div>
-  );
+  const close = () => setActiveModal(null);
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-3">
-        <ClickableKpiCard
-          index={0} emoji="💰" label="Daromad"
-          value={fmtFull(data.revenue)}
-          onClick={() => setActiveModal("daromad")}
+      <div className="grid grid-cols-2 gap-3" data-testid="analytics-cards">
+        <AnalyticsEntryCard
+          index={0} icon={Wallet} tone="amber" title="Daromad"
+          testId="card-daromad" onClick={() => setActiveModal("daromad")}
         />
-        <ClickableKpiCard
-          index={1} emoji="👥" label="Mijozlar"
-          value={`${data.clients} ta`}
-          onClick={() => setActiveModal("mijozlar")}
+        <AnalyticsEntryCard
+          index={1} icon={Users} tone="blue" title="Mijozlar"
+          testId="card-mijozlar" onClick={() => setActiveModal("mijozlar")}
         />
-        <ClickableKpiCard
-          index={2} emoji="💸" label="Xarajatlar"
-          value={fmtFull(totalExpenses)}
-          valueColor="text-red-400"
-          onClick={() => setActiveModal("xarajatlar")}
+        <AnalyticsEntryCard
+          index={2} icon={Receipt} tone="red" title="Xarajatlar"
+          testId="card-xarajatlar" onClick={() => setActiveModal("xarajatlar")}
         />
-        <ClickableKpiCard
-          index={3} emoji="📈" label="Sof foyda"
-          value={fmtFull(Math.abs(netProfit))}
-          valueColor={netColor}
-          sub={netProfit < 0 ? "Zarar" : undefined}
-          subColor="text-red-400"
-          onClick={() => setActiveModal("sof-foyda")}
+        <AnalyticsEntryCard
+          index={3} icon={TrendingUp} tone="green" title="Sof foyda"
+          testId="card-sof-foyda" onClick={() => setActiveModal("sof-foyda")}
         />
       </div>
 
       <AnimatePresence>
         {activeModal === "daromad" && (
           <DaromadModal
+            key="daromad"
             data={data}
             bookings={bookings}
-            onClose={() => setActiveModal(null)}
+            period={period}
+            onPeriodChange={setPeriod}
+            loading={loading}
+            onClose={close}
           />
         )}
         {activeModal === "mijozlar" && (
-          <MijozlarModal
-            bookings={bookings}
-            onClose={() => setActiveModal(null)}
-          />
+          <ClientsAnalyticsSheet key="mijozlar" onClose={close} />
         )}
         {activeModal === "xarajatlar" && (
           <XarajatlarModal
+            key="xarajatlar"
             expenses={expenses}
             onExpensesChange={setExpenses}
-            onClose={() => setActiveModal(null)}
+            period={period}
+            onPeriodChange={setPeriod}
+            loading={loading}
+            onClose={close}
           />
         )}
         {activeModal === "sof-foyda" && (
           <SofFoydaModal
+            key="sof-foyda"
             data={data}
             totalExpenses={totalExpenses}
             netProfit={netProfit}
             period={period}
-            onClose={() => setActiveModal(null)}
+            onPeriodChange={setPeriod}
+            loading={loading}
+            onClose={close}
           />
         )}
       </AnimatePresence>
@@ -1115,7 +1070,8 @@ export default function AnalyticsPage() {
         </h1>
       </div>
 
-      <PeriodFilter period={period} onChange={setPeriod} />
+      {/* Team mode keeps its page-level filter; solo mode picks the period inside each sheet. */}
+      {isTeam && <PeriodFilter period={period} onChange={setPeriod} />}
 
       {isLoading ? (
         <SkeletonKPI />
@@ -1124,7 +1080,7 @@ export default function AnalyticsPage() {
       ) : isTeam ? (
         <JamoaAnalytics period={period} />
       ) : (
-        <YakkaAnalytics period={period} />
+        <YakkaAnalytics />
       )}
     </Layout>
   );
