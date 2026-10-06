@@ -1058,7 +1058,7 @@ export default function AnalyticsPage() {
   const isTeam = user?.mode === "team";
 
   return (
-    <Layout>
+    <Layout hideBottomNav>
       <div className="flex items-center gap-3 mb-6">
         <Link href="/settings">
           <button className="w-10 h-10 rounded-2xl bg-card border border-white/8 flex items-center justify-center hover:bg-white/5 transition-colors">

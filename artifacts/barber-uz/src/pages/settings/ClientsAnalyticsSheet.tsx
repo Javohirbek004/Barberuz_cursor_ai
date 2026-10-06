@@ -98,9 +98,14 @@ function monthRange(anchor: string, delta: number): DateRange {
 function viewedRange(mode: Mode, offset: number, custom: DateRange | null, today: string): DateRange {
   if (mode === "hafta") {
     const start = addDaysISO(mondayOf(today), offset * 7);
-    return { start, end: addDaysISO(start, 6) };
+    // The week that contains today stops at today. Earlier weeks stay Monday–Sunday.
+    return { start, end: offset === 0 ? today : addDaysISO(start, 6) };
   }
-  if (mode === "oy") return monthRange(today, offset);
+  if (mode === "oy") {
+    const full = monthRange(today, offset);
+    // The current month stops at today. Earlier months stay the 1st through the last day.
+    return offset === 0 ? { start: full.start, end: today } : full;
+  }
   if (mode === "sana" && custom) {
     const span = daysBetweenISO(custom.start, custom.end) + 1;
     const start = addDaysISO(custom.start, offset * span);

@@ -154,7 +154,7 @@ export default function AnalyticsBarberDetail({ params }: Props) {
   const displayName = stats?.name ?? "Usta";
 
   return (
-    <Layout>
+    <Layout hideBottomNav>
       <div className="flex items-center gap-3 mb-6">
         <Link href="/settings/analytics">
           <button className="flex items-center gap-1.5 h-10 px-3 rounded-2xl bg-card border border-white/8 hover:bg-white/5 transition-colors text-sm font-semibold">

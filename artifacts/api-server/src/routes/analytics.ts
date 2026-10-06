@@ -346,20 +346,19 @@ function isISODate(value: string): boolean {
 }
 
 /**
- * Calendar periods in Tashkent time:
- *  today = current day, week = Monday → Sunday, month = 1st → last day.
+ * Current periods in Tashkent time, capped at today.
+ *  today = current day, week = Monday → today, month = 1st → today.
+ * Past weeks and months are requested with explicit from/to dates.
  */
 function clientPeriodRange(period: string, today: string): { start: string; end: string } {
   if (period === "week") {
     const [y = 1970, m = 1, d = 1] = today.split("-").map(Number);
     const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sunday
     const start = addDaysISO(today, -((dow + 6) % 7));
-    return { start, end: addDaysISO(start, 6) };
+    return { start, end: today };
   }
   if (period === "month") {
-    const [y = 1970, m = 1] = today.split("-").map(Number);
-    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-    return { start: `${today.slice(0, 7)}-01`, end: `${today.slice(0, 7)}-${String(last).padStart(2, "0")}` };
+    return { start: `${today.slice(0, 7)}-01`, end: today };
   }
   return { start: today, end: today };
 }
