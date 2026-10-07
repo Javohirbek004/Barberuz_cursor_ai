@@ -339,14 +339,13 @@ export function ProfitAnalyticsSheet({ onClose }: { onClose: () => void }) {
   const [offset, setOffset] = useState(0);
   const [custom, setCustom] = useState<DateRange | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const range = useMemo(() => viewedRange(mode, offset, custom, today), [mode, offset, custom, today]);
   const [bookings, setBookings] = useState<IncomeBooking[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
   const [readyRange, setReadyRange] = useState(range);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
-
-  const range = useMemo(() => viewedRange(mode, offset, custom, today), [mode, offset, custom, today]);
   const rangeKey = `${range.start}|${range.end}`;
   const forwardDisabled = range.end >= today;
 
