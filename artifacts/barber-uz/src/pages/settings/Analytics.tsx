@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
 import {
-  ChevronLeft, ChevronRight, X, Loader2, Check,
+  ChevronLeft, ChevronRight, Loader2,
   Wallet, Users, Receipt, TrendingUp,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -11,6 +11,7 @@ import type { LucideIcon } from "lucide-react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { ClientsAnalyticsSheet } from "@/pages/settings/ClientsAnalyticsSheet";
 import { IncomeAnalyticsSheet } from "@/pages/settings/IncomeAnalyticsSheet";
+import { ExpensesAnalyticsSheet } from "@/pages/settings/ExpensesAnalyticsSheet";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -84,53 +85,11 @@ function getToken() {
   return localStorage.getItem("barber_token") ?? "";
 }
 
-function todayIso(): string {
-  return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
-}
-
-const UZ_MONTHS = [
-  "Yanvar","Fevral","Mart","Aprel","May","Iyun",
-  "Iyul","Avgust","Sentyabr","Oktyabr","Noyabr","Dekabr",
-];
-
-function fmtDateGroupHeader(iso: string): string {
-  const today = todayIso();
-  const ydObj = new Date();
-  ydObj.setDate(ydObj.getDate() - 1);
-  const yesterday = ydObj.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
-  const d = new Date(`${iso}T12:00:00`);
-  const dateStr = `${d.getDate()}-${UZ_MONTHS[d.getMonth()]}`;
-  if (iso === today) return `Bugun, ${dateStr}`;
-  if (iso === yesterday) return `Kecha, ${dateStr}`;
-  return dateStr;
-}
-
 const PERIOD_COMPARE_LABEL: Record<Period, string> = {
   bugun: "Kechaga nisbatan",
   hafta: "O'tgan haftaga nisbatan",
   oy: "O'tgan oyga nisbatan",
 };
-
-const CAT_COLORS = [
-  "bg-amber-400",
-  "bg-blue-400",
-  "bg-green-400",
-  "bg-purple-400",
-  "bg-pink-400",
-  "bg-orange-400",
-  "bg-cyan-400",
-  "bg-red-400",
-];
-const CAT_TEXT_COLORS = [
-  "text-amber-400",
-  "text-blue-400",
-  "text-green-400",
-  "text-purple-400",
-  "text-pink-400",
-  "text-orange-400",
-  "text-cyan-400",
-  "text-red-400",
-];
 
 // ── API ────────────────────────────────────────────────────────────────────────
 
@@ -157,24 +116,6 @@ async function fetchExpenses(period: string): Promise<Expense[]> {
   if (!res.ok) return [];
   const data = await res.json();
   return data.expenses ?? [];
-}
-
-async function deleteExpenseApi(id: string): Promise<void> {
-  await fetch(`/api/expenses/${id}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-}
-
-async function updateExpenseApi(
-  id: string,
-  payload: Partial<Pick<Expense, "title" | "amount" | "category">>,
-): Promise<void> {
-  await fetch(`/api/expenses/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-    body: JSON.stringify(payload),
-  });
 }
 
 // ── Skeleton ───────────────────────────────────────────────────────────────────
@@ -324,187 +265,6 @@ function ClickableKpiCard({
   );
 }
 
-// ── Xarajatlar Modal ──────────────────────────────────────────────────────────
-
-function XarajatlarModal({
-  expenses,
-  onExpensesChange,
-  period,
-  onPeriodChange,
-  loading,
-  onClose,
-}: {
-  expenses: Expense[];
-  onExpensesChange: (updated: Expense[]) => void;
-  period: Period;
-  onPeriodChange: (p: Period) => void;
-  loading: boolean;
-  onClose: () => void;
-}) {
-  const [editingExp, setEditingExp] = useState<Expense | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const totalExp = expenses.reduce((s, e) => s + Number(e.amount), 0);
-  const catMap: Record<string, number> = {};
-  for (const e of expenses) {
-    catMap[e.category] = (catMap[e.category] || 0) + Number(e.amount);
-  }
-  const catEntries = Object.entries(catMap)
-    .map(([name, amount]) => ({
-      name,
-      amount,
-      pct: totalExp > 0 ? Math.round((amount / totalExp) * 100) : 0,
-    }))
-    .sort((a, b) => b.amount - a.amount);
-
-  const grouped: Record<string, Expense[]> = {};
-  for (const e of expenses) {
-    if (!grouped[e.date]) grouped[e.date] = [];
-    grouped[e.date].push(e);
-  }
-  const dates = Object.keys(grouped).sort().reverse();
-
-  async function handleDelete(id: string) {
-    setDeletingId(id);
-    try {
-      await deleteExpenseApi(id);
-      onExpensesChange(expenses.filter(e => e.id !== id));
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
-  return (
-    <>
-      <BottomSheet title="💸 Xarajatlar tahlili" onClose={onClose}>
-        <PeriodFilter period={period} onChange={onPeriodChange} className="mb-4" />
-        {loading ? (
-          <SheetSpinner />
-        ) : expenses.length === 0 ? (
-          <div className="text-center py-10 text-sm text-muted-foreground">
-            Xarajatlar yo'q
-          </div>
-        ) : (
-          <div className="space-y-5">
-            {/* Category breakdown */}
-            <div>
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                Kategoriyalar bo'yicha
-              </div>
-              <div className="space-y-3">
-                {catEntries.map((cat, i) => (
-                  <div key={cat.name}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${CAT_COLORS[i % CAT_COLORS.length]}`} />
-                        <span className="text-sm font-medium text-foreground">{cat.name}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">{fmtFull(cat.amount)}</span>
-                        <span className={`text-xs font-bold w-9 text-right ${CAT_TEXT_COLORS[i % CAT_TEXT_COLORS.length]}`}>
-                          {cat.pct}%
-                        </span>
-                      </div>
-                    </div>
-                    <div className="h-1.5 bg-white/6 rounded-full overflow-hidden">
-                      <motion.div
-                        className={`h-full rounded-full ${CAT_COLORS[i % CAT_COLORS.length]}`}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${cat.pct}%` }}
-                        transition={{ duration: 0.5, delay: i * 0.08 }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="h-px bg-white/6" />
-
-            {/* History */}
-            <div>
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                Tarix
-              </div>
-              <div className="space-y-5">
-                {dates.map(date => {
-                  const entries = grouped[date];
-                  const dayTotal = entries.reduce((s, e) => s + Number(e.amount), 0);
-                  return (
-                    <div key={date}>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold text-muted-foreground">
-                          {fmtDateGroupHeader(date)}
-                        </span>
-                        <span className="text-xs font-bold text-red-400">
-                          −{fmtFull(dayTotal)}
-                        </span>
-                      </div>
-                      <div className="space-y-1.5">
-                        {entries.map(exp => (
-                          <div
-                            key={exp.id}
-                            className="flex items-center gap-2 py-2.5 px-3 rounded-2xl bg-white/3 border border-white/5"
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-foreground truncate">
-                                {exp.title}
-                              </div>
-                              <div className="mt-0.5">
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/6 text-muted-foreground/80">
-                                  {exp.category}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="text-sm font-bold text-red-400 tabular-nums shrink-0">
-                              −{fmtFull(Number(exp.amount))}
-                            </div>
-                            <button
-                              onClick={() => setEditingExp(exp)}
-                              className="p-1.5 rounded-lg hover:bg-white/8 text-muted-foreground hover:text-foreground transition-all shrink-0"
-                            >
-                              <span className="text-xs">✏️</span>
-                            </button>
-                            <button
-                              onClick={() => handleDelete(exp.id)}
-                              disabled={deletingId === exp.id}
-                              className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-all disabled:opacity-30 shrink-0"
-                            >
-                              {deletingId === exp.id ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <span className="text-xs">🗑️</span>
-                              )}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-      </BottomSheet>
-
-      {/* Edit modal stacks on top */}
-      <AnimatePresence>
-        {editingExp && (
-          <ExpenseEditModal
-            expense={editingExp}
-            onClose={() => setEditingExp(null)}
-            onSaved={updated => {
-              onExpensesChange(expenses.map(e => (e.id === updated.id ? updated : e)));
-              setEditingExp(null);
-            }}
-          />
-        )}
-      </AnimatePresence>
-    </>
-  );
-}
-
 // ── Sof Foyda Modal ───────────────────────────────────────────────────────────
 
 function SofFoydaModal({
@@ -623,7 +383,7 @@ function YakkaAnalytics() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading]   = useState(false);
 
-  const moneySheetOpen = activeModal === "xarajatlar" || activeModal === "sof-foyda";
+  const moneySheetOpen = activeModal === "sof-foyda";
 
   // Load figures only while a money sheet is open, and again when its period changes.
   useEffect(() => {
@@ -649,7 +409,7 @@ function YakkaAnalytics() {
     };
   }, [moneySheetOpen, period]);
 
-  // Derive locally so edits/deletes in XarajatlarModal update the totals instantly
+  // Sof foyda uses the expenses loaded for its own period tabs.
   const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
   const netProfit     = (data?.revenue ?? 0) - totalExpenses;
   const close = () => setActiveModal(null);
@@ -683,15 +443,7 @@ function YakkaAnalytics() {
           <ClientsAnalyticsSheet key="mijozlar" onClose={close} />
         )}
         {activeModal === "xarajatlar" && (
-          <XarajatlarModal
-            key="xarajatlar"
-            expenses={expenses}
-            onExpensesChange={setExpenses}
-            period={period}
-            onPeriodChange={setPeriod}
-            loading={loading}
-            onClose={close}
-          />
+          <ExpensesAnalyticsSheet key="xarajatlar" onClose={close} />
         )}
         {activeModal === "sof-foyda" && (
           <SofFoydaModal
