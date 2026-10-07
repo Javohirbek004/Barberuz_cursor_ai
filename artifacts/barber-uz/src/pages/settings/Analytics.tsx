@@ -3,15 +3,15 @@ import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
 import {
-  ChevronLeft, ChevronRight, Loader2,
+  ChevronLeft, ChevronRight,
   Wallet, Users, Receipt, TrendingUp,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
-import { BottomSheet } from "@/components/BottomSheet";
 import { ClientsAnalyticsSheet } from "@/pages/settings/ClientsAnalyticsSheet";
 import { IncomeAnalyticsSheet } from "@/pages/settings/IncomeAnalyticsSheet";
 import { ExpensesAnalyticsSheet } from "@/pages/settings/ExpensesAnalyticsSheet";
+import { ProfitAnalyticsSheet } from "@/pages/settings/ProfitAnalyticsSheet";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -23,29 +23,6 @@ const PERIOD_API: Record<Period, string> = {
   hafta: "week",
   oy: "month",
 };
-
-interface SoloData {
-  revenue: number;
-  revChange: number;
-  totalExpenses: number;
-  netProfit: number;
-  clients: number;
-  activeBookings: number;
-  totalBookings: number;
-  cancelled: number;
-  noshow: number;
-  topService: { name: string; count: number; revenue: number } | null;
-  busiestTime: string;
-  tips: string[];
-}
-
-interface Expense {
-  id: string;
-  title: string;
-  amount: string;
-  category: string;
-  date: string;
-}
 
 interface BarberStat {
   id: string;
@@ -85,21 +62,7 @@ function getToken() {
   return localStorage.getItem("barber_token") ?? "";
 }
 
-const PERIOD_COMPARE_LABEL: Record<Period, string> = {
-  bugun: "Kechaga nisbatan",
-  hafta: "O'tgan haftaga nisbatan",
-  oy: "O'tgan oyga nisbatan",
-};
-
 // ── API ────────────────────────────────────────────────────────────────────────
-
-async function fetchSolo(period: string): Promise<SoloData> {
-  const res = await fetch(`/api/analytics/solo?period=${period}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  if (!res.ok) throw new Error("fetch_error");
-  return res.json();
-}
 
 async function fetchTeam(period: string): Promise<TeamData> {
   const res = await fetch(`/api/analytics/team?period=${period}`, {
@@ -107,15 +70,6 @@ async function fetchTeam(period: string): Promise<TeamData> {
   });
   if (!res.ok) throw new Error("fetch_error");
   return res.json();
-}
-
-async function fetchExpenses(period: string): Promise<Expense[]> {
-  const res = await fetch(`/api/expenses?period=${period}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.expenses ?? [];
 }
 
 // ── Skeleton ───────────────────────────────────────────────────────────────────
@@ -213,14 +167,6 @@ function AnalyticsEntryCard({
   );
 }
 
-function SheetSpinner() {
-  return (
-    <div className="flex justify-center py-16" data-testid="sheet-spinner">
-      <Loader2 className="w-6 h-6 animate-spin text-primary" />
-    </div>
-  );
-}
-
 // ── Clickable KPI Card ─────────────────────────────────────────────────────────
 
 function ClickableKpiCard({
@@ -265,90 +211,6 @@ function ClickableKpiCard({
   );
 }
 
-// ── Sof Foyda Modal ───────────────────────────────────────────────────────────
-
-function SofFoydaModal({
-  data,
-  totalExpenses,
-  netProfit,
-  period,
-  onPeriodChange,
-  loading,
-  onClose,
-}: {
-  data: SoloData | null;
-  totalExpenses: number;
-  netProfit: number;
-  period: Period;
-  onPeriodChange: (p: Period) => void;
-  loading: boolean;
-  onClose: () => void;
-}) {
-  const revenue = data?.revenue ?? 0;
-  const revChange = data?.revChange ?? 0;
-  const profitMargin = revenue > 0 ? Math.round((netProfit / revenue) * 100) : 0;
-  const netPositive = netProfit >= 0;
-  const netColor = netPositive ? "text-green-400" : "text-red-400";
-  const netBg = netPositive
-    ? "bg-green-500/8 border-green-500/20"
-    : "bg-red-500/8 border-red-500/20";
-  const trendSign = revChange > 0 ? "+" : "";
-  const trendColor =
-    revChange > 0
-      ? "text-green-400"
-      : revChange < 0
-        ? "text-red-400"
-        : "text-muted-foreground";
-
-  return (
-    <BottomSheet title="📈 Sof foyda tahlili" onClose={onClose}>
-      <PeriodFilter period={period} onChange={onPeriodChange} className="mb-4" />
-      {loading || !data ? (
-        <SheetSpinner />
-      ) : (
-      <div className="space-y-4">
-        {/* Financial summary */}
-        <div className="bg-white/3 border border-white/8 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">💰 Jami daromad</span>
-            <span className="font-bold text-foreground tabular-nums">+{fmtFull(data.revenue)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">💸 Jami xarajat</span>
-            <span className="font-bold text-red-400 tabular-nums">−{fmtFull(totalExpenses)}</span>
-          </div>
-          <div className="h-px bg-white/8" />
-          <div className={`flex items-center justify-between px-3 py-2.5 rounded-xl border ${netBg}`}>
-            <span className="text-sm font-semibold text-foreground">📈 Sof foyda</span>
-            <span className={`font-bold text-lg tabular-nums ${netColor}`}>
-              {netPositive ? "+" : "−"}{fmtFull(Math.abs(netProfit))}
-            </span>
-          </div>
-        </div>
-
-        {/* Key metrics */}
-        <div className="flex gap-3">
-          <div className="flex-1 bg-white/4 border border-white/8 rounded-2xl p-4">
-            <div className="text-xs text-muted-foreground mb-1">Foydalilik darajasi</div>
-            <div className={`font-bold text-2xl tabular-nums ${netColor}`}>{profitMargin}%</div>
-            <div className="text-xs text-muted-foreground mt-1">Daromaddan sof foyda</div>
-          </div>
-          <div className="flex-1 bg-white/4 border border-white/8 rounded-2xl p-4">
-            <div className="text-xs text-muted-foreground mb-1">O'sish ko'rsatkichi</div>
-            <div className={`font-bold text-2xl tabular-nums ${trendColor}`}>
-              {trendSign}{revChange}%
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {PERIOD_COMPARE_LABEL[period]}
-            </div>
-          </div>
-        </div>
-      </div>
-      )}
-    </BottomSheet>
-  );
-}
-
 // ── Section card (kept for JamoaAnalytics) ────────────────────────────────────
 
 function Section({
@@ -377,41 +239,6 @@ function Section({
 
 function YakkaAnalytics() {
   const [activeModal, setActiveModal] = useState<ModalKind>(null);
-  // Each money sheet has its own Bugun / Hafta / Oy tabs; the cards themselves show no numbers.
-  const [period, setPeriod]     = useState<Period>("bugun");
-  const [data, setData]         = useState<SoloData | null>(null);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading]   = useState(false);
-
-  const moneySheetOpen = activeModal === "sof-foyda";
-
-  // Load figures only while a money sheet is open, and again when its period changes.
-  useEffect(() => {
-    if (!moneySheetOpen) return;
-    let cancelled = false;
-    setLoading(true);
-    const apiPeriod = PERIOD_API[period];
-    Promise.all([
-      fetchSolo(apiPeriod),
-      fetchExpenses(apiPeriod),
-    ])
-      .then(([solo, exp]) => {
-        if (cancelled) return;
-        setData(solo);
-        setExpenses(exp);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [moneySheetOpen, period]);
-
-  // Sof foyda uses the expenses loaded for its own period tabs.
-  const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
-  const netProfit     = (data?.revenue ?? 0) - totalExpenses;
   const close = () => setActiveModal(null);
 
   return (
@@ -446,16 +273,7 @@ function YakkaAnalytics() {
           <ExpensesAnalyticsSheet key="xarajatlar" onClose={close} />
         )}
         {activeModal === "sof-foyda" && (
-          <SofFoydaModal
-            key="sof-foyda"
-            data={data}
-            totalExpenses={totalExpenses}
-            netProfit={netProfit}
-            period={period}
-            onPeriodChange={setPeriod}
-            loading={loading}
-            onClose={close}
-          />
+          <ProfitAnalyticsSheet key="sof-foyda" onClose={close} />
         )}
       </AnimatePresence>
     </>
