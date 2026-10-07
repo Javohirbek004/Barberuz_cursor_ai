@@ -24,6 +24,7 @@ import { randomBytes } from "crypto";
 import { db, usersTable, bookingSessionsTable, bookingsTable, clientsTable } from "@workspace/db";
 import { eq, and, or, isNull, desc, sql } from "drizzle-orm";
 import { generateToken, hashPassword } from "./auth";
+import { sendClientReminderPreview } from "./reminders";
 
 function getToken(): string {
   return process.env.TELEGRAM_BOT_TOKEN || "";
@@ -729,6 +730,13 @@ export async function handleTelegramUpdate(update: unknown) {
     return;
   }
 
+  // Preview the client reminder texts in this chat. Does not touch real bookings.
+  const command = text.trim().split(/\s+/)[0]?.split("@")[0]?.toLowerCase() ?? "";
+  if (command === "/eslatma") {
+    await sendClientReminderPreview(chatId);
+    return;
+  }
+
   // ── Contact shared ──────────────────────────────────────────
   if (message.contact) {
     const contact  = message.contact as Record<string, unknown>;
@@ -1034,6 +1042,40 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
 
   // Always answer the callback to remove the loading spinner
   await callTelegram("answerCallbackQuery", { callback_query_id: callbackId });
+
+  if (callbackData === "client_reminder_preview_confirm") {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Ajoyib! Sizni kutamiz \u2702\uFE0F Vaqtida keling \uD83D\uDE0A\n\nBu sinov edi. Haqiqiy bron o\u02BBzgarmadi.",
+    });
+    return;
+  }
+
+  if (callbackData === "client_reminder_preview_cancel") {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Haqiqatan ham bekor qilmoqchimisiz? \uD83E\uDD14",
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "Ha \u2705", callback_data: "client_reminder_preview_cancel_yes" },
+          { text: "Yo\u02BBq \uD83D\uDFE2", callback_data: "abort_customer_cancel_preview" },
+        ]],
+      },
+    });
+    return;
+  }
+
+  if (callbackData === "client_reminder_preview_cancel_yes") {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text:
+        "\u2705 <b>Broningiz bekor qilindi!</b>\n\n" +
+        "Ertaga, soat <b>15:00</b> dagi navbat bekor qilindi.\n\n" +
+        "Bu sinov edi. Haqiqiy bron o\u02BBzgarmadi.",
+      parse_mode: "HTML",
+    });
+    return;
+  }
 
   if (callbackData.startsWith("book_confirm_")) {
     const sessionId = callbackData.slice("book_confirm_".length);

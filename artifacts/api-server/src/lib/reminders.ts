@@ -306,3 +306,58 @@ export function stopReminderJob(): void {
     reminderInterval = null;
   }
 }
+
+/** Sends the real client reminder texts to this chat, with sample booking details. */
+export async function sendClientReminderPreview(chatId: string | number): Promise<void> {
+  const id = String(chatId);
+  let barberName = "Barber.uz";
+  let barberAddress = "Toshkent, Chilonzor";
+  let mapLink = "";
+
+  try {
+    const [user] = await db
+      .select({
+        name: usersTable.name,
+        brandName: usersTable.brandName,
+        address: usersTable.address,
+        mapLink: usersTable.mapLink,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.telegramId, id))
+      .limit(1);
+    if (user) {
+      barberName = user.brandName || user.name || barberName;
+      if (user.address) barberAddress = user.address;
+      if (user.mapLink) mapLink = user.mapLink;
+    }
+  } catch {
+    // Sample names are enough for a preview.
+  }
+
+  const sample: BookingData = {
+    barberName,
+    barberAddress,
+    mapLink,
+    barberPageLink: "",
+    isTeam: false,
+    teamBarberName: null,
+    date: "ertaga",
+    time: "15:00",
+    totalPrice: 80_000,
+    services: [{ name: "Soch olish", price: 80_000, duration: 40 }],
+  };
+
+  await sendTelegramMessage(
+    id,
+    "Bu sinov. Haqiqiy mijozga xabar ketmadi.\n\nQuyida mijoz ko\u02BBradigan eslatmalar.",
+  );
+  await sendTelegramMessage(id, buildClient24hText("Ali", sample), {
+    reply_markup: {
+      inline_keyboard: [[
+        { text: "\u2705 Tasdiqlash", callback_data: "client_reminder_preview_confirm" },
+        { text: "\u274C Bekor qilish", callback_data: "client_reminder_preview_cancel" },
+      ]],
+    },
+  });
+  await sendTelegramMessage(id, buildClient1hText(sample));
+}
