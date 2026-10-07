@@ -407,7 +407,6 @@ export function ProfitAnalyticsSheet({ onClose }: { onClose: () => void }) {
     .reduce((sum, row) => sum + Number(row.amount), 0);
   const net = revenue - expenseTotal;
   const margin = revenue > 0 ? Math.round((net / revenue) * 100) : 0;
-  const netColor = net > 0 ? "#10B981" : net < 0 ? "#EF4444" : undefined;
   const flow = revenue + expenseTotal;
   const revenueShare = flow > 0 ? Math.round((revenue / flow) * 100) : 0;
   const expenseShare = flow > 0 ? 100 - revenueShare : 0;
@@ -470,13 +469,13 @@ export function ProfitAnalyticsSheet({ onClose }: { onClose: () => void }) {
       {!error && (bookings.length > 0 || expenses.length > 0 || !loading) && (
         <div className={`space-y-5 transition-opacity ${loading ? "opacity-60" : ""}`}>
           <div className="grid grid-cols-2 gap-2" data-testid="profit-kpis">
-            <div className="col-span-2 rounded-2xl border border-white/10 bg-white/4 p-3.5">
+            <div className="col-span-2 rounded-2xl border border-[#F59E0B]/25 bg-[#F59E0B]/10 p-3.5">
               <div className="text-xs text-muted-foreground">Sof foyda</div>
-              <div data-testid="profit-net" className="mt-1 text-2xl font-bold tabular-nums" style={{ color: netColor }}>
+              <div data-testid="profit-net" className="mt-1 text-2xl font-bold tabular-nums text-[#F59E0B]">
                 {signedSoom(net)}
               </div>
-              <div data-testid="profit-margin" className="mt-1 text-sm font-semibold" style={{ color: netColor }}>
-                Rentabellik: {margin}%
+              <div data-testid="profit-margin" className="mt-1 text-sm font-semibold text-muted-foreground">
+                Samaradorlik darajasi: {margin}%
               </div>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/4 p-3.5">
