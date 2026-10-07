@@ -514,7 +514,6 @@ export function ProfitAnalyticsSheet({ onClose }: { onClose: () => void }) {
               <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Kunlar bo'yicha</div>
               {days.map(([date, day]) => {
                 const dayNet = day.revenue - day.expenses;
-                const color = dayNet > 0 ? "#10B981" : dayNet < 0 ? "#EF4444" : undefined;
                 return (
                   <div key={date} data-testid="profit-day">
                     <div className="text-xs font-semibold text-muted-foreground mb-2">{dayHeader(date, today)}</div>
@@ -529,7 +528,7 @@ export function ProfitAnalyticsSheet({ onClose }: { onClose: () => void }) {
                       </div>
                       <div className="flex items-center justify-between gap-3 pt-1 border-t border-white/6">
                         <span className="font-semibold">Sof foyda</span>
-                        <span className="font-bold tabular-nums" style={{ color }}>{signedSoom(dayNet)}</span>
+                        <span data-testid="profit-day-net" className="font-bold tabular-nums text-[#F59E0B]">{signedSoom(dayNet)}</span>
                       </div>
                     </div>
                   </div>
