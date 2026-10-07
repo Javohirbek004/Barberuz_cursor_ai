@@ -196,7 +196,7 @@ function TimeNav({
       <div
         role="tablist"
         data-testid="clients-period-tabs"
-        className="flex gap-1 bg-background/60 p-1 rounded-2xl border border-white/6"
+        className="relative z-10 flex flex-nowrap gap-1 bg-background/60 p-1 rounded-2xl border border-white/6"
       >
         {MODES.map(({ key, label: tabLabel }) => (
           <button
@@ -205,8 +205,12 @@ function TimeNav({
             role="tab"
             aria-selected={mode === key}
             data-period={key}
-            onClick={() => onMode(key)}
-            className={`flex-1 py-2 px-1 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all ${
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onMode(key);
+          }}
+          className={`min-w-0 flex-1 py-2 px-1 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all ${
               mode === key
                 ? "bg-primary text-black shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
@@ -217,12 +221,21 @@ function TimeNav({
         ))}
       </div>
 
-      <div className="flex items-center gap-1.5">
+      <div
+        className="relative z-20 flex items-center gap-1.5"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
         <button
           type="button"
           data-testid="time-prev"
           aria-label="Oldingi davr"
-          onClick={onPrev}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onPrev();
+          }}
           className="shrink-0 w-9 h-9 rounded-full border border-white/10 bg-white/5 flex items-center justify-center text-foreground hover:bg-white/10"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -237,12 +250,16 @@ function TimeNav({
           type="button"
           data-testid="time-next"
           aria-label="Keyingi davr"
+          disabled={forwardDisabled}
           aria-disabled={forwardDisabled}
           data-disabled={forwardDisabled ? "true" : "false"}
-          onClick={onNext}
-          className={`shrink-0 w-9 h-9 rounded-full border border-white/10 bg-white/5 flex items-center justify-center text-foreground hover:bg-white/10 ${
-            forwardDisabled ? "opacity-30 pointer-events-none" : ""
-          }`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!forwardDisabled) onNext();
+          }}
+          className="shrink-0 w-9 h-9 rounded-full border border-white/10 bg-white/5 flex items-center justify-center text-foreground hover:bg-white/10 disabled:opacity-30"
         >
           <ChevronRight className="w-4 h-4" />
         </button>
@@ -522,15 +539,8 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
         label={label}
         forwardDisabled={forwardDisabled}
         onMode={chooseMode}
-        onPrev={() => {
-          setPickerOpen(false);
-          setOffset((n) => n - 1);
-        }}
-        onNext={() => {
-          if (forwardDisabled) return;
-          setPickerOpen(false);
-          setOffset((n) => n + 1);
-        }}
+        onPrev={() => setOffset((n) => n - 1)}
+        onNext={() => setOffset((n) => (n >= 0 && mode !== "sana" ? n : n + 1))}
       />
 
       {pickerOpen && (

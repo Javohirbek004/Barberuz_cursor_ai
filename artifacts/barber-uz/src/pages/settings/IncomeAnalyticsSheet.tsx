@@ -156,7 +156,7 @@ function TimeNav({
 }) {
   return (
     <div className="mb-3 space-y-2.5" data-testid="income-time-nav">
-      <div role="tablist" data-testid="income-period-tabs" className="flex gap-1 bg-background/60 p-1 rounded-2xl border border-white/6">
+      <div role="tablist" data-testid="income-period-tabs" className="relative z-10 flex flex-nowrap gap-1 bg-background/60 p-1 rounded-2xl border border-white/6">
         {MODES.map(({ key, label: tab }) => (
           <button
             key={key}
@@ -164,8 +164,12 @@ function TimeNav({
             role="tab"
             aria-selected={mode === key}
             data-period={key}
-            onClick={() => onMode(key)}
-            className={`flex-1 py-2 px-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onMode(key);
+            }}
+            className={`min-w-0 flex-1 py-2 px-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
               mode === key ? "bg-[#F59E0B] text-black shadow-sm" : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -173,9 +177,23 @@ function TimeNav({
           </button>
         ))}
       </div>
-      <div className="flex items-center gap-1.5">
-        <button type="button" data-testid="income-prev" aria-label="Oldingi davr" onClick={onPrev}
-          className="shrink-0 w-9 h-9 rounded-full border border-white/10 bg-white/5 flex items-center justify-center">
+      <div
+        className="relative z-20 flex items-center gap-1.5"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          data-testid="income-prev"
+          aria-label="Oldingi davr"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onPrev();
+          }}
+          className="shrink-0 w-9 h-9 rounded-full border border-white/10 bg-white/5 flex items-center justify-center"
+        >
           <ChevronLeft className="w-4 h-4" />
         </button>
         <div data-testid="income-time-label" className="flex-1 min-w-0 text-center text-xs sm:text-sm font-medium leading-snug">
@@ -185,12 +203,16 @@ function TimeNav({
           type="button"
           data-testid="income-next"
           aria-label="Keyingi davr"
+          disabled={forwardDisabled}
           aria-disabled={forwardDisabled}
           data-disabled={forwardDisabled ? "true" : "false"}
-          onClick={onNext}
-          className={`shrink-0 w-9 h-9 rounded-full border border-white/10 bg-white/5 flex items-center justify-center ${
-            forwardDisabled ? "opacity-30 pointer-events-none" : ""
-          }`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!forwardDisabled) onNext();
+          }}
+          className="shrink-0 w-9 h-9 rounded-full border border-white/10 bg-white/5 flex items-center justify-center disabled:opacity-30"
         >
           <ChevronRight className="w-4 h-4" />
         </button>
@@ -380,8 +402,8 @@ export function IncomeAnalyticsSheet({ onClose }: { onClose: () => void }) {
         label={timeLabel(mode, range, today)}
         forwardDisabled={forwardDisabled}
         onMode={chooseMode}
-        onPrev={() => { setPickerOpen(false); setOffset((n) => n - 1); }}
-        onNext={() => { if (!forwardDisabled) { setPickerOpen(false); setOffset((n) => n + 1); } }}
+        onPrev={() => setOffset((n) => n - 1)}
+        onNext={() => setOffset((n) => (n >= 0 && mode !== "sana" ? n : n + 1))}
       />
 
       {pickerOpen && (
