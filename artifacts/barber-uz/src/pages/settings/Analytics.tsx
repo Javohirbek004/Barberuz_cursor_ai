@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { ClientsAnalyticsSheet } from "@/pages/settings/ClientsAnalyticsSheet";
+import { IncomeAnalyticsSheet } from "@/pages/settings/IncomeAnalyticsSheet";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -43,15 +44,6 @@ interface Expense {
   amount: string;
   category: string;
   date: string;
-}
-
-interface CompletedBooking {
-  id: string;
-  clientName: string;
-  serviceName: string | null;
-  startTime: string;
-  date: string;
-  price: number;
 }
 
 interface BarberStat {
@@ -156,15 +148,6 @@ async function fetchTeam(period: string): Promise<TeamData> {
   });
   if (!res.ok) throw new Error("fetch_error");
   return res.json();
-}
-
-async function fetchDetail(period: string): Promise<CompletedBooking[]> {
-  const res = await fetch(`/api/analytics/detail?period=${period}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.completedBookings ?? [];
 }
 
 async function fetchExpenses(period: string): Promise<Expense[]> {
@@ -338,223 +321,6 @@ function ClickableKpiCard({
         </div>
       )}
     </motion.button>
-  );
-}
-
-// ── Metric Pill ────────────────────────────────────────────────────────────────
-
-function MetricPill({
-  label,
-  value,
-  valueColor,
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-}) {
-  return (
-    <div className="flex-1 bg-white/4 border border-white/8 rounded-2xl p-3">
-      <div className="text-xs text-muted-foreground mb-0.5 leading-tight">{label}</div>
-      <div className={`font-bold text-sm leading-snug ${valueColor ?? "text-foreground"}`}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-// ── Expense Edit Modal ─────────────────────────────────────────────────────────
-
-function ExpenseEditModal({
-  expense,
-  onClose,
-  onSaved,
-}: {
-  expense: Expense;
-  onClose: () => void;
-  onSaved: (updated: Expense) => void;
-}) {
-  const [title, setTitle]   = useState(expense.title);
-  const [amount, setAmount] = useState(expense.amount);
-  const [saving, setSaving] = useState(false);
-
-  async function handleSave() {
-    if (!title.trim() || Number(amount) <= 0) return;
-    setSaving(true);
-    try {
-      await updateExpenseApi(expense.id, { title: title.trim(), amount });
-      onSaved({ ...expense, title: title.trim(), amount });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <motion.div
-      className="fixed inset-0 z-[200] flex items-center justify-center px-5"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <motion.div
-        className="relative w-full max-w-sm bg-[#18181d] rounded-3xl border border-white/8 p-6 z-10 shadow-2xl space-y-4"
-        initial={{ scale: 0.94, y: 16 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.94, y: 16 }}
-        transition={{ type: "spring", damping: 24, stiffness: 280 }}
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-foreground">✏️ Xarajatni tahrirlash</h3>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-xl hover:bg-white/5 text-muted-foreground transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground mb-1 block">Nomi</label>
-          <input
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            className="w-full h-11 px-3 rounded-2xl bg-white/5 border border-white/10 text-foreground text-sm focus:outline-none focus:border-primary/50"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground mb-1 block">Miqdor (so'm)</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            value={amount}
-            onChange={e => setAmount(e.target.value)}
-            className="w-full h-11 px-3 rounded-2xl bg-white/5 border border-white/10 text-foreground text-sm focus:outline-none focus:border-primary/50"
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-3 pt-1">
-          <button
-            onClick={onClose}
-            className="py-3 rounded-2xl bg-white/6 border border-white/10 text-sm font-semibold text-foreground hover:bg-white/10 transition-all"
-          >
-            Bekor
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving || !title.trim() || Number(amount) <= 0}
-            className="py-3 rounded-2xl bg-primary/15 border border-primary/30 text-primary text-sm font-semibold hover:bg-primary/25 transition-all disabled:opacity-40 flex items-center justify-center gap-1.5"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-            Saqlash
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// ── Daromad Modal ─────────────────────────────────────────────────────────────
-
-function DaromadModal({
-  data,
-  bookings,
-  period,
-  onPeriodChange,
-  loading,
-  onClose,
-}: {
-  data: SoloData | null;
-  bookings: CompletedBooking[];
-  period: Period;
-  onPeriodChange: (p: Period) => void;
-  loading: boolean;
-  onClose: () => void;
-}) {
-  const revenue = data?.revenue ?? 0;
-  const avgCheck =
-    bookings.length > 0 ? Math.round(revenue / bookings.length) : 0;
-  const topSvcPct =
-    data?.topService && revenue > 0
-      ? Math.round((data.topService.revenue / revenue) * 100)
-      : 0;
-
-  // Group by date desc; within each group sort by startTime asc
-  const grouped: Record<string, CompletedBooking[]> = {};
-  for (const b of bookings) {
-    if (!grouped[b.date]) grouped[b.date] = [];
-    grouped[b.date].push(b);
-  }
-  for (const d of Object.keys(grouped)) {
-    grouped[d].sort((a, b) => a.startTime.localeCompare(b.startTime));
-  }
-  const dates = Object.keys(grouped).sort().reverse();
-
-  return (
-    <BottomSheet title="💰 Daromad tahlili" onClose={onClose}>
-      <PeriodFilter period={period} onChange={onPeriodChange} className="mb-4" />
-      {loading || !data ? (
-        <SheetSpinner />
-      ) : (
-      <>
-      {/* Top metrics */}
-      <div className="flex gap-2 mb-5">
-        <MetricPill label="O'rtacha chek" value={fmtFull(avgCheck)} />
-        {data.topService ? (
-          <MetricPill
-            label="Top xizmat"
-            value={`${data.topService.name} · ${topSvcPct}%`}
-          />
-        ) : (
-          <MetricPill label="Top xizmat" value="—" />
-        )}
-      </div>
-
-      {/* Transaction list */}
-      {bookings.length === 0 ? (
-        <div className="text-center py-10 text-sm text-muted-foreground">
-          Tugatilgan bronlar yo'q
-        </div>
-      ) : (
-        <div className="space-y-5">
-          {dates.map(date => {
-            const entries = grouped[date];
-            const dayTotal = entries.reduce((s, b) => s + b.price, 0);
-            return (
-              <div key={date}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    {fmtDateGroupHeader(date)}
-                  </span>
-                  <span className="text-xs font-bold text-green-400">
-                    +{fmtFull(dayTotal)}
-                  </span>
-                </div>
-                <div className="space-y-1.5">
-                  {entries.map(b => (
-                    <div
-                      key={b.id}
-                      className="flex items-center gap-3 py-2.5 px-3 rounded-2xl bg-white/3 border border-white/5"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold text-foreground truncate">
-                          {b.clientName || "Mijoz"}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                          {b.serviceName ?? "—"} · {b.startTime}
-                        </div>
-                      </div>
-                      <div className="text-sm font-bold text-green-400 tabular-nums shrink-0">
-                        +{fmtFull(b.price)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      </>
-      )}
-    </BottomSheet>
   );
 }
 
@@ -854,12 +620,10 @@ function YakkaAnalytics() {
   // Each money sheet has its own Bugun / Hafta / Oy tabs; the cards themselves show no numbers.
   const [period, setPeriod]     = useState<Period>("bugun");
   const [data, setData]         = useState<SoloData | null>(null);
-  const [bookings, setBookings] = useState<CompletedBooking[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading]   = useState(false);
 
-  const moneySheetOpen =
-    activeModal === "daromad" || activeModal === "xarajatlar" || activeModal === "sof-foyda";
+  const moneySheetOpen = activeModal === "xarajatlar" || activeModal === "sof-foyda";
 
   // Load figures only while a money sheet is open, and again when its period changes.
   useEffect(() => {
@@ -869,13 +633,11 @@ function YakkaAnalytics() {
     const apiPeriod = PERIOD_API[period];
     Promise.all([
       fetchSolo(apiPeriod),
-      fetchDetail(apiPeriod),
       fetchExpenses(apiPeriod),
     ])
-      .then(([solo, detail, exp]) => {
+      .then(([solo, exp]) => {
         if (cancelled) return;
         setData(solo);
-        setBookings(detail);
         setExpenses(exp);
       })
       .catch(() => {})
@@ -915,15 +677,7 @@ function YakkaAnalytics() {
 
       <AnimatePresence>
         {activeModal === "daromad" && (
-          <DaromadModal
-            key="daromad"
-            data={data}
-            bookings={bookings}
-            period={period}
-            onPeriodChange={setPeriod}
-            loading={loading}
-            onClose={close}
-          />
+          <IncomeAnalyticsSheet key="daromad" onClose={close} />
         )}
         {activeModal === "mijozlar" && (
           <ClientsAnalyticsSheet key="mijozlar" onClose={close} />

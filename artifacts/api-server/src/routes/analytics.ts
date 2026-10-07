@@ -325,6 +325,95 @@ router.get("/detail", authenticate, async (req, res) => {
   }
 });
 
+// ── Income analytics ("Daromad tahlili") ───────────────────────────────────────
+// Only completed bookings count. The stored booking price is the snapshot
+// taken when the appointment was saved, so later service-price edits do not
+// rewrite past income.
+
+router.get("/income", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const fromQ = typeof req.query.from === "string" ? req.query.from : "";
+    const toQ = typeof req.query.to === "string" ? req.query.to : "";
+    const today = todayStr();
+    let start = today;
+    let end = today;
+    if (isISODate(fromQ) && isISODate(toQ)) {
+      start = fromQ <= toQ ? fromQ : toQ;
+      end = fromQ <= toQ ? toQ : fromQ;
+    }
+    const span = daysBetweenISO(start, end) + 1;
+    const prevEnd = addDaysISO(start, -1);
+    const prevStart = addDaysISO(prevEnd, -(span - 1));
+
+    const rows = await db
+      .select({
+        id: bookingsTable.id,
+        clientName: bookingsTable.clientName,
+        serviceName: bookingsTable.serviceName,
+        date: bookingsTable.date,
+        startTime: bookingsTable.startTime,
+        price: bookingsTable.price,
+        status: bookingsTable.status,
+      })
+      .from(bookingsTable)
+      .where(
+        and(
+          eq(bookingsTable.barberId, user.id),
+          isNull(bookingsTable.deletedAt),
+          eq(bookingsTable.status, "completed"),
+          gte(bookingsTable.date, prevStart),
+          lte(bookingsTable.date, end),
+        ),
+      );
+
+    const inRange = rows.filter((r) => r.date >= start && r.date <= end);
+    const inPrev = rows.filter((r) => r.date >= prevStart && r.date <= prevEnd);
+    const revenue = inRange.reduce((s, r) => s + Number(r.price), 0);
+    const prevRevenue = inPrev.reduce((s, r) => s + Number(r.price), 0);
+    const completedCount = inRange.length;
+    const averageCheck = completedCount > 0 ? Math.round(revenue / completedCount) : 0;
+
+    const byService = new Map<string, number>();
+    for (const r of inRange) {
+      const name = (r.serviceName || "").trim() || "Boshqa";
+      byService.set(name, (byService.get(name) ?? 0) + Number(r.price));
+    }
+    const services = [...byService.entries()]
+      .map(([name, amount]) => ({
+        name,
+        revenue: amount,
+        percent: revenue > 0 ? Math.round((amount / revenue) * 100) : 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue || a.name.localeCompare(b.name));
+
+    const bookings = inRange
+      .map((r) => ({
+        id: r.id,
+        clientName: r.clientName || "Mijoz",
+        serviceName: (r.serviceName || "").trim() || "Boshqa",
+        price: Number(r.price),
+        date: r.date,
+        time: String(r.startTime).slice(0, 5),
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date) || a.time.localeCompare(b.time));
+
+    res.json({
+      range: { start, end },
+      previous: { start: prevStart, end: prevEnd },
+      revenue,
+      completedCount,
+      averageCheck,
+      revChange: calcRevChange(revenue, prevRevenue),
+      services,
+      bookings,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
 // ── Clients analytics ("Mijozlar tahlili") ─────────────────────────────────────
 
 function addDaysISO(iso: string, days: number): string {
