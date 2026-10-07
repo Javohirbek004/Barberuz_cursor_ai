@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Info, X } from "lucide-react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { addDaysISO, tashkentTodayISO } from "@/lib/schedule";
+import { DemoDataToggle, mockClients, useDemoAnalytics } from "@/pages/settings/demoAnalytics";
 
 type Mode = "bugun" | "hafta" | "oy" | "sana";
 type SegmentKey = "regular" | "new" | "lost";
@@ -222,7 +223,8 @@ function TimeNav({
       </div>
 
       <div
-        className="relative z-20 flex items-center gap-1.5"
+        data-time-arrows=""
+        className="relative z-20 mt-1 flex items-center gap-1.5 rounded-2xl bg-card"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
@@ -259,7 +261,7 @@ function TimeNav({
             e.stopPropagation();
             if (!forwardDisabled) onNext();
           }}
-          className="shrink-0 w-9 h-9 rounded-full border border-white/10 bg-white/5 flex items-center justify-center text-foreground hover:bg-white/10 disabled:opacity-30"
+          className="shrink-0 w-11 h-11 rounded-full border border-white/10 bg-white/5 flex items-center justify-center text-foreground hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ChevronRight className="w-4 h-4" />
         </button>
@@ -473,15 +475,20 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
   const [infoKey, setInfoKey] = useState<SegmentKey | null>(null);
   const infoWrapRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const demo = useDemoAnalytics();
 
   const range = useMemo(() => viewedRange(mode, offset, custom, today), [mode, offset, custom, today]);
   const rangeKey = `${range.start}|${range.end}`;
-  const spanDays = daysBetweenISO(range.start, range.end) + 1;
-  const forwardDisabled =
-    mode === "sana" ? addDaysISO(range.end, spanDays) > today : offset >= 0;
+  const forwardDisabled = range.end >= today;
   const label = timeRangeLabel(mode, range, today);
 
   useEffect(() => {
+    if (demo.on) {
+      setCache((c) => ({ ...c, [rangeKey]: mockClients(range, today) }));
+      setLoading(false);
+      setError(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(false);
@@ -498,7 +505,7 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [rangeKey, range.start, range.end]);
+  }, [rangeKey, range.start, range.end, demo.on, today]);
 
   useEffect(() => {
     if (!infoKey && !pickerOpen) return;
@@ -507,7 +514,7 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
       const el = target instanceof Element ? target : target.parentElement;
       if (infoKey && infoWrapRef.current && !infoWrapRef.current.contains(target)) setInfoKey(null);
       if (pickerOpen && pickerRef.current && el && !pickerRef.current.contains(el)) {
-        if (!el.closest("[data-period='sana']")) setPickerOpen(false);
+        if (!el.closest("[data-period='sana']") && !el.closest("[data-time-arrows]")) setPickerOpen(false);
       }
     }
     document.addEventListener("mousedown", onDown);
@@ -524,6 +531,9 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
   function chooseMode(next: Mode) {
     setInfoKey(null);
     if (next === "sana") {
+      setCustom((current) => current ?? range);
+      setMode("sana");
+      setOffset(0);
       setPickerOpen(true);
       return;
     }
@@ -534,6 +544,7 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <BottomSheet title="Mijozlar tahlili" onClose={onClose}>
+      {demo.available && <DemoDataToggle on={demo.on} toggle={demo.toggle} />}
       <TimeNav
         mode={pickerOpen || mode === "sana" ? "sana" : mode}
         label={label}

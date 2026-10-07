@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Wallet } from "lucide-react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { addDaysISO, tashkentTodayISO } from "@/lib/schedule";
+import { DemoDataToggle, mockIncome, useDemoAnalytics } from "@/pages/settings/demoAnalytics";
 
 type Mode = "bugun" | "hafta" | "oy" | "sana";
 
@@ -178,7 +179,8 @@ function TimeNav({
         ))}
       </div>
       <div
-        className="relative z-20 flex items-center gap-1.5"
+        data-time-arrows=""
+        className="relative z-20 mt-1 flex items-center gap-1.5 rounded-2xl bg-card"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
@@ -212,7 +214,7 @@ function TimeNav({
             e.stopPropagation();
             if (!forwardDisabled) onNext();
           }}
-          className="shrink-0 w-9 h-9 rounded-full border border-white/10 bg-white/5 flex items-center justify-center disabled:opacity-30"
+          className="shrink-0 w-11 h-11 rounded-full border border-white/10 bg-white/5 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ChevronRight className="w-4 h-4" />
         </button>
@@ -331,13 +333,19 @@ export function IncomeAnalyticsSheet({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const demo = useDemoAnalytics();
 
   const range = useMemo(() => viewedRange(mode, offset, custom, today), [mode, offset, custom, today]);
   const rangeKey = `${range.start}|${range.end}`;
-  const spanDays = daysBetweenISO(range.start, range.end) + 1;
-  const forwardDisabled = mode === "sana" ? addDaysISO(range.end, spanDays) > today : offset >= 0;
+  const forwardDisabled = range.end >= today;
 
   useEffect(() => {
+    if (demo.on) {
+      setData(mockIncome(range, today));
+      setLoading(false);
+      setError(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(false);
@@ -346,24 +354,29 @@ export function IncomeAnalyticsSheet({ onClose }: { onClose: () => void }) {
       .catch(() => { if (!cancelled) setError(true); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [rangeKey, range.start, range.end]);
+  }, [rangeKey, range.start, range.end, demo.on, today]);
 
   useEffect(() => {
     function onShow() {
-      if (document.visibilityState === "visible") {
-        fetchIncome(range).then(setData).catch(() => {});
-      }
+      if (demo.on || document.visibilityState !== "visible") return;
+      fetchIncome(range).then(setData).catch(() => {});
     }
     document.addEventListener("visibilitychange", onShow);
     return () => document.removeEventListener("visibilitychange", onShow);
-  }, [range.start, range.end]);
+  }, [range.start, range.end, demo.on]);
 
   useEffect(() => {
     if (!pickerOpen) return;
     function onDown(e: MouseEvent | TouchEvent) {
       const target = e.target as Node;
       const el = target instanceof Element ? target : target.parentElement;
-      if (pickerRef.current && el && !pickerRef.current.contains(el) && !el.closest("[data-period='sana']")) {
+      if (
+        pickerRef.current &&
+        el &&
+        !pickerRef.current.contains(el) &&
+        !el.closest("[data-period='sana']") &&
+        !el.closest("[data-time-arrows]")
+      ) {
         setPickerOpen(false);
       }
     }
@@ -377,6 +390,9 @@ export function IncomeAnalyticsSheet({ onClose }: { onClose: () => void }) {
 
   function chooseMode(next: Mode) {
     if (next === "sana") {
+      setCustom((current) => current ?? range);
+      setMode("sana");
+      setOffset(0);
       setPickerOpen(true);
       return;
     }
@@ -397,6 +413,7 @@ export function IncomeAnalyticsSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <BottomSheet title="Daromad tahlili" onClose={onClose}>
+      {demo.available && <DemoDataToggle on={demo.on} toggle={demo.toggle} />}
       <TimeNav
         mode={pickerOpen || mode === "sana" ? "sana" : mode}
         label={timeLabel(mode, range, today)}
@@ -467,14 +484,20 @@ export function IncomeAnalyticsSheet({ onClose }: { onClose: () => void }) {
                 <div data-testid="income-services">
                   <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Xizmatlar ulushi</div>
                   <div className="space-y-3">
-                    {data.services.map((s) => (
+                    {data.services.map((s, index) => (
                       <div key={s.name}>
                         <div className="flex items-center justify-between text-sm mb-1 gap-2">
                           <span className="truncate">{s.name}</span>
                           <span className="shrink-0 font-semibold tabular-nums">{s.percent}%</span>
                         </div>
                         <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                          <div className="h-full rounded-full bg-[#F59E0B]" style={{ width: `${Math.min(s.percent, 100)}%` }} />
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${Math.min(s.percent, 100)}%`,
+                              background: ["#F59E0B", "#38BDF8", "#34D399", "#F472B6"][index % 4],
+                            }}
+                          />
                         </div>
                       </div>
                     ))}
