@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS users (
   longitude text,
   instagram text,
   gallery_images text,
+  qr_cta text,
+  qr_logo text,
   notif_new_booking boolean NOT NULL DEFAULT true,
   notif_cancellation boolean NOT NULL DEFAULT true,
   notif_reminders boolean NOT NULL DEFAULT true,
@@ -142,9 +144,19 @@ CREATE INDEX IF NOT EXISTS booking_sessions_expires_idx ON booking_sessions (exp
 CREATE TABLE IF NOT EXISTS slug_redirects (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   old_slug text NOT NULL,
+  new_slug text,
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS qr_scans (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  barber_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS qr_scans_barber_id_idx ON qr_scans (barber_id);
+CREATE INDEX IF NOT EXISTS qr_scans_created_at_idx ON qr_scans (created_at);
 CREATE INDEX IF NOT EXISTS slug_redirects_old_slug_idx ON slug_redirects (old_slug);
 CREATE INDEX IF NOT EXISTS slug_redirects_user_id_idx ON slug_redirects (user_id);
 

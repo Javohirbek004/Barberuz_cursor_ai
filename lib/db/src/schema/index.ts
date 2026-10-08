@@ -6,5 +6,6 @@ export * from "./services";
 export * from "./bookings";
 export * from "./booking-sessions";
 export * from "./slug-redirects";
+export * from "./qr-scans";
 export * from "./expenses";
 export * from "./expense-categories";

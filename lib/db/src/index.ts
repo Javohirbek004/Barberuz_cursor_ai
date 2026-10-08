@@ -40,6 +40,17 @@ const ENSURE_SCHEMA_SQL = [
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_24h" boolean DEFAULT false NOT NULL`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_1h" boolean DEFAULT false NOT NULL`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_followup" boolean DEFAULT false NOT NULL`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "qr_cta" text`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "qr_logo" text`,
+  `ALTER TABLE "slug_redirects" ADD COLUMN IF NOT EXISTS "new_slug" text`,
+  `ALTER TABLE "slug_redirects" ADD COLUMN IF NOT EXISTS "expires_at" timestamptz`,
+  `CREATE TABLE IF NOT EXISTS "qr_scans" (
+    "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    "barber_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+    "created_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "qr_scans_barber_id_idx" ON "qr_scans" ("barber_id")`,
+  `CREATE INDEX IF NOT EXISTS "qr_scans_created_at_idx" ON "qr_scans" ("created_at")`,
   `CREATE TABLE IF NOT EXISTS "phone_update_intents" (
     "telegram_id" text PRIMARY KEY,
     "barber_slug" text,

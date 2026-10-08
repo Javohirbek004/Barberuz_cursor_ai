@@ -35,6 +35,8 @@ export const usersTable = pgTable(
     longitude: text("longitude"),
     instagram: text("instagram"),
     galleryImages: text("gallery_images"),
+    qrCta: text("qr_cta"),
+    qrLogo: text("qr_logo"),
     notifNewBooking: boolean("notif_new_booking").notNull().default(true),
     notifCancellation: boolean("notif_cancellation").notNull().default(true),
     notifReminders: boolean("notif_reminders").notNull().default(true),

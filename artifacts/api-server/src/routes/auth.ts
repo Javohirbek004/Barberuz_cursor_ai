@@ -4,6 +4,7 @@ import { db, usersTable } from "@workspace/db";
 import { eq, ilike, or, sql } from "drizzle-orm";
 import { hashPassword, legacyHash, generateToken, authenticate, getUser, secretsEqual } from "../lib/auth";
 import { getTelegramLoginResult, storeLoginToken } from "../lib/telegram-bot";
+import { allocatePublicSlug } from "../lib/public-slug";
 
 const router = Router();
 
@@ -19,20 +20,6 @@ function formatUser(user: typeof usersTable.$inferSelect) {
     telegramId: user.telegramId,
     createdAt: user.createdAt,
   };
-}
-
-function slugifyName(name: string): string {
-  return name.toLowerCase().trim().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") || "barber";
-}
-
-async function uniqueUsername(baseName: string): Promise<string> {
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const suffix = Math.floor(Math.random() * 9000) + 1000;
-    const candidate = `${slugifyName(baseName)}_${suffix}`;
-    const [exists] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.username, candidate)).limit(1);
-    if (!exists) return candidate;
-  }
-  return `barber_${Date.now()}`;
 }
 
 async function findUserForLogin(identifier: string) {
@@ -67,16 +54,10 @@ router.post("/register", async (req, res) => {
       res.status(400).json({ error: "validation", message: "Password must be at least 6 characters" });
       return;
     }
-    // Use provided username or auto-generate a unique one
-    let username = providedUsername || "";
-    if (!username) {
-      username = await uniqueUsername(name);
-    } else {
-      const [existing] = await db.select().from(usersTable).where(eq(usersTable.username, username)).limit(1);
-      if (existing) {
-        username = await uniqueUsername(name);
-      }
-    }
+    // The public address comes from the shop name, then the barber's name.
+    // A name the client sends is ignored so the first link stays readable.
+    void providedUsername;
+    const username = await allocatePublicSlug({ brandName, name });
     const passwordHash = hashPassword(password);
     const [user] = await db.insert(usersTable).values({
       name,

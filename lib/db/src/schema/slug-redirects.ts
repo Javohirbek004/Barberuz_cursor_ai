@@ -6,7 +6,9 @@ export const slugRedirectsTable = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     oldSlug: text("old_slug").notNull(),
+    newSlug: text("new_slug"),
     userId: uuid("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

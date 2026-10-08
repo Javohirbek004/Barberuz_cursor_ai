@@ -1158,8 +1158,26 @@ type Status = "loading" | "loaded" | "not_found" | "error";
 
 export default function BarberPublicPage() {
   const params = useParams<{ slug: string }>();
-  const slug = params.slug;
+  const rawSlug = decodeURIComponent(params.slug || "");
+  const slug = rawSlug.replace(/^@/, "");
   const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (!rawSlug || rawSlug === slug) return;
+    navigate(`/${slug}${window.location.search}`, { replace: true });
+  }, [rawSlug, slug, navigate]);
+
+  useEffect(() => {
+    if (!slug || new URLSearchParams(window.location.search).get("qr") !== "1") return;
+    const key = `qr-counted-${slug}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    fetch("/api/public/qr-scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug }),
+    }).catch(() => {});
+  }, [slug]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1207,7 +1225,7 @@ export default function BarberPublicPage() {
         if (!r.ok) { setStatus("error"); return; }
         const data = await r.json();
         if (cancelled) return;
-        if (data.redirectTo) { navigate(`/${data.redirectTo}`, { replace: true }); return; }
+        if (data.redirectTo) { navigate(`/${data.redirectTo}${window.location.search}`, { replace: true }); return; }
         setBarber(data as BarberData);
         setStatus("loaded");
       })

@@ -7,8 +7,8 @@
  */
 
 import { Router } from "express";
-import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable, clientsTable, phoneUpdateIntentsTable } from "@workspace/db";
-import { eq, and, lt, isNull, notInArray, or, sql, inArray, desc } from "drizzle-orm";
+import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable, clientsTable, phoneUpdateIntentsTable, qrScansTable } from "@workspace/db";
+import { eq, and, lt, isNull, notInArray, or, sql, inArray, desc, gt } from "drizzle-orm";
 import { deliverBookingReceipt } from "../lib/client-notifications";
 import { randomBytes } from "crypto";
 import { sendBarberBookingNotification } from "../lib/telegram-bot";
@@ -500,9 +500,33 @@ router.get("/barber/id/:barberId", async (req, res) => {
  * If not found directly, check slug_redirects for old slugs.
  * Returns barber profile + services for the public booking page.
  */
+router.post("/qr-scan", async (req, res) => {
+  try {
+    const slug = String(req.body?.slug || "").replace(/^@/, "").trim().toLowerCase();
+    if (!/^[a-z0-9_-]{3,24}$/.test(slug)) {
+      res.status(400).json({ error: "bad_slug" });
+      return;
+    }
+    const [barber] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.username, slug), isNull(usersTable.deletedAt)))
+      .limit(1);
+    if (!barber) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    await db.insert(qrScansTable).values({ barberId: barber.id });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[PublicAPI] POST /qr-scan error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
 router.get("/barber/:slug", async (req, res) => {
   try {
-    const { slug } = req.params;
+    const slug = String(req.params.slug || "").replace(/^@/, "").trim().toLowerCase();
 
     // Direct match first
     let [barber] = await db
@@ -514,11 +538,15 @@ router.get("/barber/:slug", async (req, res) => {
     let redirectTo: string | null = null;
 
     if (!barber) {
-      // Check redirect table for old slug
+      // Old addresses keep working for 30 days. Rows without an expiry stay valid.
       const [redirect] = await db
         .select()
         .from(slugRedirectsTable)
-        .where(eq(slugRedirectsTable.oldSlug, slug))
+        .where(and(
+          eq(slugRedirectsTable.oldSlug, slug),
+          or(isNull(slugRedirectsTable.expiresAt), gt(slugRedirectsTable.expiresAt, new Date())),
+        ))
+        .orderBy(desc(slugRedirectsTable.createdAt))
         .limit(1);
 
       if (redirect) {

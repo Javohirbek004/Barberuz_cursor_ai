@@ -1,11 +1,10 @@
 import { Router } from "express";
-import { db, usersTable, slugRedirectsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, usersTable, slugRedirectsTable, bookingsTable, qrScansTable } from "@workspace/db";
+import { and, eq, gte, isNull, lt, notInArray, sql } from "drizzle-orm";
 import { authenticate, getUser, hashPassword } from "../lib/auth";
+import { SLUG_LOCK_MS, isSlugAvailable, suggestSlug, validateSlug } from "../lib/public-slug";
 
 const router = Router();
-
-const SLUG_REGEX = /^[a-z0-9-]{3,30}$/;
 const ALLOWED_BUFFER_MINUTES = [0, 5, 10, 15, 20];
 
 function formatProfile(user: typeof usersTable.$inferSelect) {
@@ -36,8 +35,34 @@ function formatProfile(user: typeof usersTable.$inferSelect) {
     longitude: user.longitude,
     instagram: user.instagram,
     galleryImages: user.galleryImages,
+    qrCta: user.qrCta,
+    qrLogo: user.qrLogo,
     slugChangedAt: user.slugChangedAt,
     slugChangeCount: user.slugChangeCount,
+    nextChangeAt: user.slugChangedAt
+      ? new Date(new Date(user.slugChangedAt).getTime() + SLUG_LOCK_MS).toISOString()
+      : null,
+  };
+}
+
+function tashkentMonthRange(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tashkent",
+    year: "numeric",
+    month: "2-digit",
+  }).format(now);
+  const [yearText, monthText] = parts.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const start = `${yearText}-${monthText}-01`;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const end = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
+  return {
+    start,
+    end,
+    startAt: new Date(`${start}T00:00:00+05:00`),
+    endAt: new Date(`${end}T00:00:00+05:00`),
   };
 }
 
@@ -102,10 +127,87 @@ router.put("/profile", authenticate, async (req, res) => {
   }
 });
 
+router.get("/slug-check", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const slug = String(req.query.slug || "").trim().toLowerCase();
+    const problem = validateSlug(slug);
+    if (problem !== "ok") {
+      res.json({ status: problem });
+      return;
+    }
+    if (slug === user.username || await isSlugAvailable(slug, user.id)) {
+      res.json({ status: "ok" });
+      return;
+    }
+    const suggestion = await suggestSlug(slug, user.phone, user.id);
+    res.json({ status: "taken", suggestion });
+  } catch (err) {
+    console.error("[settings] GET /slug-check error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+router.get("/page-stats", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const range = tashkentMonthRange();
+    const [scans] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(qrScansTable)
+      .where(and(
+        eq(qrScansTable.barberId, user.id),
+        gte(qrScansTable.createdAt, range.startAt),
+        lt(qrScansTable.createdAt, range.endAt),
+      ));
+    const [bookings] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(bookingsTable)
+      .where(and(
+        eq(bookingsTable.barberId, user.id),
+        isNull(bookingsTable.deletedAt),
+        gte(bookingsTable.date, range.start),
+        lt(bookingsTable.date, range.end),
+        notInArray(bookingsTable.status, ["cancelled", "auto_cancelled"]),
+      ));
+    res.json({ scans: Number(scans?.n || 0), bookings: Number(bookings?.n || 0) });
+  } catch (err) {
+    console.error("[settings] GET /page-stats error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+router.patch("/qr", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const { cta, logo } = req.body as { cta?: unknown; logo?: unknown };
+    const patch: { qrCta?: string | null; qrLogo?: string | null; updatedAt: Date } = { updatedAt: new Date() };
+    if (cta !== undefined) {
+      if (typeof cta !== "string" || cta.trim().length > 80) {
+        res.status(400).json({ error: "validation" });
+        return;
+      }
+      patch.qrCta = cta.trim() || null;
+    }
+    if (logo !== undefined) {
+      if (logo !== null && (typeof logo !== "string" || !logo.startsWith("data:image/") || logo.length > 400_000)) {
+        res.status(400).json({ error: "validation" });
+        return;
+      }
+      patch.qrLogo = logo;
+    }
+    const [updated] = await db.update(usersTable).set(patch).where(eq(usersTable.id, user.id)).returning();
+    res.json({ qrCta: updated.qrCta, qrLogo: updated.qrLogo });
+  } catch (err) {
+    console.error("[settings] PATCH /qr error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
 /**
  * PATCH /api/settings/slug
- * Update the barber's public URL slug (username).
- * Rate-limited: max 1 change per 24 hours.
+ * One public-address change every 30 days.
+ * The previous address keeps opening the new page for 30 days.
  */
 router.patch("/slug", authenticate, async (req, res) => {
   try {
@@ -118,75 +220,67 @@ router.patch("/slug", authenticate, async (req, res) => {
     }
 
     const clean = slug.trim().toLowerCase();
-
-    if (!SLUG_REGEX.test(clean)) {
-      res.status(400).json({ error: "validation", message: "Slug must be 3–30 chars, only lowercase letters, digits and hyphens" });
+    const problem = validateSlug(clean);
+    if (problem !== "ok") {
+      res.status(400).json({ error: problem });
       return;
     }
 
-    // No-op if same — check before rate limit so resubmitting current slug always succeeds
     if (clean === user.username) {
-      res.json({ username: user.username });
+      res.json({ username: user.username, slugChangedAt: user.slugChangedAt, nextChangeAt: null });
       return;
     }
 
-    // Rate limit: max 1 change per 24 h
     if (user.slugChangedAt) {
-      const hoursSince = (Date.now() - new Date(user.slugChangedAt).getTime()) / (1000 * 60 * 60);
-      if (hoursSince < 24) {
-        res.status(429).json({ error: "rate_limited", message: "Max 1 slug change per 24 hours" });
+      const changedAt = new Date(user.slugChangedAt).getTime();
+      if (Date.now() - changedAt < SLUG_LOCK_MS) {
+        res.status(429).json({
+          error: "rate_limited",
+          slugChangedAt: user.slugChangedAt,
+          nextChangeAt: new Date(changedAt + SLUG_LOCK_MS).toISOString(),
+        });
         return;
       }
     }
 
-    // Uniqueness check: active usernames
-    const [existing] = await db
-      .select({ id: usersTable.id })
-      .from(usersTable)
-      .where(eq(usersTable.username, clean))
-      .limit(1);
-
-    if (existing && existing.id !== user.id) {
-      res.status(409).json({ error: "taken", message: "This slug is already taken" });
-      return;
-    }
-
-    // Reservation check: protect old slugs so their QR codes / redirects stay valid.
-    // If any OTHER user has used this slug in the past (it's in slug_redirects as an
-    // old_slug for a different user), we must reject it — otherwise their old QRs
-    // would silently start resolving to the wrong barber.
-    const [reserved] = await db
-      .select({ userId: slugRedirectsTable.userId })
-      .from(slugRedirectsTable)
-      .where(eq(slugRedirectsTable.oldSlug, clean))
-      .limit(1);
-
-    if (reserved && reserved.userId !== user.id) {
-      res.status(409).json({ error: "taken", message: "This slug is already taken" });
+    if (!(await isSlugAvailable(clean, user.id))) {
+      const suggestion = await suggestSlug(clean, user.phone, user.id);
+      res.status(409).json({ error: "taken", suggestion });
       return;
     }
 
     const oldSlug = user.username;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + SLUG_LOCK_MS);
 
-    // Atomically insert redirect + update username so partial failure is impossible
     const [updated] = await db.transaction(async (tx) => {
+      await tx.delete(slugRedirectsTable).where(and(
+        eq(slugRedirectsTable.oldSlug, clean),
+        eq(slugRedirectsTable.userId, user.id),
+      ));
       await tx.insert(slugRedirectsTable).values({
         oldSlug,
+        newSlug: clean,
         userId: user.id,
+        expiresAt,
       });
       return tx
         .update(usersTable)
         .set({
           username: clean,
-          slugChangedAt: new Date(),
+          slugChangedAt: now,
           slugChangeCount: (user.slugChangeCount ?? 0) + 1,
-          updatedAt: new Date(),
+          updatedAt: now,
         })
         .where(eq(usersTable.id, user.id))
         .returning();
     });
 
-    res.json({ username: updated.username, slugChangedAt: updated.slugChangedAt });
+    res.json({
+      username: updated.username,
+      slugChangedAt: updated.slugChangedAt,
+      nextChangeAt: expiresAt.toISOString(),
+    });
   } catch (err) {
     console.error("[settings] PATCH /slug error:", err);
     res.status(500).json({ error: "server_error" });

@@ -1,6 +1,7 @@
 import "leaflet/dist/leaflet.css";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { APP_ORIGIN, APP_DISPLAY_HOST } from "@/lib/config";
+import { APP_ORIGIN } from "@/lib/config";
+import { PageLinkPanel } from "@/components/PageLinkPanel";
 import { BufferTimeField } from "@/components/BufferTimeField";
 import { mergeScheduleFromDayChips, normalizeBuffer, readOpenDaysShort } from "@/lib/schedule";
 import { ServiceForm } from "@/components/ServiceForm";
@@ -16,10 +17,9 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
-import QRCode from "react-qr-code";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ChevronLeft, Copy, Check, Download, Share2, Eye,
+  ChevronLeft, Check, Eye,
   Plus, X, Pencil, Trash2, Clock, MapPin,
   Instagram, Camera, ArrowLeft, ExternalLink, Send, Tag,
   Navigation, Save, Phone, Star,
@@ -1268,185 +1268,6 @@ function XizmatlarTab({
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// QR & LINK TAB
-// ──────────────────────────────────────────────────────────────────────────────
-
-type SlugModalStep = "edit" | "confirm";
-
-function SlugEditModal({ currentSlug, onClose, onSaved }: { currentSlug: string; onClose: () => void; onSaved: (s: string) => void; }) {
-  const [step, setStep] = useState<SlugModalStep>("edit");
-  const [draft, setDraft] = useState(currentSlug);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  function cleanSlug(raw: string) {
-    return raw.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
-  }
-
-  function validate() {
-    if (draft.length < 3 || draft.length > 30) { setError("Uzunlik: 3 dan 30 ta belgigacha"); return false; }
-    if (!/^[a-z0-9-]+$/.test(draft)) { setError("Faqat kichik harf, raqam va '-' ishlatish mumkin"); return false; }
-    return true;
-  }
-
-  async function handleSave() {
-    if (!validate()) return;
-    setSaving(true); setError("");
-    try {
-      const res = await fetch("/api/settings/slug", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getToken()}` },
-        body: JSON.stringify({ slug: draft }),
-      });
-      const data = await res.json();
-      if (res.status === 429) { setError("Linkni hozir o'zgartira olmaysiz. Keyinroq urinib ko'ring."); setStep("edit"); }
-      else if (res.status === 409) { setError("Bu slug allaqachon band. Boshqa nom tanlang."); setStep("edit"); }
-      else if (!res.ok) { setError(data?.message || "Xatolik yuz berdi"); setStep("edit"); }
-      else {
-        const newSlug = data.username ?? draft;
-        try { const raw = localStorage.getItem("barber_user"); if (raw) { const c = JSON.parse(raw); c.username = newSlug; localStorage.setItem("barber_user", JSON.stringify(c)); } } catch {}
-        onSaved(newSlug);
-      }
-    } catch { setError("Tarmoq xatosi. Qayta urinib ko'ring."); setStep("edit"); }
-    finally { setSaving(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-card border border-white/10 rounded-3xl p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
-        {step === "edit" && (
-          <>
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-display font-bold text-foreground">Sahifa linkini tahrirlash</h2>
-              <button onClick={onClose} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10"><X className="w-4 h-4" /></button>
-            </div>
-            <p className="text-xs text-muted-foreground mb-2">{APP_DISPLAY_HOST}/</p>
-            <input autoFocus value={draft} onChange={e => { setDraft(cleanSlug(e.target.value)); setError(""); }} placeholder="slug"
-              className="w-full bg-background/60 border border-white/12 rounded-xl px-3 py-2.5 text-sm text-primary font-mono outline-none focus:border-primary/50 mb-1" />
-            <p className="text-xs text-muted-foreground mb-3">Faqat kichik harf, raqam va '-' ishlatish mumkin</p>
-            {error && <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2 mb-3">{error}</p>}
-            <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl px-4 py-3 mb-5">
-              <p className="text-xs text-amber-400 font-semibold mb-1">⚠️ Diqqat:</p>
-              <p className="text-xs text-amber-400/80 leading-relaxed">Linkni o'zgartirsangiz, eski QR kodlar eski manzilga olib boradi, lekin tizim avtomatik yangi sahifaga yo'naltiradi.</p>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={onClose} className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-white/6 border border-white/10 text-muted-foreground hover:text-foreground transition-all">Bekor qilish</button>
-              <button onClick={() => { if (validate()) setStep("confirm"); }} disabled={draft === currentSlug || draft.length < 3}
-                className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-primary text-black hover:bg-primary/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                Saqlash
-              </button>
-            </div>
-          </>
-        )}
-        {step === "confirm" && (
-          <>
-            <h2 className="text-base font-display font-bold text-foreground mb-2">Tasdiqlash</h2>
-            <p className="text-sm text-muted-foreground mb-5 leading-relaxed">Linkni o'zgartirmoqchimisiz? Bu mijozlar uchun havolani o'zgartiradi.</p>
-            <div className="bg-background/60 border border-white/8 rounded-xl px-3 py-2.5 mb-5 font-mono text-sm text-primary">{APP_DISPLAY_HOST}/{draft}</div>
-            {error && <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2 mb-3">{error}</p>}
-            <div className="flex gap-2">
-              <button onClick={() => setStep("edit")} className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-white/6 border border-white/10 text-muted-foreground hover:text-foreground">Bekor qilish</button>
-              <button onClick={handleSave} disabled={saving}
-                className="flex-1 h-11 rounded-2xl font-semibold text-sm bg-primary text-black hover:bg-primary/90 disabled:opacity-60 flex items-center justify-center gap-2">
-                {saving ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Saqlanmoqda</> : "Ha, o'zgartirish"}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function QRLinkTab({ userSlug, onEditSlug }: { userSlug: string; onEditSlug: () => void }) {
-  const [copied, setCopied] = useState(false);
-  const qrRef = useRef<HTMLDivElement>(null);
-  const pageUrl = `${APP_ORIGIN}/${userSlug}`;
-
-  function handleCopy() {
-    navigator.clipboard.writeText(pageUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
-  }
-  function handleShare() {
-    const text = `Menga yozilish uchun:\n${pageUrl}`;
-    if (navigator.share) { navigator.share({ title: "Barber sahifasi", text, url: pageUrl }).catch(() => {}); }
-    else { navigator.clipboard.writeText(text); }
-  }
-  function handleDownload() {
-    const svg = qrRef.current?.querySelector("svg");
-    if (!svg) return;
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    const img = new Image();
-    const svgBlob = new Blob([new XMLSerializer().serializeToString(svg)], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(svgBlob);
-    img.onload = () => {
-      canvas.width = 500; canvas.height = 500;
-      if (ctx) { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 500, 500); ctx.drawImage(img, 25, 25, 450, 450); }
-      URL.revokeObjectURL(url);
-      const a = document.createElement("a");
-      a.download = `barber-qr-${userSlug}.png`; a.href = canvas.toDataURL("image/png"); a.click();
-    };
-    img.src = url;
-  }
-
-  return (
-    <div className="space-y-5 pb-10">
-      <div className="bg-card border border-white/6 rounded-2xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sahifa manzili</p>
-          <button onClick={onEditSlug}
-            className="flex items-center gap-1 text-xs text-primary font-semibold hover:text-primary/80 transition-colors">
-            <Pencil className="w-3 h-3" /> Tahrirlash
-          </button>
-        </div>
-        <div className="flex items-center gap-2 bg-background/60 border border-white/8 rounded-xl px-3 py-2.5 mb-3">
-          <a href={pageUrl} target="_blank" rel="noopener noreferrer" className="flex-1 flex items-center gap-1 min-w-0 hover:opacity-80 transition-opacity">
-            <span className="text-xs text-muted-foreground shrink-0">{APP_DISPLAY_HOST}/</span>
-            <span className="text-sm text-primary font-mono truncate">{userSlug}</span>
-            <ExternalLink className="w-3 h-3 text-muted-foreground shrink-0" />
-          </a>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <button onClick={handleCopy}
-            className={`h-10 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all ${copied ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-400" : "bg-white/5 border-white/8 text-muted-foreground hover:text-foreground"}`}>
-            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            {copied ? "Nusxalandi" : "Nusxalash"}
-          </button>
-          <button onClick={handleShare}
-            className="h-10 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-white/8 bg-white/5 text-muted-foreground hover:text-foreground transition-all">
-            <Share2 className="w-3.5 h-3.5" /> Ulashish
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-card border border-white/6 rounded-2xl p-5 flex flex-col items-center">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">QR kod</p>
-        <div ref={qrRef} className="bg-white p-4 rounded-2xl shadow-xl shadow-black/30 mb-3">
-          <QRCode value={pageUrl} size={180} fgColor="#000000" bgColor="#ffffff" level="M" />
-        </div>
-        <p className="text-xs text-muted-foreground mb-4">📷 Mijozlar skaner qilib bron qilishi mumkin</p>
-        <button onClick={handleDownload}
-          className="h-10 px-5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-white/8 bg-white/5 text-muted-foreground hover:text-foreground transition-all">
-          <Download className="w-3.5 h-3.5" /> Yuklab olish
-        </button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-white/6 rounded-2xl p-4 text-center">
-          <p className="text-3xl font-bold font-display text-primary mb-1">—</p>
-          <p className="text-xs text-muted-foreground">QR skanerlashlar</p>
-        </div>
-        <div className="bg-card border border-white/6 rounded-2xl p-4 text-center">
-          <p className="text-3xl font-bold font-display text-emerald-400 mb-1">—</p>
-          <p className="text-xs text-muted-foreground">Bronlar (bu oy)</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
 // BOOKING MODAL (unchanged logic, demo slots)
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -2108,7 +1929,6 @@ export default function PersonalPage() {
   const [loadingServices, setLoadingServices] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
-  const [slugModalOpen, setSlugModalOpen] = useState(false);
   const [userSlug, setUserSlug] = useState(user?.username || "");
 
   useEffect(() => { setUserSlug(user?.username || ""); }, [user?.username]);
@@ -2234,17 +2054,17 @@ export default function PersonalPage() {
             )}
             {tab === "qr" && (
               <motion.div key="qr" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
-                <QRLinkTab userSlug={userSlug} onEditSlug={() => setSlugModalOpen(true)} />
+                <PageLinkPanel
+                  userSlug={userSlug}
+                  displayName={profile.brandName || profile.name || "Barber"}
+                  onSlugChange={setUserSlug}
+                />
               </motion.div>
             )}
           </AnimatePresence>
         </>
       )}
 
-      {slugModalOpen && (
-        <SlugEditModal currentSlug={userSlug} onClose={() => setSlugModalOpen(false)}
-          onSaved={newSlug => { setUserSlug(newSlug); setSlugModalOpen(false); }} />
-      )}
     </Layout>
   );
 }
