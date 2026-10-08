@@ -30,6 +30,7 @@ import {
   handleClientConfirm,
   isClientCallback,
   deliverBookingReceipt,
+  rebookUrl,
   receiptText,
   sendReminderPreview,
 } from "./client-notifications";
@@ -1061,6 +1062,11 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
   }
 
   if (callbackData === "client_reminder_preview_cancel" || callbackData === "client_reminder_preview_cancel_yes") {
+    const [previewBarber] = await db
+      .select({ username: usersTable.username })
+      .from(usersTable)
+      .where(eq(usersTable.telegramId, String(chatId)))
+      .limit(1);
     await callTelegram("sendMessage", {
       chat_id: chatId,
       text:
@@ -1069,7 +1075,7 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
         "Bu sinov edi. Haqiqiy bron o\u02BBzgarmadi.",
       parse_mode: "HTML",
       reply_markup: {
-        inline_keyboard: [[{ text: "\uD83D\uDCF1 Qayta bron qilish", url: "https://barberuz-lovat.vercel.app" }]],
+        inline_keyboard: [[{ text: "\uD83D\uDCF1 Qayta bron qilish", url: rebookUrl(previewBarber?.username) }]],
       },
     });
     return;
@@ -1495,10 +1501,12 @@ async function handleConfirmCancel(chatId: number, sessionId: string) {
   if (!session.clientTelegramId || session.cancelNotificationSent) return;
 
   const clientFirstName = session.clientName?.split(" ")[0] || "Mijoz";
-  const serviceParam = data.services[0]
-    ? `&serviceId=${encodeURIComponent(data.services[0].name)}`
-    : "";
-  const reBookUrl = `${getAppUrl()}?barberId=${encodeURIComponent(session.barberId)}${serviceParam}`;
+  const [rebookBarber] = await db
+    .select({ username: usersTable.username })
+    .from(usersTable)
+    .where(eq(usersTable.id, session.barberId))
+    .limit(1);
+  const reBookUrl = rebookUrl(rebookBarber?.username);
 
   if (!validateAppUrl(reBookUrl)) {
     await callTelegram("sendMessage", {
@@ -1578,9 +1586,23 @@ async function handleCustomerConfirmCancel(chatId: number, sessionId: string) {
 
   log("booking_cancelled_by_customer", { sessionId, barberId: session.barberId, telegramUserId: String(chatId) });
 
-  const barberPageLink = (data.barberPageLink && validateAppUrl(data.barberPageLink))
-    ? data.barberPageLink
-    : getAppUrl();
+  const [pageBarber] = await db
+    .select({ username: usersTable.username })
+    .from(usersTable)
+    .where(eq(usersTable.id, session.barberId))
+    .limit(1);
+  const savedPage = data.barberPageLink && validateAppUrl(data.barberPageLink) ? data.barberPageLink : "";
+  let barberPageLink = rebookUrl(pageBarber?.username);
+  try {
+    const parsed = savedPage ? new URL(savedPage) : null;
+    const path = parsed?.pathname.replace(/\/$/, "") || "";
+    if (parsed && path && path !== "/") {
+      parsed.searchParams.set("bron", "1");
+      barberPageLink = parsed.toString();
+    }
+  } catch {
+    // The saved page link is unusable. The username link above stays.
+  }
 
   await callTelegram("sendMessage", {
     chat_id: chatId,

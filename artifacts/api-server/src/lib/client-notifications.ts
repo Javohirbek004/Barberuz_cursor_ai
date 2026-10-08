@@ -53,10 +53,13 @@ function token(): string {
   return process.env.TELEGRAM_BOT_TOKEN || "";
 }
 
-function appBase(): string {
-  const env = process.env.APP_URL?.replace(/\/$/, "");
-  if (env && /^https?:\/\//i.test(env)) return env;
-  return "https://barberuz-lovat.vercel.app";
+const PUBLIC_SITE = "https://barberuz-lovat.vercel.app";
+
+/** Client rebook link: the barber's booking page, not the app home. */
+export function rebookUrl(username: string | null | undefined): string {
+  const slug = (username || "").trim();
+  if (!slug) return PUBLIC_SITE;
+  return `${PUBLIC_SITE}/${encodeURIComponent(slug)}?bron=1`;
 }
 
 function esc(value: string): string {
@@ -358,8 +361,7 @@ async function findTelegram(barberId: string, phone: string | null, clientId: st
 }
 
 function rebookMarkup(username: string) {
-  const url = `${appBase()}/${encodeURIComponent(username)}`;
-  return { inline_keyboard: [[{ text: "📱 Qayta bron qilish", url }]] };
+  return { inline_keyboard: [[{ text: "📱 Qayta bron qilish", url: rebookUrl(username) }]] };
 }
 
 export async function deliverBookingReceipt(

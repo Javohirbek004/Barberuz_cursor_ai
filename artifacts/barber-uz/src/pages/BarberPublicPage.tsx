@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, useLocation, Link } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
+import { useParams, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, Send, MapPin, Instagram, Phone, X, ArrowLeft } from "lucide-react";
 import { SlotPeriodTabs } from "@/components/SlotPeriodTabs";
@@ -491,7 +490,10 @@ function GalleryStrip({ images }: { images: string[] }) {
 const COVER_GRADS = ["from-primary/50 via-primary/20 to-transparent", "from-amber-600/50 via-amber-600/20 to-transparent", "from-emerald-600/50 via-emerald-600/20 to-transparent", "from-violet-600/50 via-violet-600/20 to-transparent"];
 
 function PublicView({ barber }: { barber: BarberData }) {
-  const [tab, setTab] = useState<"asosiy" | "xizmatlar">("asosiy");
+  const [tab, setTab] = useState<"asosiy" | "xizmatlar">(() => {
+    if (typeof window === "undefined") return "asosiy";
+    return new URLSearchParams(window.location.search).get("bron") === "1" ? "xizmatlar" : "asosiy";
+  });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bookingOpen, setBookingOpen] = useState(false);
 
@@ -826,8 +828,6 @@ export default function BarberPublicPage() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
   const [, navigate] = useLocation();
-  const { user } = useAuth(false);
-  const isOwner = !!user && user.username === slug;
 
   const [status, setStatus] = useState<Status>("loading");
   const [barber, setBarber] = useState<BarberData | null>(null);
@@ -884,14 +884,6 @@ export default function BarberPublicPage() {
 
   return (
     <div className="max-w-md mx-auto px-4">
-      {isOwner && (
-        <div className="sticky top-0 z-30 -mx-4 px-4 py-2.5 bg-primary/10 border-b border-primary/20 backdrop-blur-md flex items-center justify-between">
-          <p className="text-xs text-primary font-semibold">✏️ Bu sizning sahifangiz — mijozlar shunday ko'radi</p>
-          <Link href="/settings/page">
-            <span className="text-xs text-primary font-bold underline underline-offset-2 cursor-pointer">Tahrirlash →</span>
-          </Link>
-        </div>
-      )}
       <PublicView barber={barber} />
     </div>
   );
