@@ -71,7 +71,7 @@ router.post("/register", async (req, res) => {
       mode: mode || "solo",
       lang: lang || "uz",
     }).returning();
-    const token = generateToken(user.id);
+    const token = generateToken(user.id, 7 * 24 * 60 * 60, user.sessionEpoch ?? 0);
     res.status(201).json({
       user: formatUser(user),
       token,
@@ -109,7 +109,7 @@ router.post("/login", async (req, res) => {
       await db.update(usersTable).set({ passwordHash: newHash }).where(eq(usersTable.id, user.id));
     }
 
-    const token = generateToken(user.id);
+    const token = generateToken(user.id, 7 * 24 * 60 * 60, user.sessionEpoch ?? 0);
     res.json({
       user: formatUser(user),
       token,
@@ -198,7 +198,7 @@ router.post("/telegram-token", async (req, res) => {
       return;
     }
     const expiresIn = 10 * 60; // 10 minutes in seconds
-    const authToken = generateToken(user.id, expiresIn);
+    const authToken = generateToken(user.id, expiresIn, user.sessionEpoch ?? 0);
     console.log(`[Auth] telegram-token issued: userId=${user.id} tgId=${telegram_user_id}`);
     res.json({ authToken, expiresIn });
   } catch (err) {

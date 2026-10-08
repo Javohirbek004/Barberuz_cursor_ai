@@ -432,13 +432,18 @@ function validateAppUrl(url: string): boolean {
  * and returns a URL with ?tg_code=CODE. Login.tsx polls the API with this code
  * and auto-logs in — no token exposed in the URL.
  */
-function buildLoginUrl(userId: string): string {
+async function buildLoginUrl(userId: string): Promise<string> {
   const base = getAppUrl();
   const code = randomBytes(8).toString("hex"); // 16-char hex code
   const url = `${base}/login?tg_code=${code}`;
   if (!validateAppUrl(url)) return "";
+  const [account] = await db
+    .select({ sessionEpoch: usersTable.sessionEpoch })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
   // Only store in pendingLoginResults after confirming the URL is valid
-  const token = generateToken(userId);
+  const token = generateToken(userId, 7 * 24 * 60 * 60, account?.sessionEpoch ?? 0);
   pendingLoginResults.set(code, {
     token,
     userId,
@@ -508,7 +513,7 @@ async function sendContactRequest(chatId: number, userName: string) {
 }
 
 async function sendVerificationSuccess(chatId: number, userId: string) {
-  const profileUrl = buildLoginUrl(userId);
+  const profileUrl = await buildLoginUrl(userId);
   if (!profileUrl) {
     await callTelegram("sendMessage", {
       chat_id: chatId,
@@ -1141,7 +1146,7 @@ async function handleBarberStart(chatId: number, userId: string) {
   }
 
   if (user.telegramVerified) {
-    const profileUrl = buildLoginUrl(user.id);
+    const profileUrl = await buildLoginUrl(user.id);
     log("barber_invite_start", { chatId, userId, url: profileUrl || "invalid" });
     if (profileUrl) {
       await callTelegram("sendMessage", {
@@ -1237,7 +1242,7 @@ async function handleLoginStart(
     return;
   }
 
-  const profileUrl = buildLoginUrl(user.id);
+  const profileUrl = await buildLoginUrl(user.id);
 
   if (!profileUrl) {
     await callTelegram("sendMessage", {
@@ -1528,7 +1533,7 @@ async function handleAuthPhoneContact(
     updatedAt: new Date(),
   }).where(eq(usersTable.id, foundUser.id));
 
-  const token = generateToken(foundUser.id);
+  const token = generateToken(foundUser.id, 7 * 24 * 60 * 60, foundUser.sessionEpoch ?? 0);
   pendingLoginResults.set(pending.code, {
     token,
     userId: foundUser.id,

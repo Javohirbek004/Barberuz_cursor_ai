@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { db, usersTable, slugRedirectsTable, bookingsTable, qrScansTable } from "@workspace/db";
-import { and, eq, gte, isNull, lt, notInArray, sql } from "drizzle-orm";
-import { authenticate, getUser, hashPassword } from "../lib/auth";
+import type { Request } from "express";
+import { db, usersTable, slugRedirectsTable, bookingsTable, qrScansTable, loginDevicesTable } from "@workspace/db";
+import { and, eq, gte, isNull, lt, ne, notInArray, sql } from "drizzle-orm";
+import { authenticate, getUser, hashPassword, generateToken } from "../lib/auth";
 import { SLUG_LOCK_MS, isSlugAvailable, repairAccidentalSlug, suggestSlug, validateSlug } from "../lib/public-slug";
 
 const router = Router();
@@ -314,6 +315,131 @@ router.put("/password", authenticate, async (req, res) => {
       .set({ passwordHash: hashPassword(newPassword), updatedAt: new Date() })
       .where(eq(usersTable.id, user.id));
     res.json({ success: true, message: "Password updated" });
+  } catch (err) {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+function headerValue(req: Request, name: string): string {
+  const raw = req.headers[name];
+  return (Array.isArray(raw) ? raw[0] : raw || "").trim();
+}
+
+function clientIp(req: Request): string | null {
+  const ip = (headerValue(req, "x-forwarded-for").split(",")[0] || req.ip || "").trim();
+  if (!ip || ip === "::1" || ip === "127.0.0.1") return null;
+  return ip.slice(0, 64);
+}
+
+function deviceKeyOf(req: Request): string | null {
+  const value = headerValue(req, "x-device-key");
+  return /^[A-Za-z0-9_-]{8,80}$/.test(value) ? value : null;
+}
+
+function deviceLabelOf(req: Request): string {
+  const given = headerValue(req, "x-device-label").replace(/[\r\n]/g, " ").trim();
+  if (given) return given.slice(0, 80);
+  const ua = headerValue(req, "user-agent");
+  const android = ua.match(/Android\s[\d.]+;\s*([^;)]+)/i);
+  if (android) {
+    const model = android[1].replace(/\s+Build.*/i, "").trim();
+    if (model && !/linux/i.test(model)) return model.slice(0, 80);
+  }
+  if (/iPhone/i.test(ua)) return "iPhone";
+  if (/iPad/i.test(ua)) return "iPad";
+  const browser = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "Brauzer";
+  const os = /Windows/i.test(ua) ? "Windows" : /Mac OS/i.test(ua) ? "macOS" : /Android/i.test(ua) ? "Android" : /Linux/i.test(ua) ? "Linux" : "Qurilma";
+  return `${browser} / ${os}`;
+}
+
+async function rememberDevice(userId: string, deviceKey: string, label: string, ip: string | null) {
+  const now = new Date();
+  await db.insert(loginDevicesTable).values({
+    userId,
+    deviceKey,
+    label,
+    ip,
+    lastSeen: now,
+  }).onConflictDoUpdate({
+    target: [loginDevicesTable.userId, loginDevicesTable.deviceKey],
+    set: { label, ip, lastSeen: now, revokedAt: null },
+  });
+}
+
+router.get("/security", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const key = deviceKeyOf(req);
+    if (key) await rememberDevice(user.id, key, deviceLabelOf(req), clientIp(req));
+    const rows = await db.select().from(loginDevicesTable).where(and(
+      eq(loginDevicesTable.userId, user.id),
+      isNull(loginDevicesTable.revokedAt),
+    ));
+    rows.sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime());
+    res.json({
+      quickLogin: user.quickLogin,
+      devices: rows.map((row) => ({
+        id: row.id,
+        label: row.label,
+        ip: row.ip,
+        lastSeen: new Date(row.lastSeen).toISOString(),
+        current: key != null && row.deviceKey === key,
+      })),
+    });
+  } catch (err) {
+    console.error("[settings] GET /security error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+router.put("/quick-login", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const enabled = req.body?.enabled === true;
+    await db.update(usersTable)
+      .set({ quickLogin: enabled, updatedAt: new Date() })
+      .where(eq(usersTable.id, user.id));
+    res.json({ quickLogin: enabled });
+  } catch (err) {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+router.post("/devices/logout-others", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const key = deviceKeyOf(req);
+    const epoch = (user.sessionEpoch ?? 0) + 1;
+    await db.update(usersTable)
+      .set({ sessionEpoch: epoch, updatedAt: new Date() })
+      .where(eq(usersTable.id, user.id));
+    const revoked = await db.update(loginDevicesTable)
+      .set({ revokedAt: new Date() })
+      .where(key
+        ? and(eq(loginDevicesTable.userId, user.id), ne(loginDevicesTable.deviceKey, key), isNull(loginDevicesTable.revokedAt))
+        : and(eq(loginDevicesTable.userId, user.id), isNull(loginDevicesTable.revokedAt)))
+      .returning({ id: loginDevicesTable.id });
+    if (key) await rememberDevice(user.id, key, deviceLabelOf(req), clientIp(req));
+    res.json({
+      token: generateToken(user.id, 7 * 24 * 60 * 60, epoch),
+      loggedOut: revoked.length,
+    });
+  } catch (err) {
+    console.error("[settings] logout others error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+router.post("/verify-password", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const password = typeof req.body?.password === "string" ? req.body.password : "";
+    const [fresh] = await db.select().from(usersTable).where(eq(usersTable.id, user.id)).limit(1);
+    if (!password || hashPassword(password) !== fresh.passwordHash) {
+      res.status(400).json({ error: "wrong_password", message: "Wrong password" });
+      return;
+    }
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "server_error" });
   }

@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS users (
   notif_client_evening boolean NOT NULL DEFAULT true,
   notif_client_quick boolean NOT NULL DEFAULT true,
   notif_client_auto_cancel boolean NOT NULL DEFAULT true,
+  session_epoch integer NOT NULL DEFAULT 0,
+  quick_login boolean NOT NULL DEFAULT false,
   slug_changed_at timestamptz,
   slug_change_count integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -48,6 +50,21 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS buffer_time integer NOT NULL DEFAULT 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_client_evening boolean NOT NULL DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_client_quick boolean NOT NULL DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_client_auto_cancel boolean NOT NULL DEFAULT true;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS session_epoch integer NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS quick_login boolean NOT NULL DEFAULT false;
+
+CREATE TABLE IF NOT EXISTS login_devices (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  device_key text NOT NULL,
+  label text NOT NULL,
+  ip text,
+  last_seen timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  revoked_at timestamptz
+);
+CREATE UNIQUE INDEX IF NOT EXISTS login_devices_user_key_idx ON login_devices (user_id, device_key);
+CREATE INDEX IF NOT EXISTS login_devices_user_id_idx ON login_devices (user_id);
 
 CREATE INDEX IF NOT EXISTS users_phone_idx ON users (phone);
 CREATE INDEX IF NOT EXISTS users_telegram_id_idx ON users (telegram_id);

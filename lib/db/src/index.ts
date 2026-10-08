@@ -54,6 +54,20 @@ const ENSURE_SCHEMA_SQL = [
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notif_client_evening" boolean DEFAULT true NOT NULL`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notif_client_quick" boolean DEFAULT true NOT NULL`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notif_client_auto_cancel" boolean DEFAULT true NOT NULL`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "session_epoch" integer DEFAULT 0 NOT NULL`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "quick_login" boolean DEFAULT false NOT NULL`,
+  `CREATE TABLE IF NOT EXISTS "login_devices" (
+    "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+    "device_key" text NOT NULL,
+    "label" text NOT NULL,
+    "ip" text,
+    "last_seen" timestamptz NOT NULL DEFAULT now(),
+    "created_at" timestamptz NOT NULL DEFAULT now(),
+    "revoked_at" timestamptz
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "login_devices_user_key_idx" ON "login_devices" ("user_id", "device_key")`,
+  `CREATE INDEX IF NOT EXISTS "login_devices_user_id_idx" ON "login_devices" ("user_id")`,
   `CREATE TABLE IF NOT EXISTS "phone_update_intents" (
     "telegram_id" text PRIMARY KEY,
     "barber_slug" text,

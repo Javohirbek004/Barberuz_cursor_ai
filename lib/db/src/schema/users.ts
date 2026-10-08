@@ -47,6 +47,10 @@ export const usersTable = pgTable(
     notifClientQuick: boolean("notif_client_quick").notNull().default(true),
     /** Client Telegram: auto-cancel unconfirmed bookings inside the last hour. */
     notifClientAutoCancel: boolean("notif_client_auto_cancel").notNull().default(true),
+    /** Bumped to sign every other device out. Tokens carry the same number. */
+    sessionEpoch: integer("session_epoch").notNull().default(0),
+    /** Whether this barber asked for a PIN or fingerprint on this account. */
+    quickLogin: boolean("quick_login").notNull().default(false),
     slugChangedAt: timestamp("slug_changed_at", { withTimezone: true }),
     slugChangeCount: integer("slug_change_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

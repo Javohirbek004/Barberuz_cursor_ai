@@ -85,16 +85,16 @@ function b64urlJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
-export function generateToken(userId: string, ttlSeconds: number = SESSION_TTL_SEC): string {
+export function generateToken(userId: string, ttlSeconds: number = SESSION_TTL_SEC, sessionEpoch = 0): string {
   const now = Math.floor(Date.now() / 1000);
   const header = b64urlJson({ alg: "HS256", typ: "JWT" });
-  const payload = b64urlJson({ sub: userId, iat: now, exp: now + ttlSeconds });
+  const payload = b64urlJson({ sub: userId, iat: now, exp: now + ttlSeconds, tv: sessionEpoch });
   const data = `${header}.${payload}`;
   const sig = crypto.createHmac("sha256", jwtSecret()).update(data).digest("base64url");
   return `${data}.${sig}`;
 }
 
-function verifyToken(token: string): string | null {
+function readToken(token: string): { sub: string; tv: number } | null {
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   const [header, payload, sig] = parts;
@@ -108,10 +108,11 @@ function verifyToken(token: string): string | null {
     const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
       sub?: unknown;
       exp?: unknown;
+      tv?: unknown;
     };
     if (typeof claims.sub !== "string" || !claims.sub) return null;
     if (typeof claims.exp !== "number" || claims.exp < Math.floor(Date.now() / 1000)) return null;
-    return claims.sub;
+    return { sub: claims.sub, tv: typeof claims.tv === "number" ? claims.tv : 0 };
   } catch {
     return null;
   }
@@ -125,14 +126,18 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   }
   const token = auth.slice(7);
   try {
-    const userId = verifyToken(token);
-    if (!userId) {
+    const claims = readToken(token);
+    if (!claims) {
       res.status(401).json({ error: "unauthorized", message: "Invalid token" });
       return;
     }
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, claims.sub)).limit(1);
     if (!user) {
       res.status(401).json({ error: "unauthorized", message: "User not found" });
+      return;
+    }
+    if ((user.sessionEpoch ?? 0) !== claims.tv) {
+      res.status(401).json({ error: "unauthorized", message: "Session ended" });
       return;
     }
     (req as any).user = user;
