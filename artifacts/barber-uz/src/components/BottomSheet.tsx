@@ -47,8 +47,8 @@ export function BottomSheet({ title, onClose, children }: Props) {
         drag="y"
         dragControls={dragControls}
         dragListener={false}
-        dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={{ top: 0, bottom: 0.6 }}
+        dragConstraints={{ top: 0 }}
+        dragSnapToOrigin
         onDragEnd={(_, info) => {
           if (info.offset.y > 110 || info.velocity.y > 600) onClose();
         }}
@@ -57,7 +57,17 @@ export function BottomSheet({ title, onClose, children }: Props) {
         {/* Drag handle + header: pull down to dismiss */}
         <div
           data-testid="sheet-drag-area"
-          onPointerDown={(e) => dragControls.start(e)}
+          onPointerDown={(e) => {
+            const startY = e.clientY;
+            const finish = (event: PointerEvent) => {
+              window.removeEventListener("pointerup", finish);
+              window.removeEventListener("pointercancel", finish);
+              if (event.clientY - startY > 110) onClose();
+            };
+            window.addEventListener("pointerup", finish);
+            window.addEventListener("pointercancel", finish);
+            dragControls.start(e);
+          }}
           className="shrink-0 cursor-grab touch-none select-none"
         >
           <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3" />

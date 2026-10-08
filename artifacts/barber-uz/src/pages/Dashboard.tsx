@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BookingDetailModal } from "@/components/BookingDetailModal";
+import { IncomeAnalyticsSheet } from "@/pages/settings/IncomeAnalyticsSheet";
 import { resolveDaySchedule, type ScheduleSource } from "@/lib/schedule";
 
 // ── Uzbek date formatter ──────────────────────────────────────────────────────
@@ -148,28 +149,41 @@ function computeFreeWindows(
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
+function DetailsPill({ label }: { label: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
+      style={{ color: "#FACC15", backgroundColor: "rgba(250,204,21,0.12)" }}
+    >
+      {label} ➔
+    </span>
+  );
+}
+
 interface StatCardProps {
   label: string;
   value: string | number;
-  secondValue?: string;
   subtext?: string;
+  pillLabel?: string;
   icon: React.ElementType;
   iconColor: string;
   loading?: boolean;
   delay?: number;
   onClick?: () => void;
+  testId?: string;
 }
 
 function StatCard({
-  label, value, secondValue, subtext, icon: Icon, iconColor, loading, delay = 0, onClick,
+  label, value, subtext, pillLabel, icon: Icon, iconColor, loading, delay = 0, onClick, testId,
 }: StatCardProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
-      onClick={onClick}
-      className={onClick ? "cursor-pointer" : ""}
+      onClick={!loading ? onClick : undefined}
+      data-testid={testId}
+      className={onClick ? "cursor-pointer select-none" : ""}
     >
       <Card className={`p-4 bg-card/50 backdrop-blur border-white/5 transition-colors h-full ${onClick ? "hover:border-primary/30 hover:bg-primary/5 active:scale-95" : "hover:border-white/10"}`}>
         <div className="flex items-center gap-2 mb-3">
@@ -180,16 +194,12 @@ function StatCard({
         </div>
         {loading ? (
           <span className="text-muted-foreground text-base">...</span>
-        ) : secondValue !== undefined ? (
-          <div className="space-y-0.5">
-            <div className="font-display font-bold text-foreground text-lg leading-tight">{value}</div>
-            <div className="font-display font-semibold text-muted-foreground text-base leading-tight">{secondValue}</div>
-          </div>
         ) : (
-          <div className={`font-display font-bold text-foreground leading-tight ${String(value).length > 10 ? "text-lg" : "text-2xl"}`}>
+          <div className={`font-display font-bold text-foreground leading-tight ${pillLabel ? "mb-3" : ""} ${String(value).length > 10 ? "text-lg" : "text-2xl"}`}>
             {value}
           </div>
         )}
+        {pillLabel && !loading && <DetailsPill label={pillLabel} />}
         {subtext && !loading && (
           <div className="text-xs text-muted-foreground/60 mt-1 truncate">{subtext}</div>
         )}
@@ -226,10 +236,7 @@ function InteractiveCard({
         ) : (
           <div className="font-display font-bold text-white text-2xl leading-tight mb-3">{value}</div>
         )}
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
-          style={{ color: "#FACC15", backgroundColor: "rgba(250,204,21,0.12)" }}>
-          {pillLabel} ➔
-        </span>
+        <DetailsPill label={pillLabel} />
       </Card>
     </motion.div>
   );
@@ -400,6 +407,7 @@ function IndividualDashboard() {
   const [flashId, setFlashId] = useState<string | null>(null);
   const [showBronModal, setShowBronModal] = useState(false);
   const [showSlotModal, setShowSlotModal] = useState(false);
+  const [isFinancialModalOpen, setIsFinancialModalOpen] = useState(false);
 
   const bookingsListRef = useRef<HTMLDivElement>(null);
   const bookingItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -525,11 +533,13 @@ function IndividualDashboard() {
         <StatCard
           label="Bugungi daromad"
           value={statsLoading ? "..." : `${(activeStats?.todayRevenue ?? 0).toLocaleString()} so'm`}
-          secondValue={statsLoading ? undefined : `Oy: ${Number((activeStats as { monthRevenue?: number } | undefined)?.monthRevenue ?? 0).toLocaleString()} so'm`}
+          pillLabel="Tafsilotlar"
           icon={Wallet}
           iconColor="text-emerald-400"
           loading={statsLoading}
           delay={0.05}
+          testId="revenue-details"
+          onClick={() => setIsFinancialModalOpen(true)}
         />
 
         {/* Card 3: Bo'sh joylar */}
@@ -693,6 +703,15 @@ function IndividualDashboard() {
         freeWindows={freeWindows}
         totalFreeSlots={freeSlots}
       />
+
+      <AnimatePresence>
+        {isFinancialModalOpen && (
+          <IncomeAnalyticsSheet
+            key="moliya"
+            onClose={() => setIsFinancialModalOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </>
   );
 }
