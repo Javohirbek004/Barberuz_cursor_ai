@@ -478,6 +478,7 @@ export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [editing, setEditing] = useState<ExpenseRow | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ExpenseRow | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
 
@@ -568,6 +569,18 @@ export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
     list.push(row);
     grouped.set(row.date, list);
   }
+
+  useEffect(() => {
+    if (!pendingDelete) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      e.preventDefault();
+      setPendingDelete(null);
+    }
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [pendingDelete]);
 
   async function handleDelete(id: string) {
     const snapshot = rows;
@@ -710,7 +723,7 @@ export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
                               data-testid="expense-delete"
                               aria-label="O'chirish"
                               disabled={deletingId === row.id}
-                              onClick={() => handleDelete(row.id)}
+                              onClick={() => setPendingDelete(row)}
                               className="p-1.5 rounded-lg hover:bg-red-500/10 shrink-0 disabled:opacity-30"
                             >
                               {deletingId === row.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="text-xs">🗑️</span>}
@@ -737,6 +750,46 @@ export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
             setEditing(null);
           }}
         />
+      )}
+
+      {pendingDelete && createPortal(
+        <div className="fixed inset-0 z-[90] flex items-center justify-center px-4" data-testid="expense-delete-confirm">
+          <button
+            type="button"
+            aria-label="Bekor qilish"
+            className="absolute inset-0 bg-black/70"
+            onClick={() => setPendingDelete(null)}
+          />
+          <div className="relative w-full max-w-sm bg-card border border-white/10 rounded-3xl p-6 shadow-2xl">
+            <h2 className="text-lg font-bold text-foreground text-center mb-2">Xarajatni o'chirish</h2>
+            <p className="text-sm text-muted-foreground text-center leading-relaxed mb-6">
+              Ushbu xarajatni o'chirishni tasdiqlaysizmi? Bu amalni ortga qaytarib bo'lmaydi.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                data-testid="expense-delete-cancel"
+                onClick={() => setPendingDelete(null)}
+                className="flex-1 py-3 rounded-2xl bg-white/6 border border-white/10 text-foreground font-semibold text-sm"
+              >
+                Bekor qilish
+              </button>
+              <button
+                type="button"
+                data-testid="expense-delete-submit"
+                onClick={() => {
+                  const id = pendingDelete.id;
+                  setPendingDelete(null);
+                  void handleDelete(id);
+                }}
+                className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm"
+              >
+                O'chirish
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </>
   );
