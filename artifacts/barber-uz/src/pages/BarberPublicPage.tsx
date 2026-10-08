@@ -134,15 +134,27 @@ function phoneReady(value: string): boolean {
 function loadClientProfile(): SavedClient | null {
   try {
     const raw = JSON.parse(localStorage.getItem(CLIENT_PROFILE_KEY) || "null") as SavedClient | null;
-    if (!raw?.tgId || !raw.name?.trim() || !phoneReady(raw.phone || "")) return null;
-    return { tgId: String(raw.tgId), name: raw.name.trim(), phone: raw.phone.trim(), username: raw.username || null };
+    if (!raw?.tgId || !raw.name?.trim()) return null;
+    return { tgId: String(raw.tgId), name: raw.name.trim(), phone: (raw.phone || "").trim(), username: raw.username || null };
   } catch {
     return null;
   }
 }
 
+function readPendingSession(): { id: string; name: string } | null {
+  const raw = localStorage.getItem(PENDING_SESSION_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { id?: string; name?: string };
+    if (parsed?.id) return { id: parsed.id, name: parsed.name || "" };
+  } catch {
+    // Older saves stored only the session id.
+  }
+  return { id: raw, name: "" };
+}
+
 function saveClientProfile(profile: SavedClient) {
-  if (!profile.tgId || !profile.name.trim() || !phoneReady(profile.phone)) return;
+  if (!profile.tgId || !profile.name.trim()) return;
   localStorage.setItem(CLIENT_PROFILE_KEY, JSON.stringify({
     tgId: profile.tgId,
     name: profile.name.trim(),
@@ -150,6 +162,7 @@ function saveClientProfile(profile: SavedClient) {
     username: profile.username,
   }));
   localStorage.removeItem(PENDING_SESSION_KEY);
+  window.dispatchEvent(new Event("barber-client-saved"));
 }
 
 function PublicBookingModal({
@@ -180,13 +193,27 @@ function PublicBookingModal({
   const savedClient = useRef(loadClientProfile());
   const [clientName, setClientName] = useState(savedClient.current?.name || "");
   const [clientPhone, setClientPhone] = useState(savedClient.current?.phone || "");
-  const [editingProfile, setEditingProfile] = useState(false);
+  const [knownClient, setKnownClient] = useState(!!savedClient.current?.tgId);
+  const [editingProfile, setEditingProfile] = useState(!!savedClient.current && !phoneReady(savedClient.current.phone));
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [deepLink, setDeepLink] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [bookedDirect, setBookedDirect] = useState(false);
-  const knownClient = !!savedClient.current?.tgId;
+
+  useEffect(() => {
+    const refresh = () => {
+      const profile = loadClientProfile();
+      if (!profile) return;
+      savedClient.current = profile;
+      setClientName(profile.name);
+      setClientPhone(profile.phone);
+      setKnownClient(true);
+      if (!phoneReady(profile.phone)) setEditingProfile(true);
+    };
+    window.addEventListener("barber-client-saved", refresh);
+    return () => window.removeEventListener("barber-client-saved", refresh);
+  }, []);
   const [busySlots, setBusySlots] = useState<{ startTime: string; endTime: string }[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -250,15 +277,14 @@ function PublicBookingModal({
 
   function rememberConfirmed(poll: { clientTelegramId?: string; clientName?: string; clientPhone?: string; clientTelegramUsername?: string }) {
     if (!poll.clientTelegramId) return;
-    const phone = poll.clientPhone || clientPhone;
-    if (!phoneReady(phone)) return;
     const next = {
       tgId: String(poll.clientTelegramId),
-      name: (poll.clientName || clientName).trim(),
-      phone: phone.trim(),
+      name: (poll.clientName || clientName).trim() || "Mijoz",
+      phone: (poll.clientPhone || clientPhone || "").trim(),
       username: poll.clientTelegramUsername || savedClient.current?.username || null,
     };
     savedClient.current = next;
+    setKnownClient(true);
     saveClientProfile(next);
   }
 
@@ -356,7 +382,7 @@ function PublicBookingModal({
           : "";
       setSessionId(data.sessionId);
       setDeepLink(link || null);
-      localStorage.setItem(PENDING_SESSION_KEY, data.sessionId);
+      localStorage.setItem(PENDING_SESSION_KEY, JSON.stringify({ id: data.sessionId, name: clientName.trim() }));
       setStep("verifying");
       setSubmitting(false);
 
@@ -990,26 +1016,33 @@ export default function BarberPublicPage() {
   const [, navigate] = useLocation();
 
   useEffect(() => {
-    const pending = localStorage.getItem(PENDING_SESSION_KEY);
-    if (!pending) return;
     let cancelled = false;
-    fetch(`/api/public/sessions/${pending}`)
-      .then(r => r.ok ? r.json() : null)
-      .then((poll: { status?: string; clientTelegramId?: string; clientName?: string; clientPhone?: string; clientTelegramUsername?: string } | null) => {
-        if (cancelled || !poll) return;
-        if (poll.status === "confirmed" && poll.clientTelegramId && phoneReady(poll.clientPhone || "")) {
-          saveClientProfile({
-            tgId: String(poll.clientTelegramId),
-            name: (poll.clientName || "").trim() || "Mijoz",
-            phone: (poll.clientPhone || "").trim(),
-            username: poll.clientTelegramUsername || null,
-          });
-        } else if (poll.status === "expired" || poll.status === "cancelled") {
-          localStorage.removeItem(PENDING_SESSION_KEY);
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    const recover = () => {
+      const pending = readPendingSession();
+      if (!pending || loadClientProfile()) return;
+      fetch(`/api/public/sessions/${pending.id}`)
+        .then(r => r.ok ? r.json() : null)
+        .then((poll: { status?: string; clientTelegramId?: string; clientName?: string; clientPhone?: string; clientTelegramUsername?: string } | null) => {
+          if (cancelled || !poll) return;
+          if (poll.status === "confirmed" && poll.clientTelegramId) {
+            saveClientProfile({
+              tgId: String(poll.clientTelegramId),
+              name: (poll.clientName || pending.name || "Mijoz").trim(),
+              phone: (poll.clientPhone || "").trim(),
+              username: poll.clientTelegramUsername || null,
+            });
+          } else if (poll.status === "expired" || poll.status === "cancelled") {
+            localStorage.removeItem(PENDING_SESSION_KEY);
+          }
+        })
+        .catch(() => {});
+    };
+    recover();
+    window.addEventListener("pageshow", recover);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("pageshow", recover);
+    };
   }, []);
 
   const [status, setStatus] = useState<Status>("loading");
