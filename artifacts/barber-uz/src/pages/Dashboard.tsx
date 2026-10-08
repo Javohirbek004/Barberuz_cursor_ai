@@ -439,12 +439,14 @@ function IndividualDashboard() {
   const SLOT_MIN = 30;
   const freeSlots   = freeWindows.reduce((s, w) => s + Math.floor((w.end - w.start) / SLOT_MIN), 0);
 
-  // Stats for TodayStatsModal
-  const todayTotal      = todayBusy.length;
-  const todayCompleted  = bookings.filter(b => b.status === "completed").length;
-  const todayRemaining  = bookings.filter(b => b.status === "confirmed" || b.status === "pending").length;
-  const todayCancelled  = bookings.filter(b => isDroppedBooking(b.status)).length;
-  const todayDurMins    = todayBusy.reduce((s, b) => s + toMins(b.endTime) - toMins(b.startTime), 0);
+  // The report tiles must add up to every booking made today.
+  const todayCompleted = bookings.filter(b => b.status === "completed").length;
+  const todayRemaining = bookings.filter(b => b.status === "confirmed" || b.status === "pending").length;
+  const todayCancelled = bookings.length - todayCompleted - todayRemaining;
+  const todayTotal = bookings.length;
+  const todayDurMins = bookings
+    .filter(b => b.status === "completed" || b.status === "confirmed" || b.status === "pending")
+    .reduce((s, b) => s + toMins(b.endTime) - toMins(b.startTime), 0);
 
   const durationLabel = calcTotalDuration(todayUpcoming);
 
