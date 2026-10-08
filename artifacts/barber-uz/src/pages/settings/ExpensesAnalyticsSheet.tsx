@@ -718,6 +718,7 @@ export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
                             >
                               <span className="text-xs">✏️</span>
                             </button>
+                            {/* Ask first. The expense is removed only after O'chirish. */}
                             <button
                               type="button"
                               data-testid="expense-delete"
