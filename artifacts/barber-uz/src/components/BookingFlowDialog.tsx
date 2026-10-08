@@ -1027,7 +1027,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
   // ── Existing bookings (conflict detection) ────────────────────────────────
   const { data: bookingsData } = useListBookings({ date: form.date });
   const bookedIntervals = bookingsToIntervals(
-    (bookingsData?.bookings ?? []).filter((b) => b.status !== "cancelled" && (b.status as string) !== "auto_cancelled"),
+    (bookingsData?.bookings ?? []).filter((b) => b.status !== "cancelled" && (b.status as string) !== "auto_cancelled" && (b.status as string) !== "no_show"),
   );
 
   // Hours for the chosen weekday (Monday and Friday can differ).

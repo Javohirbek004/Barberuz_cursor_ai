@@ -6,8 +6,11 @@ import {
   useGetDashboardStats,
   useListBookings,
   useGetProfile,
+  useUpdateBooking,
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
+import { useToast } from "@/hooks/use-toast";
+import { isElapsedBooking, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
 import { Layout } from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import {
@@ -67,8 +70,9 @@ function calcNextBookingInfo(
   upcomingBookings: Booking[],
   now: Date,
 ): { main: string; sub: string; nextId: string | null } {
-  const nowMins = now.getHours() * 60 + now.getMinutes();
-  const today = now.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+  const clock = tashkentClock(now);
+  const nowMins = clock.mins;
+  const today = clock.date;
   for (const b of upcomingBookings) {
     if (b.date > today) {
       return { main: b.startTime.slice(0, 5), sub: b.date, nextId: b.id };
@@ -88,6 +92,11 @@ function calcNextBookingInfo(
     }
   }
   return { main: "Bugun tugadi", sub: "Ish yakunlandi", nextId: null };
+}
+
+function serviceNames(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw.split(/[,·+]/).map((part) => part.trim()).filter(Boolean);
 }
 
 function parseDashNotes(raw: string | null | undefined): string {
@@ -381,6 +390,9 @@ function IndividualDashboard() {
     return () => clearInterval(id);
   }, []);
 
+  const { toast } = useToast();
+  const updateBooking = useUpdateBooking();
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
   const [showBronModal, setShowBronModal] = useState(false);
@@ -393,10 +405,12 @@ function IndividualDashboard() {
   const bookings = bookingsData?.bookings ?? [];
   const activeStats = stats;
 
-  // Upcoming bookings from today onward — shown in the "Yaqin bronlar" display list
-  const upcomingBookings = (upcomingData?.bookings ?? [])
-    .filter((b) => !isDroppedBooking(b.status) && b.status !== "completed")
-    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+  const openBookings = (upcomingData?.bookings ?? [])
+    .filter((b) => isOpenBooking(b.status))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+  const reviewBookings = openBookings.filter((b) => isElapsedBooking(b.date, b.startTime, now.getTime()));
+  const upcomingBookings = openBookings
+    .filter((b) => !isElapsedBooking(b.date, b.startTime, now.getTime()))
     .slice(0, 10);
 
   // Today's upcoming only — used for "next booking" time calculation (same-day, time-based)
@@ -447,6 +461,32 @@ function IndividualDashboard() {
       bookingsListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
+
+  async function markBookings(rows: Booking[], status: "completed" | "no_show") {
+    if (rows.length === 0 || busyKey) return;
+    const key = rows.length === 1 ? rows[0].id : "all";
+    setBusyKey(key);
+    try {
+      await Promise.all(rows.map((row) => updateBooking.mutateAsync({
+        bookingId: row.id,
+        data: { status: status as "completed" },
+      })));
+      await Promise.all([refetch(), refetchUpcoming(), refetchStats()]);
+      const sum = rows.reduce((total, row) => total + Number(row.price || 0), 0);
+      if (status === "completed") {
+        toast({
+          title: rows.length > 1 ? "Barchasi bajarildi" : "✓ Keldi",
+          description: `${sum.toLocaleString()} so'm bugungi daromadga qo'shildi`,
+        });
+      } else {
+        toast({ title: "Kelmadi", description: "Bu bron daromadga qo'shilmadi" });
+      }
+    } catch {
+      toast({ title: "Saqlanmadi", description: "Qayta urinib ko'ring", variant: "destructive" });
+    } finally {
+      setBusyKey(null);
+    }
+  }
 
   const statusLabel = (status: string) => {
     if (status === "confirmed") return t("status.confirmed");
@@ -506,84 +546,112 @@ function IndividualDashboard() {
         />
       </div>
 
-      {/* Upcoming bookings */}
-      <motion.div
-        ref={bookingsListRef}
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
-        <h2 className="text-lg font-bold text-foreground mb-4">
-          {t("dash.recent_bookings")}
-        </h2>
-
-        {(bookingsLoading || upcomingLoading) ? (
-          <p className="text-muted-foreground text-center py-8 text-sm">{t("loading")}</p>
-        ) : upcomingBookings.length > 0 ? (
-          <div className="space-y-2">
-            {upcomingBookings.map((b) => (
-              <motion.div
-                key={b.id}
-                ref={(el) => { bookingItemRefs.current[b.id] = el; }}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                onClick={() => setSelectedBooking(b)}
-              >
-                <Card
-                  className={`px-4 py-3 bg-card border-white/5 flex items-center gap-4 cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-all active:scale-[0.98] ${
-                    flashId === b.id ? "border-primary/60 bg-primary/10 scale-[1.02]" : ""
-                  }`}
-                  style={{
-                    transition: flashId === b.id ? "all 0.15s ease" : "all 0.2s ease",
-                  }}
-                >
-                  {/* Time badge — fixed to single line */}
-                  <div className="w-14 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold flex-shrink-0">
-                    <span className="text-sm whitespace-nowrap">{b.startTime.slice(0, 5)}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-foreground truncate">{b.clientName}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {b.serviceName || t("dash.service_fallback")}
-                    </div>
-                    {parseDashNotes(b.notes) ? (
-                      <div className="text-[11px] text-amber-200/80 truncate mt-0.5">
-                        📝 {parseDashNotes(b.notes)}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-sm font-semibold text-primary">
-                      {b.price.toLocaleString()} so'm
-                    </div>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-bold ${
-                        b.status === "confirmed"
-                          ? "bg-emerald-500/10 text-emerald-400"
-                          : b.status === "pending"
-                          ? "bg-amber-500/10 text-amber-400"
-                          : "bg-white/10 text-white/60"
+      {(bookingsLoading || upcomingLoading) ? (
+        <p className="text-muted-foreground text-center py-8 text-sm">{t("loading")}</p>
+      ) : (
+        <div ref={bookingsListRef} className="space-y-8">
+          {upcomingBookings.length > 0 && (
+            <section data-testid="upcoming-feed">
+              <h2 className="text-lg font-bold text-foreground mb-4">{t("dash.recent_bookings")}</h2>
+              <div className="space-y-2">
+                {upcomingBookings.map((b) => (
+                  <motion.div
+                    key={b.id}
+                    ref={(el) => { bookingItemRefs.current[b.id] = el; }}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    onClick={() => setSelectedBooking(b)}
+                  >
+                    <Card
+                      className={`px-4 py-3 bg-card border-white/5 flex items-center gap-4 cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-all active:scale-[0.98] ${
+                        flashId === b.id ? "border-primary/60 bg-primary/10 scale-[1.02]" : ""
                       }`}
                     >
-                      {statusLabel(b.status)}
-                    </span>
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
-              <CalendarDays className="w-6 h-6 text-muted-foreground/40" />
+                      <div className="w-14 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold flex-shrink-0">
+                        <span className="text-sm whitespace-nowrap">{b.startTime.slice(0, 5)}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-foreground truncate">{b.clientName}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {serviceNames(b.serviceName).join(", ") || t("dash.service_fallback")}
+                        </div>
+                        {parseDashNotes(b.notes) ? (
+                          <div className="text-[11px] text-amber-200/80 truncate mt-0.5">📝 {parseDashNotes(b.notes)}</div>
+                        ) : null}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-sm font-semibold text-primary">{b.price.toLocaleString()} so'm</div>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-bold ${
+                          b.status === "confirmed" ? "bg-emerald-500/10 text-emerald-400"
+                            : b.status === "pending" ? "bg-amber-500/10 text-amber-400"
+                            : "bg-white/10 text-white/60"
+                        }`}>{statusLabel(b.status)}</span>
+                      </div>
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {reviewBookings.length > 0 && (
+            <section data-testid="review-feed">
+              <h2 className="text-lg font-bold text-foreground mb-4">⚠️ Tasdiqlash kutilmoqda</h2>
+              <div className="space-y-2">
+                {reviewBookings.map((b) => (
+                  <Card key={b.id} className="bg-card border-amber-500/20 overflow-hidden">
+                    <button type="button" onClick={() => setSelectedBooking(b)} className="w-full px-4 py-3 flex items-center gap-4 text-left">
+                      <div className="w-14 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-300 font-bold flex-shrink-0">
+                        <span className="text-sm whitespace-nowrap">{b.startTime.slice(0, 5)}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-foreground truncate">{b.clientName}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {serviceNames(b.serviceName).join(", ") || t("dash.service_fallback")}
+                        </div>
+                      </div>
+                      <div className="text-sm font-semibold text-primary flex-shrink-0">{b.price.toLocaleString()} so'm</div>
+                    </button>
+                    <div className="grid grid-cols-2 gap-2 px-3 pb-3">
+                      <button
+                        type="button"
+                        data-testid={`keldi-${b.id}`}
+                        disabled={busyKey !== null}
+                        onClick={() => void markBookings([b], "completed")}
+                        className="h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-sm font-semibold disabled:opacity-40"
+                      >✅ Keldi</button>
+                      <button
+                        type="button"
+                        data-testid={`kelmadi-${b.id}`}
+                        disabled={busyKey !== null}
+                        onClick={() => void markBookings([b], "no_show")}
+                        className="h-10 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm font-semibold disabled:opacity-40"
+                      >❌ Kelmadi</button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+              <button
+                type="button"
+                data-testid="bulk-complete"
+                disabled={busyKey !== null}
+                onClick={() => void markBookings(reviewBookings, "completed")}
+                className="mt-3 w-full h-11 rounded-2xl bg-primary text-black text-sm font-bold disabled:opacity-40"
+              >{busyKey === "all" ? "Saqlanmoqda" : "🔘 Barchasini \"Bajarildi\" deb tasdiqlash"}</button>
+            </section>
+          )}
+
+          {upcomingBookings.length === 0 && reviewBookings.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
+                <CalendarDays className="w-6 h-6 text-muted-foreground/40" />
+              </div>
+              <p className="text-sm font-medium text-muted-foreground mb-1">Yaqin bronlar yo'q</p>
+              <p className="text-xs text-muted-foreground/50">Yangi bron qo'shish uchun + tugmasini bosing</p>
             </div>
-            <p className="text-sm font-medium text-muted-foreground mb-1">Yaqin bronlar yo'q</p>
-            <p className="text-xs text-muted-foreground/50">
-              Yangi bron qo'shish uchun + tugmasini bosing
-            </p>
-          </div>
-        )}
-      </motion.div>
+          )}
+        </div>
+      )}
 
       {/* Booking detail modal */}
       <AnimatePresence>

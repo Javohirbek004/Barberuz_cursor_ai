@@ -20,7 +20,7 @@ export const bookingsTable = pgTable(
     bookingTime: timestamp("booking_time", { withTimezone: true }),
     price: numeric("price", { precision: 10, scale: 2 }).notNull().default("0"),
     status: text("status", {
-      enum: ["pending", "confirmed", "completed", "cancelled", "auto_cancelled"],
+      enum: ["pending", "confirmed", "completed", "cancelled", "auto_cancelled", "no_show"],
     }).notNull().default("confirmed"),
     /** Client tapped "I will come" in Telegram. Existing rows stay true so they are not auto-cancelled. */
     clientConfirmed: boolean("client_confirmed").notNull().default(true),

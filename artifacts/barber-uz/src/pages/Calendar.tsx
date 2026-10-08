@@ -55,6 +55,7 @@ const STATUS_CARD: Record<string, string> = {
   completed: "border-blue-400/20 bg-blue-500/5",
   cancelled:  "border-red-500/20 bg-red-500/5 opacity-60",
   auto_cancelled: "border-red-500/20 bg-red-500/5 opacity-60",
+  no_show: "border-red-500/20 bg-red-500/5 opacity-60",
   pending:    "border-amber-400/25 bg-amber-400/5",
 };
 const STATUS_DOT: Record<string, string> = {
@@ -62,6 +63,7 @@ const STATUS_DOT: Record<string, string> = {
   completed: "bg-blue-400/70",
   cancelled:  "bg-red-500",
   auto_cancelled: "bg-red-500",
+  no_show: "bg-red-500",
   pending:    "bg-amber-400",
 };
 const STATUS_LABEL: Record<string, string> = {
@@ -69,6 +71,7 @@ const STATUS_LABEL: Record<string, string> = {
   completed: "Yakunlandi",
   cancelled:  "Bekor qilindi",
   auto_cancelled: "Avtomatik bekor",
+  no_show: "Kelmadi",
   pending:    "Kutilmoqda",
 };
 const STATUS_TEXT: Record<string, string> = {
@@ -76,6 +79,7 @@ const STATUS_TEXT: Record<string, string> = {
   completed: "text-blue-400/80",
   cancelled:  "text-red-400",
   auto_cancelled: "text-red-400",
+  no_show: "text-red-400",
   pending:    "text-amber-400",
 };
 

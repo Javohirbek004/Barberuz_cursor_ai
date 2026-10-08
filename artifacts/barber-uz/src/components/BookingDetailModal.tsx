@@ -11,6 +11,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+import { isElapsedBooking } from "@/lib/booking-feed";
 
 const UZ_SHORT_MONTHS = [
   "Yan","Fev","Mar","Apr","May","Iyn","Iyl","Avg","Sen","Okt","Noy","Dek",
@@ -309,9 +310,16 @@ export function BookingDetailModal({
   };
 
   // ── Booking status actions ─────────────────────────────────────
+  const [priceText, setPriceText] = useState(String(booking.price));
+  useEffect(() => { setPriceText(String(booking.price)); }, [booking.id, booking.price]);
+  const editedPrice = (() => {
+    const value = Number(String(priceText).replace(/\s/g, "").replace(",", "."));
+    return Number.isFinite(value) && value >= 0 ? value : Number(booking.price);
+  })();
+
   const handleComplete = () => {
     updateBookingMut.mutate(
-      { bookingId: booking.id, data: { status: "completed" } },
+      { bookingId: booking.id, data: { status: "completed", price: editedPrice } },
       {
         onSuccess: () => {
           onClose();
@@ -319,9 +327,23 @@ export function BookingDetailModal({
           onRefetchStats?.();
           toast({
             title: "✓ Muvaffaqiyatli yakunlandi",
-            description: `${booking.clientName} — ${booking.price.toLocaleString()} so'm daromadga qo'shildi`,
+            description: `${booking.clientName} — ${editedPrice.toLocaleString()} so'm daromadga qo'shildi`,
             duration: 3000,
           });
+        },
+      },
+    );
+  };
+
+  const handleNoShow = () => {
+    updateBookingMut.mutate(
+      { bookingId: booking.id, data: { status: "no_show" as "cancelled" } },
+      {
+        onSuccess: () => {
+          onClose();
+          onRefetch();
+          onRefetchStats?.();
+          toast({ title: "Kelmadi", description: "Bu bron daromadga qo'shilmadi" });
         },
       },
     );
@@ -342,7 +364,8 @@ export function BookingDetailModal({
 
   const isBusy = updateBookingMut.isPending;
   const bookingStatus = booking.status as string;
-  const isActive = bookingStatus !== "cancelled" && bookingStatus !== "auto_cancelled" && bookingStatus !== "completed";
+  const isActive = bookingStatus !== "cancelled" && bookingStatus !== "auto_cancelled" && bookingStatus !== "completed" && bookingStatus !== "no_show";
+  const needsReview = isActive && isElapsedBooking(booking.date, booking.startTime);
   const dateLabel = formatBookingDate(booking.date);
   const phone = clientData?.phone ?? parsedPhone;
 
@@ -396,23 +419,37 @@ export function BookingDetailModal({
             <div className="flex items-center justify-between py-3 border-b border-white/5">
               <span className="text-sm text-muted-foreground">Telefon raqami</span>
               {phone ? (
-                <a
-                  href={`tel:${phone}`}
-                  className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-semibold text-sm hover:bg-emerald-500/18 active:scale-95 transition-all"
-                >
-                  <PhoneCall className="w-4 h-4 flex-shrink-0" />
-                  {phone}
-                </a>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">{phone}</span>
+                  <a
+                    href={`tel:${phone}`}
+                    data-testid="call-client"
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-semibold text-sm hover:bg-emerald-500/18 active:scale-95 transition-all"
+                  >
+                    <PhoneCall className="w-4 h-4 flex-shrink-0" />
+                    Qo'ng'iroq qilish
+                  </a>
+                </div>
               ) : (
                 <span className="text-sm text-muted-foreground/40">—</span>
               )}
             </div>
 
-            <div className="flex items-center justify-between py-3 border-b border-white/5">
+            <div className="flex items-center justify-between py-3 border-b border-white/5 gap-3">
               <span className="text-sm text-muted-foreground">Narxi</span>
-              <span className="text-xl font-bold text-primary">
-                {booking.price.toLocaleString()} so'm
-              </span>
+              {isActive ? (
+                <label className="flex items-center gap-2">
+                  <input
+                    inputMode="decimal"
+                    value={priceText}
+                    onChange={(event) => setPriceText(event.target.value)}
+                    className="w-28 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-right text-lg font-bold text-primary outline-none"
+                  />
+                  <span className="text-sm text-muted-foreground">so'm</span>
+                </label>
+              ) : (
+                <span className="text-xl font-bold text-primary">{booking.price.toLocaleString()} so'm</span>
+              )}
             </div>
             <div className="flex items-center justify-between py-2">
               <span className="text-sm text-muted-foreground">Holat</span>
@@ -425,6 +462,7 @@ export function BookingDetailModal({
                 {booking.status === "confirmed" ? "Tasdiqlangan" :
                  booking.status === "pending"   ? "Kutilmoqda" :
                  booking.status === "completed" ? "Yakunlangan" :
+                 bookingStatus === "no_show" ? "Kelmadi" :
                  bookingStatus === "auto_cancelled" ? "Avtomatik bekor" : "Bekor qilingan"}
               </span>
             </div>
@@ -462,7 +500,32 @@ export function BookingDetailModal({
           )}
 
           {/* ── Section 4: Action buttons ── */}
-          {isActive && !confirmCancel && (
+          {needsReview && (
+            <div className="pt-4 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={handleNoShow}
+                disabled={isBusy}
+                data-testid="modal-kelmadi"
+                className="flex items-center justify-center gap-2 py-3.5 rounded-2xl border border-red-500/30 text-red-400 text-sm font-semibold hover:bg-red-500/10 active:scale-[0.98] transition-all disabled:opacity-40"
+              >
+                <XCircle className="w-4 h-4" />
+                ❌ Kelmadi
+              </button>
+              <button
+                type="button"
+                onClick={handleComplete}
+                disabled={isBusy}
+                data-testid="modal-keldi"
+                className="flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/25 active:scale-[0.98] transition-all disabled:opacity-40"
+              >
+                <CheckCircle className="w-4 h-4" />
+                {isBusy ? "..." : "✅ Keldi va to'ladi"}
+              </button>
+            </div>
+          )}
+
+          {isActive && !needsReview && !confirmCancel && (
             <div className="pt-4 grid grid-cols-2 gap-3">
               <button
                 onClick={() => setConfirmCancel(true)}
@@ -483,7 +546,7 @@ export function BookingDetailModal({
             </div>
           )}
 
-          {isActive && confirmCancel && (
+          {isActive && !needsReview && confirmCancel && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -522,7 +585,7 @@ export function BookingDetailModal({
                 ? "bg-red-500/10 text-red-400 border border-red-500/15"
                 : "bg-blue-500/10 text-blue-400 border border-blue-500/15"
             }`}>
-              {bookingStatus === "auto_cancelled" ? "✕  Avtomatik bekor" : bookingStatus === "cancelled" ? "✕  Bekor qilingan" : "✓  Yakunlangan"}
+              {bookingStatus === "no_show" ? "✕  Kelmadi" : bookingStatus === "auto_cancelled" ? "✕  Avtomatik bekor" : bookingStatus === "cancelled" ? "✕  Bekor qilingan" : "✓  Yakunlangan"}
             </div>
           )}
         </div>

@@ -50,6 +50,10 @@ async function findOrCreateClient(
   return newClient.id;
 }
 
+const BOOKING_STATUSES = new Set([
+  "pending", "confirmed", "completed", "cancelled", "auto_cancelled", "no_show",
+]);
+
 function formatBooking(b: typeof bookingsTable.$inferSelect) {
   return {
     id: b.id,
@@ -124,7 +128,7 @@ router.post("/", authenticate, async (req, res) => {
         and(
           eq(bookingsTable.barberId, user.id),
           eq(bookingsTable.date, date),
-          notInArray(bookingsTable.status, ["cancelled", "auto_cancelled"]),
+          notInArray(bookingsTable.status, ["cancelled", "auto_cancelled", "no_show"]),
         ),
       );
     // "Oraliq tanaffus": keep the barber's preparation gap between two services.
@@ -236,6 +240,10 @@ router.put("/:bookingId", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
     const { clientName, serviceId, date, startTime, endTime, price, status, notes } = req.body;
+    if (status !== undefined && !BOOKING_STATUSES.has(status)) {
+      res.status(400).json({ error: "validation", message: "Unknown status" });
+      return;
+    }
     const [booking] = await db.update(bookingsTable)
       .set({
         ...(clientName !== undefined && { clientName }),
@@ -264,6 +272,10 @@ router.patch("/:bookingId", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
     const { clientName, serviceId, date, startTime, endTime, price, status, notes } = req.body;
+    if (status !== undefined && !BOOKING_STATUSES.has(status)) {
+      res.status(400).json({ error: "validation", message: "Unknown status" });
+      return;
+    }
     const [booking] = await db.update(bookingsTable)
       .set({
         ...(clientName !== undefined && { clientName }),
