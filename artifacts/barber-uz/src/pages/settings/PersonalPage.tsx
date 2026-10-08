@@ -1500,7 +1500,7 @@ function BookingModal({ selectedServices, totalDuration, isTeam, barberId, profi
               <motion.div key="verifying" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-10">
                 <div className="w-20 h-20 rounded-3xl bg-[#2AABEE]/10 border border-[#2AABEE]/20 flex items-center justify-center text-4xl mx-auto mb-5">💬</div>
                 <h2 className="text-lg font-bold mb-1">Telegram bot kutilmoqda</h2>
-                <p className="text-sm text-muted-foreground mb-6">Telegram botda <b>✅ Tasdiqlash</b> tugmasini bosing</p>
+                <p className="text-sm text-muted-foreground mb-6">Telegram botda <b>✅ Ha, boraman</b> tugmasini bosing</p>
                 <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-6">
                   {[0, 0.2, 0.4].map((d, i) => <span key={i} className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: `${d}s` }} />)}
                   <span className="ml-1">Tasdiq kutilmoqda</span>

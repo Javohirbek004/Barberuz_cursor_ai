@@ -2301,7 +2301,7 @@ async function confirmBookingSession(
     reply_markup: bookingRowId
       ? {
           inline_keyboard: [[
-            { text: "\u2705 Tasdiqlash", callback_data: `confirm_${bookingRowId}` },
+            { text: "\u2705 Ha, boraman", callback_data: `confirm_${bookingRowId}` },
             { text: "\u274C Bekor qilish", callback_data: `cancel_${bookingRowId}` },
           ]],
         }

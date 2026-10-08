@@ -51,6 +51,9 @@ const ENSURE_SCHEMA_SQL = [
   )`,
   `CREATE INDEX IF NOT EXISTS "qr_scans_barber_id_idx" ON "qr_scans" ("barber_id")`,
   `CREATE INDEX IF NOT EXISTS "qr_scans_created_at_idx" ON "qr_scans" ("created_at")`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notif_client_evening" boolean DEFAULT true NOT NULL`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notif_client_quick" boolean DEFAULT true NOT NULL`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notif_client_auto_cancel" boolean DEFAULT true NOT NULL`,
   `CREATE TABLE IF NOT EXISTS "phone_update_intents" (
     "telegram_id" text PRIMARY KEY,
     "barber_slug" text,

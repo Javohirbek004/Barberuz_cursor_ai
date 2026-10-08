@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS users (
   notif_cancellation boolean NOT NULL DEFAULT true,
   notif_reminders boolean NOT NULL DEFAULT true,
   notif_reminder_minutes text NOT NULL DEFAULT '30',
+  notif_client_evening boolean NOT NULL DEFAULT true,
+  notif_client_quick boolean NOT NULL DEFAULT true,
+  notif_client_auto_cancel boolean NOT NULL DEFAULT true,
   slug_changed_at timestamptz,
   slug_change_count integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -42,6 +45,9 @@ CREATE TABLE IF NOT EXISTS users (
 );
 -- Older local databases were created before buffer_time existed.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS buffer_time integer NOT NULL DEFAULT 10;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_client_evening boolean NOT NULL DEFAULT true;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_client_quick boolean NOT NULL DEFAULT true;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_client_auto_cancel boolean NOT NULL DEFAULT true;
 
 CREATE INDEX IF NOT EXISTS users_phone_idx ON users (phone);
 CREATE INDEX IF NOT EXISTS users_telegram_id_idx ON users (telegram_id);

@@ -41,6 +41,12 @@ export const usersTable = pgTable(
     notifCancellation: boolean("notif_cancellation").notNull().default(true),
     notifReminders: boolean("notif_reminders").notNull().default(true),
     notifReminderMinutes: text("notif_reminder_minutes").notNull().default("30"),
+    /** Client Telegram: evening confirm request at 20:00 the day before. */
+    notifClientEvening: boolean("notif_client_evening").notNull().default(true),
+    /** Client Telegram: unconfirmed reminder when 1–3 hours remain. */
+    notifClientQuick: boolean("notif_client_quick").notNull().default(true),
+    /** Client Telegram: auto-cancel unconfirmed bookings inside the last hour. */
+    notifClientAutoCancel: boolean("notif_client_auto_cancel").notNull().default(true),
     slugChangedAt: timestamp("slug_changed_at", { withTimezone: true }),
     slugChangeCount: integer("slug_change_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

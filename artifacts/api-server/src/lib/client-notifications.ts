@@ -30,6 +30,9 @@ interface BarberCard {
   phoneVisible: boolean;
   username: string;
   telegramId: string | null;
+  eveningConfirm?: boolean;
+  quickReminder?: boolean;
+  autoCancel?: boolean;
 }
 
 interface BookingCard {
@@ -319,6 +322,9 @@ async function loadBarber(barberId: string): Promise<BarberCard | null> {
       phoneVisible: usersTable.phoneVisible,
       username: usersTable.username,
       telegramId: usersTable.telegramId,
+      eveningConfirm: usersTable.notifClientEvening,
+      quickReminder: usersTable.notifClientQuick,
+      autoCancel: usersTable.notifClientAutoCancel,
     })
     .from(usersTable)
     .where(eq(usersTable.id, barberId))
@@ -385,7 +391,7 @@ export async function deliverBookingReceipt(
 
   const service = booking.serviceName?.trim() || "Xizmat";
   const ok = await send(chat, receiptText(barber, service, booking.date, booking.startTime.slice(0, 5)), {
-    reply_markup: confirmKeyboard(booking.id, "✅ Tasdiqlash"),
+    reply_markup: confirmKeyboard(booking.id, "✅ Ha, boraman"),
   });
   if (!ok) return false;
 
@@ -448,7 +454,7 @@ export async function handleClientCancel(
   if (!barber) return;
 
   const minutesLeft = (appointmentMs(booking.date, booking.startTime) - Date.now()) / 60000;
-  if (minutesLeft <= 60) {
+  if (minutesLeft < 60) {
     await editOrSend(String(chatId), messageId, tooLateText(barber), { reply_markup: { inline_keyboard: [] } });
     return;
   }
@@ -515,12 +521,19 @@ export async function runClientNotificationCycle(now = Date.now()): Promise<void
     const minutesLeft = (appointmentMs(booking.date, time) - now) / 60000;
     const ageMin = (now - new Date(booking.createdAt).getTime()) / 60000;
 
-    if (!booking.clientConfirmed && minutesLeft <= 60 && minutesLeft > -180 && ageMin >= 5) {
+    if (
+      barber.autoCancel !== false &&
+      !booking.clientConfirmed &&
+      minutesLeft <= 60 &&
+      minutesLeft > -180 &&
+      ageMin >= 5
+    ) {
       await cancelUnconfirmed(booking, barber);
       continue;
     }
 
     if (
+      barber.eveningConfirm !== false &&
       clock.hour === 20 &&
       booking.date === tomorrow &&
       !booking.reminded24h
@@ -534,6 +547,7 @@ export async function runClientNotificationCycle(now = Date.now()): Promise<void
     }
 
     if (
+      barber.quickReminder !== false &&
       !booking.clientConfirmed &&
       !booking.remindedFollowup &&
       ageMin >= 5 &&
@@ -626,7 +640,7 @@ export async function sendReminderPreview(chatId: string | number): Promise<void
   };
   const receiptButtons = {
     inline_keyboard: [[
-      { text: "✅ Tasdiqlash", callback_data: "client_reminder_preview_confirm" },
+      { text: "✅ Ha, boraman", callback_data: "client_reminder_preview_confirm" },
       { text: "❌ Bekor qilish", callback_data: "client_reminder_preview_cancel" },
     ]],
   };

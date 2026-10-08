@@ -319,36 +319,49 @@ router.put("/password", authenticate, async (req, res) => {
   }
 });
 
-router.get("/notifications", authenticate, async (req, res) => {
-  const user = getUser(req);
-  res.json({
+function notificationPayload(user: {
+  notifNewBooking: boolean;
+  notifCancellation: boolean;
+  notifReminders: boolean;
+  notifReminderMinutes: string;
+  notifClientEvening: boolean;
+  notifClientQuick: boolean;
+  notifClientAutoCancel: boolean;
+}) {
+  return {
     newBooking: user.notifNewBooking,
     cancellation: user.notifCancellation,
     reminders: user.notifReminders,
     reminderMinutes: parseInt(user.notifReminderMinutes) || 30,
-  });
+    eveningConfirm: user.notifClientEvening,
+    quickReminder: user.notifClientQuick,
+    autoCancel: user.notifClientAutoCancel,
+  };
+}
+
+router.get("/notifications", authenticate, async (req, res) => {
+  const user = getUser(req);
+  res.json(notificationPayload(user));
 });
 
 router.put("/notifications", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
-    const { newBooking, cancellation, reminders, reminderMinutes } = req.body;
+    const { newBooking, cancellation, reminders, reminderMinutes, eveningConfirm, quickReminder, autoCancel } = req.body;
     await db.update(usersTable)
       .set({
         ...(newBooking !== undefined && { notifNewBooking: newBooking }),
         ...(cancellation !== undefined && { notifCancellation: cancellation }),
         ...(reminders !== undefined && { notifReminders: reminders }),
         ...(reminderMinutes !== undefined && { notifReminderMinutes: String(reminderMinutes) }),
+        ...(typeof eveningConfirm === "boolean" && { notifClientEvening: eveningConfirm }),
+        ...(typeof quickReminder === "boolean" && { notifClientQuick: quickReminder }),
+        ...(typeof autoCancel === "boolean" && { notifClientAutoCancel: autoCancel }),
         updatedAt: new Date(),
       })
       .where(eq(usersTable.id, user.id));
     const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, user.id)).limit(1);
-    res.json({
-      newBooking: updated.notifNewBooking,
-      cancellation: updated.notifCancellation,
-      reminders: updated.notifReminders,
-      reminderMinutes: parseInt(updated.notifReminderMinutes) || 30,
-    });
+    res.json(notificationPayload(updated));
   } catch (err) {
     res.status(500).json({ error: "server_error" });
   }
