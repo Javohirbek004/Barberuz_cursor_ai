@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db, bookingsTable, clientsTable, servicesTable } from "@workspace/db";
-import { eq, and, sql, or, gte, lte, inArray, ne } from "drizzle-orm";
+import { eq, and, sql, or, gte, lte, inArray, notInArray } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 import { sendDirectBookingNotification } from "../lib/telegram-bot";
+import { deliverBookingReceipt } from "../lib/client-notifications";
 
 const router = Router();
 
@@ -123,7 +124,7 @@ router.post("/", authenticate, async (req, res) => {
         and(
           eq(bookingsTable.barberId, user.id),
           eq(bookingsTable.date, date),
-          ne(bookingsTable.status, "cancelled"),
+          notInArray(bookingsTable.status, ["cancelled", "auto_cancelled"]),
         ),
       );
     // "Oraliq tanaffus": keep the barber's preparation gap between two services.
@@ -175,7 +176,7 @@ router.post("/", authenticate, async (req, res) => {
         .where(and(eq(clientsTable.id, resolvedClientId), eq(clientsTable.barberId, user.id)));
     }
 
-    const [booking] = await db.insert(bookingsTable).values({
+    let [booking] = await db.insert(bookingsTable).values({
       barberId: user.id,
       clientId: resolvedClientId,
       clientName,
@@ -188,6 +189,14 @@ router.post("/", authenticate, async (req, res) => {
       notes: notes || null,
       status: "confirmed",
     }).returning();
+
+    if (booking && rawPhone) {
+      const sent = await deliverBookingReceipt(booking.id, { phone: rawPhone }).catch(() => false);
+      if (sent) {
+        const [fresh] = await db.select().from(bookingsTable).where(eq(bookingsTable.id, booking.id)).limit(1);
+        if (fresh) booking = fresh;
+      }
+    }
 
     // Send Telegram notification to barber (non-blocking — never crashes booking flow)
     sendDirectBookingNotification({

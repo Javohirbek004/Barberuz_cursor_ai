@@ -48,10 +48,14 @@ function toMins(hhmm: string): number {
   return h * 60 + m;
 }
 
+function isDroppedBooking(status: string): boolean {
+  return status === "cancelled" || status === "auto_cancelled";
+}
+
 function calcTotalDuration(bookings: Booking[]): string {
   let total = 0;
   for (const b of bookings) {
-    if (b.status === "cancelled") continue;
+    if (isDroppedBooking(b.status)) continue;
     total += toMins(b.endTime) - toMins(b.startTime);
   }
   const h = Math.floor(total / 60);
@@ -391,13 +395,13 @@ function IndividualDashboard() {
 
   // Upcoming bookings from today onward — shown in the "Yaqin bronlar" display list
   const upcomingBookings = (upcomingData?.bookings ?? [])
-    .filter((b) => b.status !== "cancelled" && b.status !== "completed")
+    .filter((b) => !isDroppedBooking(b.status) && b.status !== "completed")
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
     .slice(0, 10);
 
   // Today's upcoming only — used for "next booking" time calculation (same-day, time-based)
   const todayUpcoming = bookings
-    .filter((b) => b.status !== "cancelled" && b.status !== "completed")
+    .filter((b) => !isDroppedBooking(b.status) && b.status !== "completed")
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   // Compute free time windows from today's own working hours (per weekday) and bookings
@@ -409,7 +413,7 @@ function IndividualDashboard() {
   const todayHours = resolveDaySchedule(extraProfile, today);
   const workStart = toMins(todayHours.start);
   const workEnd   = toMins(todayHours.end);
-  const todayBusy = bookings.filter(b => b.status !== "cancelled");
+  const todayBusy = bookings.filter(b => !isDroppedBooking(b.status));
   const lunchBusy =
     extraProfile.lunchBreakEnabled && extraProfile.lunchBreakStart && extraProfile.lunchBreakEnd
       ? [{ startTime: extraProfile.lunchBreakStart, endTime: extraProfile.lunchBreakEnd }]
@@ -425,7 +429,7 @@ function IndividualDashboard() {
   const todayTotal      = todayBusy.length;
   const todayCompleted  = bookings.filter(b => b.status === "completed").length;
   const todayRemaining  = bookings.filter(b => b.status === "confirmed" || b.status === "pending").length;
-  const todayCancelled  = bookings.filter(b => b.status === "cancelled").length;
+  const todayCancelled  = bookings.filter(b => isDroppedBooking(b.status)).length;
   const todayDurMins    = todayBusy.reduce((s, b) => s + toMins(b.endTime) - toMins(b.startTime), 0);
 
   const durationLabel = calcTotalDuration(todayUpcoming);

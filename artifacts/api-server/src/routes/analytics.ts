@@ -150,7 +150,7 @@ router.get("/solo", authenticate, async (req, res) => {
     ]);
 
     const completed = bookings.filter(b => b.status === "completed" || b.status === "confirmed");
-    const cancelled = bookings.filter(b => b.status === "cancelled");
+    const cancelled = bookings.filter(b => b.status === "cancelled" || b.status === "auto_cancelled");
     const prevCompleted = prevBookings.filter(b => b.status === "completed" || b.status === "confirmed");
 
     const revenue = completed.reduce((s, b) => s + Number(b.price), 0);
@@ -247,7 +247,7 @@ router.get("/team", authenticate, async (req, res) => {
     ]);
 
     const completed = bookings.filter(b => b.status === "completed" || b.status === "confirmed");
-    const cancelled = bookings.filter(b => b.status === "cancelled");
+    const cancelled = bookings.filter(b => b.status === "cancelled" || b.status === "auto_cancelled");
     const prevCompleted = prevBookings.filter(b => b.status === "completed" || b.status === "confirmed");
 
     const revenue = completed.reduce((s, b) => s + Number(b.price), 0);
@@ -619,8 +619,8 @@ router.get("/barber/:barberId", authenticate, async (req, res) => {
       return;
     }
 
-    const active = bookings.filter(b => b.status !== "cancelled");
-    const cancelled = bookings.filter(b => b.status === "cancelled");
+    const active = bookings.filter(b => b.status !== "cancelled" && b.status !== "auto_cancelled");
+    const cancelled = bookings.filter(b => b.status === "cancelled" || b.status === "auto_cancelled");
 
     const revenue = active.reduce((s, b) => s + Number(b.price), 0);
     const uniqueClients = new Set(active.filter(b => b.clientId).map(b => b.clientId)).size;

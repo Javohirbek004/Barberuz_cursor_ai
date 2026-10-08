@@ -1,4 +1,4 @@
-import { pgTable, text, numeric, timestamp, uuid, date, index } from "drizzle-orm/pg-core";
+import { pgTable, text, numeric, boolean, timestamp, uuid, date, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -20,8 +20,14 @@ export const bookingsTable = pgTable(
     bookingTime: timestamp("booking_time", { withTimezone: true }),
     price: numeric("price", { precision: 10, scale: 2 }).notNull().default("0"),
     status: text("status", {
-      enum: ["pending", "confirmed", "completed", "cancelled"],
+      enum: ["pending", "confirmed", "completed", "cancelled", "auto_cancelled"],
     }).notNull().default("confirmed"),
+    /** Client tapped "I will come" in Telegram. Existing rows stay true so they are not auto-cancelled. */
+    clientConfirmed: boolean("client_confirmed").notNull().default(true),
+    clientTelegramId: text("client_telegram_id"),
+    reminded24h: boolean("reminded_24h").notNull().default(false),
+    reminded1h: boolean("reminded_1h").notNull().default(false),
+    remindedFollowup: boolean("reminded_followup").notNull().default(false),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

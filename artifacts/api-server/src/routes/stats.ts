@@ -89,11 +89,11 @@ router.get("/dashboard", authenticate, async (req, res) => {
     res.json({
       scans: 0,
       clicks: 0,
-      todayBookings: todayBookings.filter(b => b.status !== "cancelled").length,
+      todayBookings: todayBookings.filter(b => b.status !== "cancelled" && b.status !== "auto_cancelled").length,
       todayCompleted,
       todayRevenue,
       monthRevenue,
-      weekBookings: weekBookings.filter(b => b.status !== "cancelled").length,
+      weekBookings: weekBookings.filter(b => b.status !== "cancelled" && b.status !== "auto_cancelled").length,
       weekRevenue,
       totalClients: Number(totalClients),
       newClientsThisMonth: Number(newClientsThisMonth),

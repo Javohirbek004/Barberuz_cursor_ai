@@ -35,6 +35,11 @@ function postgresPoolConfig(rawUrl: string) {
  */
 const ENSURE_SCHEMA_SQL = [
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "buffer_time" integer DEFAULT 10 NOT NULL`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "client_confirmed" boolean DEFAULT true NOT NULL`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "client_telegram_id" text`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_24h" boolean DEFAULT false NOT NULL`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_1h" boolean DEFAULT false NOT NULL`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_followup" boolean DEFAULT false NOT NULL`,
 ];
 
 async function createDb() {
@@ -56,6 +61,13 @@ async function createDb() {
   const sqlPath = path.join(here, "local-schema.sql");
   if (existsSync(sqlPath)) {
     await client.exec(readFileSync(sqlPath, "utf8"));
+  }
+  for (const statement of ENSURE_SCHEMA_SQL) {
+    try {
+      await client.exec(statement);
+    } catch (err) {
+      console.error("[db] Local schema upgrade failed:", statement, err);
+    }
   }
   console.log("[db] Local PGlite database ready (Supabase not connected yet)");
   return { pool: undefined, db: drizzlePglite(client, { schema }) };

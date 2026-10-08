@@ -54,24 +54,28 @@ const STATUS_CARD: Record<string, string> = {
   confirmed: "border-emerald-500/25 bg-emerald-500/5",
   completed: "border-blue-400/20 bg-blue-500/5",
   cancelled:  "border-red-500/20 bg-red-500/5 opacity-60",
+  auto_cancelled: "border-red-500/20 bg-red-500/5 opacity-60",
   pending:    "border-amber-400/25 bg-amber-400/5",
 };
 const STATUS_DOT: Record<string, string> = {
   confirmed: "bg-emerald-500",
   completed: "bg-blue-400/70",
   cancelled:  "bg-red-500",
+  auto_cancelled: "bg-red-500",
   pending:    "bg-amber-400",
 };
 const STATUS_LABEL: Record<string, string> = {
   confirmed: "Tasdiqlandi",
   completed: "Yakunlandi",
   cancelled:  "Bekor qilindi",
+  auto_cancelled: "Avtomatik bekor",
   pending:    "Kutilmoqda",
 };
 const STATUS_TEXT: Record<string, string> = {
   confirmed: "text-emerald-400",
   completed: "text-blue-400/80",
   cancelled:  "text-red-400",
+  auto_cancelled: "text-red-400",
   pending:    "text-amber-400",
 };
 

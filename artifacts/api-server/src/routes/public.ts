@@ -8,7 +8,8 @@
 
 import { Router } from "express";
 import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable, clientsTable } from "@workspace/db";
-import { eq, and, lt, isNull, ne, or, sql, inArray } from "drizzle-orm";
+import { eq, and, lt, isNull, notInArray, or, sql, inArray } from "drizzle-orm";
+import { deliverBookingReceipt } from "../lib/client-notifications";
 import { randomBytes } from "crypto";
 import { sendBarberBookingNotification } from "../lib/telegram-bot";
 
@@ -140,7 +141,7 @@ router.post("/sessions", async (req, res) => {
         and(
           eq(bookingsTable.barberId, barberId),
           eq(bookingsTable.date, isoDate),
-          ne(bookingsTable.status, "cancelled"),
+          notInArray(bookingsTable.status, ["cancelled", "auto_cancelled"]),
         ),
       );
 
@@ -265,6 +266,10 @@ router.post("/sessions", async (req, res) => {
           await db.update(bookingSessionsTable)
             .set({ bookingId: inserted.id })
             .where(eq(bookingSessionsTable.sessionId, sessionId));
+          await deliverBookingReceipt(inserted.id, {
+            telegramId: tgIdStr,
+            phone: safeClientPhone,
+          }).catch((err) => console.error("[PublicAPI] client receipt failed:", err));
         }
       } catch (bookingErr) {
         console.error("[PublicAPI] booking row insert failed (non-fatal):", bookingErr);
@@ -402,7 +407,7 @@ router.get("/barber/:slug/slots", async (req, res) => {
         and(
           eq(bookingsTable.barberId, barber.id),
           eq(bookingsTable.date, date),
-          ne(bookingsTable.status, "cancelled"),
+          notInArray(bookingsTable.status, ["cancelled", "auto_cancelled"]),
         ),
       );
 

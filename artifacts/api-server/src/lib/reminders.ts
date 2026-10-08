@@ -7,16 +7,16 @@
  *   — 15-min upcoming-client alert (replaces old 30-min)
  *   — Morning digest at 08:30 Tashkent time with today's full schedule
  *
- *  CLIENT (requires clientTelegramId on the session):
- *   — 24h-before reminder with "Confirm" / "Cancel" inline buttons
- *   — 1h-before final alert with location/map link
+ *  CLIENT:
+ *   Handled in client-notifications.ts (receipt, 20:00 reminder, follow-up, 1h, auto-cancel).
  *
  * Reminder state is tracked in-memory via sentReminders Set (key = sessionId:window).
  * Server restarts clear the set; reminders won't re-fire within the same time window.
  */
 
 import { db, bookingSessionsTable, bookingsTable, usersTable } from "@workspace/db";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, inArray, isNull } from "drizzle-orm";
+import { runClientNotificationCycle } from "./client-notifications";
 
 const TELEGRAM_API = "https://api.telegram.org";
 const TASHKENT_UTC_OFFSET_MS = 5 * 60 * 60 * 1000; // UTC+5
@@ -127,31 +127,6 @@ function buildBarberMorningSummary(
   );
 }
 
-function buildClient24hText(clientName: string, data: BookingData): string {
-  const serviceNames  = data.services.map(s => s.name).join(", ");
-  const addressLine   = data.barberAddress ? `\n\uD83D\uDCCD Manzil: ${data.barberAddress}` : "";
-  return (
-    `\u23F0 <b>Eslatma!</b> Ertaga navbatingiz bor!\n\n` +
-    `\uD83D\uDC88 ${data.barberName}\n` +
-    `\u2702\uFE0F Xizmat: ${serviceNames}\n` +
-    `\uD83D\uDD50 Vaqt: <b>${data.time}</b>` +
-    `${addressLine}\n\n` +
-    `Tasdiqlaysizmi?`
-  );
-}
-
-function buildClient1hText(data: BookingData): string {
-  const addressLine = data.barberAddress ? `\n\uD83D\uDCCD Manzil: ${data.barberAddress}` : "";
-  const mapLine     = data.mapLink       ? `\n\uD83D\uDDFA ${data.mapLink}`               : "";
-  return (
-    `\u2702\uFE0F <b>Eslatma:</b> Broningizga <b>1 soat</b> qoldi!\n\n` +
-    `\uD83D\uDD50 Soat <b>${data.time}</b> da` +
-    `${addressLine}` +
-    `${mapLine}\n\n` +
-    `Kutamiz! \u2702\uFE0F`
-  );
-}
-
 async function checkAndSendReminders(): Promise<void> {
   const token = getToken();
   if (!token) return;
@@ -160,7 +135,8 @@ async function checkAndSendReminders(): Promise<void> {
   const { hour, minute, dateStr: todayStr } = nowInTashkent();
 
   try {
-    // ── Session-based reminders (barber 15-min + client 24h/1h) ─────────────
+    await runClientNotificationCycle(nowMs);
+    // ── Session-based reminders (barber 15-min) ──────────────────────────────
     const sessions = await db
       .select()
       .from(bookingSessionsTable)
@@ -208,33 +184,6 @@ async function checkAndSendReminders(): Promise<void> {
         }
       }
 
-      // ── Client 24h reminder ─────────────────────────────────────────────
-      if (session.clientTelegramId) {
-        const key24 = `${session.sessionId}:client_24h`;
-        if (!sentReminders.has(key24) && diffMinutes <= 24 * 60 && diffMinutes > 23 * 60) {
-          const clientName = session.clientName?.split(" ")[0] || "Mijoz";
-          const text = buildClient24hText(clientName, data);
-          await sendTelegramMessage(session.clientTelegramId, text, {
-            reply_markup: {
-              inline_keyboard: [[
-                { text: "\u2705 Tasdiqlash",    callback_data: `client_reminder_confirm_${session.sessionId}` },
-                { text: "\u274C Bekor qilish", callback_data: `client_reminder_cancel_${session.sessionId}` },
-              ]],
-            },
-          });
-          sentReminders.add(key24);
-          console.log(`[Reminders] client_24h sent: ${session.sessionId}`);
-        }
-
-        // ── Client 1h final reminder ────────────────────────────────────
-        const key1h = `${session.sessionId}:client_1h`;
-        if (!sentReminders.has(key1h) && diffMinutes <= 60 && diffMinutes > 55) {
-          const text = buildClient1hText(data);
-          await sendTelegramMessage(session.clientTelegramId, text);
-          sentReminders.add(key1h);
-          console.log(`[Reminders] client_1h sent: ${session.sessionId}`);
-        }
-      }
     }
 
     // ── Barber morning summary (08:30–08:34 Tashkent) ────────────────────────
@@ -244,7 +193,7 @@ async function checkAndSendReminders(): Promise<void> {
         .from(bookingsTable)
         .where(and(
           eq(bookingsTable.date, todayStr),
-          eq(bookingsTable.status, "confirmed"),
+          inArray(bookingsTable.status, ["confirmed", "pending"]),
         ));
 
       const byBarber = new Map<string, typeof todayBookings>();
@@ -307,57 +256,3 @@ export function stopReminderJob(): void {
   }
 }
 
-/** Sends the real client reminder texts to this chat, with sample booking details. */
-export async function sendClientReminderPreview(chatId: string | number): Promise<void> {
-  const id = String(chatId);
-  let barberName = "Barber.uz";
-  let barberAddress = "Toshkent, Chilonzor";
-  let mapLink = "";
-
-  try {
-    const [user] = await db
-      .select({
-        name: usersTable.name,
-        brandName: usersTable.brandName,
-        address: usersTable.address,
-        mapLink: usersTable.mapLink,
-      })
-      .from(usersTable)
-      .where(eq(usersTable.telegramId, id))
-      .limit(1);
-    if (user) {
-      barberName = user.brandName || user.name || barberName;
-      if (user.address) barberAddress = user.address;
-      if (user.mapLink) mapLink = user.mapLink;
-    }
-  } catch {
-    // Sample names are enough for a preview.
-  }
-
-  const sample: BookingData = {
-    barberName,
-    barberAddress,
-    mapLink,
-    barberPageLink: "",
-    isTeam: false,
-    teamBarberName: null,
-    date: "ertaga",
-    time: "15:00",
-    totalPrice: 80_000,
-    services: [{ name: "Soch olish", price: 80_000, duration: 40 }],
-  };
-
-  await sendTelegramMessage(
-    id,
-    "Bu sinov. Haqiqiy mijozga xabar ketmadi.\n\nQuyida mijoz ko\u02BBradigan eslatmalar.",
-  );
-  await sendTelegramMessage(id, buildClient24hText("Ali", sample), {
-    reply_markup: {
-      inline_keyboard: [[
-        { text: "\u2705 Tasdiqlash", callback_data: "client_reminder_preview_confirm" },
-        { text: "\u274C Bekor qilish", callback_data: "client_reminder_preview_cancel" },
-      ]],
-    },
-  });
-  await sendTelegramMessage(id, buildClient1hText(sample));
-}
