@@ -7,8 +7,8 @@
  */
 
 import { Router } from "express";
-import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable, clientsTable } from "@workspace/db";
-import { eq, and, lt, isNull, notInArray, or, sql, inArray } from "drizzle-orm";
+import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable, clientsTable, phoneUpdateIntentsTable } from "@workspace/db";
+import { eq, and, lt, isNull, notInArray, or, sql, inArray, desc } from "drizzle-orm";
 import { deliverBookingReceipt } from "../lib/client-notifications";
 import { randomBytes } from "crypto";
 import { sendBarberBookingNotification } from "../lib/telegram-bot";
@@ -369,6 +369,50 @@ router.get("/sessions/:sessionId", async (req, res) => {
     });
   } catch (err) {
     console.error("[PublicAPI] GET /sessions/:id error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+/**
+ * GET /api/public/client-phone?tgId=123
+ * Latest phone saved for this Telegram user after they share their contact.
+ */
+router.get("/client-phone", async (req, res) => {
+  try {
+    const tgId = String(req.query.tgId || "").replace(/\D/g, "");
+    if (tgId.length < 5 || tgId.length > 20) {
+      res.status(400).json({ error: "bad_id" });
+      return;
+    }
+
+    const [client] = await db
+      .select({ phone: clientsTable.phone, updatedAt: clientsTable.updatedAt })
+      .from(clientsTable)
+      .where(eq(clientsTable.telegramId, tgId))
+      .orderBy(desc(clientsTable.updatedAt))
+      .limit(1);
+
+    let intentPhone: string | null = null;
+    let intentAt = 0;
+    try {
+      const [intent] = await db
+        .select({ phone: phoneUpdateIntentsTable.phone, updatedAt: phoneUpdateIntentsTable.updatedAt })
+        .from(phoneUpdateIntentsTable)
+        .where(eq(phoneUpdateIntentsTable.telegramId, tgId))
+        .limit(1);
+      if (intent?.phone) {
+        intentPhone = intent.phone;
+        intentAt = intent.updatedAt ? new Date(intent.updatedAt).getTime() : 0;
+      }
+    } catch {
+      // The intent table is created on startup. A miss here still returns the client phone.
+    }
+
+    const clientAt = client?.updatedAt ? new Date(client.updatedAt).getTime() : 0;
+    const phone = intentPhone && intentAt >= clientAt ? intentPhone : (client?.phone || intentPhone || null);
+    res.json({ phone });
+  } catch (err) {
+    console.error("[PublicAPI] GET /client-phone error:", err);
     res.status(500).json({ error: "server_error" });
   }
 });

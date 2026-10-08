@@ -5,6 +5,8 @@
  *  Registration : https://t.me/BARBERUZ_YORDAMCHI_BOT?start=reg_{uuid}_{lang}
  *  Login        : https://t.me/BARBERUZ_YORDAMCHI_BOT?start=auth_{code}_{lang}
  *  Password reset: https://t.me/BARBERUZ_YORDAMCHI_BOT?start=reset_password
+ *  Phone update : https://t.me/BARBERUZ_YORDAMCHI_BOT?start=update_phone
+ *                 or start=update_phone_<barberSlug> to return to that page
  *
  * Registration flow:
  *  1. /start reg_{uuid}_{lang}  → look up user by uuid → ask phone
@@ -21,7 +23,7 @@
  */
 
 import { randomBytes } from "crypto";
-import { db, usersTable, bookingSessionsTable, bookingsTable, clientsTable } from "@workspace/db";
+import { db, usersTable, bookingSessionsTable, bookingsTable, clientsTable, phoneUpdateIntentsTable } from "@workspace/db";
 import { eq, and, or, isNull, desc, sql } from "drizzle-orm";
 import { generateToken, hashPassword } from "./auth";
 import {
@@ -92,6 +94,10 @@ const pendingNoPayloadLogins = new Map<number, Date>();
 
 /** Customer booking phone verification: chatId → sessionId */
 const pendingBookingVerifications = new Map<number, string>();
+
+/** Client phone refresh: telegram user id → barber page to reopen */
+const pendingPhoneUpdates = new Map<string, { slug: string | null; at: number }>();
+const PHONE_UPDATE_TTL_MS = 30 * 60 * 1000;
 
 type PasswordResetState =
   | { step: "phone"; expiresAt: number }
@@ -456,7 +462,10 @@ type LogAction =
   | "reminder_sent"
   | "password_reset_start"
   | "password_reset_not_found"
-  | "password_reset_done";
+  | "password_reset_done"
+  | "phone_update_start"
+  | "phone_update_done"
+  | "phone_update_rejected";
 
 function log(
   action: LogAction,
@@ -727,6 +736,16 @@ export async function handleTelegramUpdate(update: unknown) {
       return;
     }
 
+    // Client asked to replace their phone with the Telegram-linked number.
+    // Checked before booking so a half-finished bron does not take the contact.
+    if (payload === "update_phone" || payload.startsWith("update_phone_")) {
+      const slug = payload.startsWith("update_phone_")
+        ? payload.slice("update_phone_".length)
+        : "";
+      await handlePhoneUpdateStart(chatId, from, slug);
+      return;
+    }
+
     // Customer booking deep-link
     const bookingParsed = parseBookingPayload(payload);
     if (bookingParsed) {
@@ -773,6 +792,24 @@ export async function handleTelegramUpdate(update: unknown) {
         chat_id: chatId,
         text: "Iltimos, yangi parolni yozib yuboring.",
       });
+      return;
+    }
+
+    // Phone refresh must win over a pending booking, otherwise the contact
+    // confirms a bron instead of updating the saved number.
+    const senderId = String((from?.id as number | undefined) || chatId);
+    const phoneIntent = await getPhoneUpdateIntent(senderId);
+    if (phoneIntent) {
+      const contactUserId = contact.user_id != null ? String(contact.user_id) : "";
+      if (!contactUserId || (from?.id != null && contactUserId !== String(from.id))) {
+        log("phone_update_rejected", { chatId, telegramUserId: senderId });
+        await callTelegram("sendMessage", {
+          chat_id: chatId,
+          text: "Iltimos, o\u02BBzingizning telefon raqamingizni yuboring.",
+        });
+        return;
+      }
+      await completePhoneUpdate(chatId, senderId, phone, phoneIntent.barberSlug, from);
       return;
     }
 
@@ -855,12 +892,200 @@ export async function handleTelegramUpdate(update: unknown) {
       await sendContactRequest(chatId, "Barber");
       return;
     }
+    const phoneWait = await getPhoneUpdateIntent(String((from?.id as number | undefined) || chatId));
+    if (phoneWait) {
+      await sendPhoneUpdatePrompt(chatId, (from?.first_name as string) || "");
+      return;
+    }
   }
 }
 
 // ──────────────────────────────────────────────────────────────
 // Sub-handlers
 // ──────────────────────────────────────────────────────────────
+
+function escHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function plusPhone(raw: string | null | undefined): string {
+  const digits = (raw || "").replace(/\D/g, "");
+  return digits ? `+${digits}` : "";
+}
+
+function safeBarberSlug(raw: string): string | null {
+  const slug = raw.trim();
+  if (!/^[A-Za-z0-9_-]{1,48}$/.test(slug)) return null;
+  return slug;
+}
+
+async function rememberPhoneUpdateIntent(telegramId: string, slug: string | null) {
+  pendingPhoneUpdates.set(telegramId, { slug, at: Date.now() });
+  const now = new Date();
+  try {
+    const [existing] = await db
+      .select()
+      .from(phoneUpdateIntentsTable)
+      .where(eq(phoneUpdateIntentsTable.telegramId, telegramId))
+      .limit(1);
+    if (existing) {
+      await db.update(phoneUpdateIntentsTable).set({
+        barberSlug: slug,
+        pending: true,
+        createdAt: now,
+        updatedAt: now,
+      }).where(eq(phoneUpdateIntentsTable.telegramId, telegramId));
+    } else {
+      await db.insert(phoneUpdateIntentsTable).values({
+        telegramId,
+        barberSlug: slug,
+        pending: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  } catch (err) {
+    console.warn("[Bot] phone update intent not saved:", (err as Error).message);
+  }
+}
+
+async function getPhoneUpdateIntent(telegramId: string): Promise<{ barberSlug: string | null } | null> {
+  const mem = pendingPhoneUpdates.get(telegramId);
+  if (mem && Date.now() - mem.at < PHONE_UPDATE_TTL_MS) {
+    return { barberSlug: mem.slug };
+  }
+  if (mem) pendingPhoneUpdates.delete(telegramId);
+  try {
+    const [row] = await db
+      .select()
+      .from(phoneUpdateIntentsTable)
+      .where(eq(phoneUpdateIntentsTable.telegramId, telegramId))
+      .limit(1);
+    if (!row?.pending) return null;
+    const started = new Date(row.createdAt).getTime();
+    if (!Number.isFinite(started) || Date.now() - started > PHONE_UPDATE_TTL_MS) return null;
+    pendingPhoneUpdates.set(telegramId, { slug: row.barberSlug, at: started });
+    return { barberSlug: row.barberSlug };
+  } catch {
+    return null;
+  }
+}
+
+async function sendPhoneUpdatePrompt(chatId: number, firstName: string) {
+  const name = escHtml(firstName.trim() || "do'stim");
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    parse_mode: "HTML",
+    text: [
+      "📱 <b>Raqamni yangilashni tasdiqlash</b>",
+      "",
+      `<b>${name}</b>, telefon raqamingizni yangilash uchun pastdagi <b>"Raqamni yuborish"</b> tugmasini bosing.`,
+      "",
+      "<i>(Ushbu raqam Telegram akkauntingizga biriktirilgan rasmiy raqam bo'ladi)</i>",
+    ].join("\n"),
+    reply_markup: {
+      keyboard: [[{ text: "📲 Raqamni yuborish", request_contact: true }]],
+      resize_keyboard: true,
+      one_time_keyboard: true,
+    },
+  });
+}
+
+async function handlePhoneUpdateStart(
+  chatId: number,
+  from: Record<string, unknown> | undefined,
+  rawSlug: string,
+) {
+  const telegramId = String((from?.id as number | undefined) || chatId);
+  const slug = safeBarberSlug(rawSlug);
+  await rememberPhoneUpdateIntent(telegramId, slug);
+  log("phone_update_start", { chatId, telegramUserId: telegramId });
+  await sendPhoneUpdatePrompt(chatId, (from?.first_name as string) || "");
+}
+
+async function completePhoneUpdate(
+  chatId: number,
+  telegramId: string,
+  rawPhone: string | null,
+  barberSlug: string | null,
+  from: Record<string, unknown> | undefined,
+) {
+  const phone = plusPhone(rawPhone);
+  if (!phone) {
+    await sendPhoneUpdatePrompt(chatId, (from?.first_name as string) || "");
+    return;
+  }
+
+  const now = new Date();
+  try {
+    await db.update(clientsTable).set({
+      phone,
+      updatedAt: now,
+    }).where(eq(clientsTable.telegramId, telegramId));
+
+    const slug = barberSlug ? safeBarberSlug(barberSlug) : null;
+    if (slug) {
+      const [barber] = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(eq(usersTable.username, slug))
+        .limit(1);
+      if (barber) {
+        const [existing] = await db
+          .select({ id: clientsTable.id })
+          .from(clientsTable)
+          .where(and(eq(clientsTable.barberId, barber.id), eq(clientsTable.telegramId, telegramId)))
+          .limit(1);
+        if (!existing) {
+          const name = ((from?.first_name as string) || "").trim() || "Mijoz";
+          await db.insert(clientsTable).values({
+            barberId: barber.id,
+            name,
+            phone,
+            telegramId,
+            status: "new",
+          });
+        }
+      }
+    }
+
+    await db.update(phoneUpdateIntentsTable).set({
+      phone,
+      pending: false,
+      updatedAt: now,
+    }).where(eq(phoneUpdateIntentsTable.telegramId, telegramId));
+  } catch (err) {
+    console.error("[Bot] phone update failed:", err);
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Raqamni saqlab bo'lmadi. Iltimos, qayta urinib ko'ring.",
+      reply_markup: { remove_keyboard: true },
+    });
+    return;
+  }
+
+  pendingPhoneUpdates.delete(telegramId);
+  log("phone_update_done", { chatId, telegramUserId: telegramId });
+  const backUrl = rebookUrl(barberSlug);
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    parse_mode: "HTML",
+    text: [
+      "✅ <b>Raqamingiz muvaffaqiyatli yangilandi!</b>",
+      "",
+      `Yangi raqam: <b>${escHtml(phone)}</b>`,
+    ].join("\n"),
+    reply_markup: {
+      inline_keyboard: [[
+        { text: "📱 Bron qilishni davom ettirish", url: backUrl },
+      ]],
+    },
+  });
+}
 
 async function handleNoPayloadStart(
   chatId: number,

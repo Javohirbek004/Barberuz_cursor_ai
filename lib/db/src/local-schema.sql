@@ -59,6 +59,15 @@ CREATE TABLE IF NOT EXISTS clients (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS phone_update_intents (
+  telegram_id text PRIMARY KEY,
+  barber_slug text,
+  phone text,
+  pending boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS service_categories (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   barber_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,

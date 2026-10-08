@@ -40,6 +40,14 @@ const ENSURE_SCHEMA_SQL = [
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_24h" boolean DEFAULT false NOT NULL`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_1h" boolean DEFAULT false NOT NULL`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_followup" boolean DEFAULT false NOT NULL`,
+  `CREATE TABLE IF NOT EXISTS "phone_update_intents" (
+    "telegram_id" text PRIMARY KEY,
+    "barber_slug" text,
+    "phone" text,
+    "pending" boolean NOT NULL DEFAULT true,
+    "created_at" timestamptz NOT NULL DEFAULT now(),
+    "updated_at" timestamptz NOT NULL DEFAULT now()
+  )`,
 ];
 
 async function createDb() {

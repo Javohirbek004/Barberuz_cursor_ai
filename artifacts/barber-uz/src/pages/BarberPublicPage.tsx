@@ -122,6 +122,18 @@ interface SavedClient {
 
 const CLIENT_PROFILE_KEY = "barber_client_profile";
 const PENDING_SESSION_KEY = "barber_pending_session";
+const BOOKING_DRAFT_KEY = "barber_booking_draft";
+const DRAFT_TTL_MS = 30 * 60 * 1000;
+const BOT_USERNAME = "BARBERUZ_YORDAMCHI_BOT";
+
+interface BookingDraft {
+  slug: string;
+  serviceIds: string[];
+  date: string;
+  time: string;
+  name: string;
+  at: number;
+}
 
 function phoneDigits(value: string): string {
   return value.replace(/\D/g, "");
@@ -165,14 +177,52 @@ function saveClientProfile(profile: SavedClient) {
   window.dispatchEvent(new Event("barber-client-saved"));
 }
 
+function phoneUpdateLink(username: string): string {
+  const slug = username.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48);
+  const payload = slug ? `update_phone_${slug}` : "update_phone";
+  return `https://t.me/${BOT_USERNAME}?start=${payload}`;
+}
+
+function readBookingDraft(): BookingDraft | null {
+  try {
+    const raw = JSON.parse(localStorage.getItem(BOOKING_DRAFT_KEY) || "null") as BookingDraft | null;
+    if (!raw?.slug || !raw.time || !Array.isArray(raw.serviceIds)) return null;
+    if (Date.now() - Number(raw.at) > DRAFT_TTL_MS) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+function clearBookingDraft() {
+  localStorage.removeItem(BOOKING_DRAFT_KEY);
+}
+
+async function refreshSavedClientPhone() {
+  const profile = loadClientProfile();
+  if (!profile?.tgId) return;
+  try {
+    const res = await fetch(`/api/public/client-phone?tgId=${encodeURIComponent(profile.tgId)}`);
+    if (!res.ok) return;
+    const data = await res.json() as { phone?: string };
+    const phone = (data.phone || "").trim();
+    if (!phone || phone === profile.phone) return;
+    const latest = loadClientProfile() || profile;
+    saveClientProfile({ ...latest, phone });
+  } catch {
+    // Keep the number already saved on this phone.
+  }
+}
+
 function PublicBookingModal({
-  barber, selectedServices, totalDuration, totalPrice, onClose
+  barber, selectedServices, totalDuration, totalPrice, onClose, resume,
 }: {
   barber: BarberData;
   selectedServices: BarberData["services"];
   totalDuration: number;
   totalPrice: number;
   onClose: () => void;
+  resume?: BookingDraft | null;
 }) {
   // Calendar days are always Tashkent days, whatever the client's device timezone is.
   const todayISO    = tashkentTodayISO();
@@ -186,34 +236,56 @@ function PublicBookingModal({
     return todayISO;
   })();
 
-  const [step, setStep] = useState<PubBookingStep>("time");
-  const [dateOpt, setDateOpt] = useState<string>(firstOpenISO);
+  const resumeOk = !!(resume?.date && resume.time && resume.date >= todayISO);
+  const [step, setStep] = useState<PubBookingStep>(resumeOk ? "confirm" : "time");
+  const [dateOpt, setDateOpt] = useState<string>(resumeOk && resume ? resume.date : firstOpenISO);
   const [period, setPeriod] = useState<SlotPeriod>("all");
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [selectedTime, setSelectedTime] = useState<string | null>(resumeOk && resume ? resume.time : null);
   const savedClient = useRef(loadClientProfile());
-  const [clientName, setClientName] = useState(savedClient.current?.name || "");
+  const [clientName, setClientName] = useState(resume?.name || savedClient.current?.name || "");
   const [clientPhone, setClientPhone] = useState(savedClient.current?.phone || "");
   const [knownClient, setKnownClient] = useState(!!savedClient.current?.tgId);
   const [editingProfile, setEditingProfile] = useState(!!savedClient.current && !phoneReady(savedClient.current.phone));
+  const [phoneUpdateOpen, setPhoneUpdateOpen] = useState(false);
+  const editingRef = useRef(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [deepLink, setDeepLink] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [bookedDirect, setBookedDirect] = useState(false);
 
+  useEffect(() => { editingRef.current = editingProfile; }, [editingProfile]);
+
   useEffect(() => {
     const refresh = () => {
       const profile = loadClientProfile();
       if (!profile) return;
+      const phoneChanged = profile.phone !== (savedClient.current?.phone || "");
       savedClient.current = profile;
-      setClientName(profile.name);
+      if (!editingRef.current) setClientName(profile.name);
       setClientPhone(profile.phone);
       setKnownClient(true);
+      if (phoneChanged && phoneReady(profile.phone)) setPhoneUpdateOpen(false);
       if (!phoneReady(profile.phone)) setEditingProfile(true);
     };
     window.addEventListener("barber-client-saved", refresh);
     return () => window.removeEventListener("barber-client-saved", refresh);
   }, []);
+
+  useEffect(() => {
+    if (!phoneUpdateOpen) return;
+    const tick = () => { void refreshSavedClientPhone(); };
+    tick();
+    const id = window.setInterval(tick, 3000);
+    const onShow = () => { if (document.visibilityState === "visible") tick(); };
+    window.addEventListener("pageshow", tick);
+    document.addEventListener("visibilitychange", onShow);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("pageshow", tick);
+      document.removeEventListener("visibilitychange", onShow);
+    };
+  }, [phoneUpdateOpen]);
   const [busySlots, setBusySlots] = useState<{ startTime: string; endTime: string }[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -286,6 +358,7 @@ function PublicBookingModal({
     savedClient.current = next;
     setKnownClient(true);
     saveClientProfile(next);
+    clearBookingDraft();
   }
 
   async function createSession(direct: boolean) {
@@ -341,6 +414,7 @@ function PublicBookingModal({
       };
       savedClient.current = next;
       saveClientProfile(next);
+      clearBookingDraft();
       setBookedDirect(true);
       setStep("done");
       setSubmitting(false);
@@ -348,6 +422,31 @@ function PublicBookingModal({
       setFormError("Bron saqlanmadi. Qayta urinib ko'ring.");
       setSubmitting(false);
     }
+  }
+
+  function saveEditedName() {
+    if (!clientName.trim()) return;
+    const profile = savedClient.current;
+    if (profile) {
+      const next = { ...profile, name: clientName.trim(), phone: clientPhone.trim() };
+      savedClient.current = next;
+      saveClientProfile(next);
+    }
+    if (phoneReady(clientPhone)) setEditingProfile(false);
+  }
+
+  function leaveForPhoneUpdate() {
+    if (selectedTime) {
+      localStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify({
+        slug: barber.username,
+        serviceIds: selectedServices.map(s => s.id),
+        date: dateOpt,
+        time: selectedTime,
+        name: clientName.trim(),
+        at: Date.now(),
+      } satisfies BookingDraft));
+    }
+    window.location.assign(phoneUpdateLink(barber.username));
   }
 
   async function handleConfirm() {
@@ -562,10 +661,14 @@ function PublicBookingModal({
                         </div>
                         <div className="space-y-1.5">
                           <label className="text-xs font-semibold text-muted-foreground">Telefon</label>
-                          <input value={clientPhone} onChange={e => setClientPhone(e.target.value)} inputMode="tel"
-                            className="w-full h-11 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary/50" />
+                          <input value={clientPhone} readOnly disabled inputMode="tel" data-testid="client-phone"
+                            className="w-full h-11 px-3 rounded-xl bg-white/5 border border-white/10 text-sm opacity-70 cursor-not-allowed" />
+                          <button type="button" onClick={() => setPhoneUpdateOpen(true)} data-testid="phone-update"
+                            className="text-sm font-bold text-primary">
+                            📱 Raqamni yangilash
+                          </button>
                         </div>
-                        <button type="button" onClick={() => setEditingProfile(false)} disabled={!clientName.trim() || !phoneReady(clientPhone)}
+                        <button type="button" onClick={saveEditedName} disabled={!clientName.trim()}
                           className="w-full h-10 rounded-xl bg-primary text-black text-sm font-bold disabled:opacity-40">
                           Saqlash
                         </button>
@@ -574,7 +677,11 @@ function PublicBookingModal({
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-foreground">Mijoz: {clientName}</p>
-                          <p className="text-sm text-muted-foreground mt-1">Tel: {clientPhone}</p>
+                          <p className="text-sm text-muted-foreground mt-1">Tel: {clientPhone || "—"}</p>
+                          <button type="button" onClick={() => setPhoneUpdateOpen(true)} data-testid="phone-update"
+                            className="mt-2 text-sm font-bold text-primary">
+                            📱 Raqamni yangilash
+                          </button>
                         </div>
                         <button type="button" onClick={() => setEditingProfile(true)}
                           className="shrink-0 text-xs font-bold text-primary underline underline-offset-2">
@@ -647,6 +754,28 @@ function PublicBookingModal({
           </AnimatePresence>
         </div>
       </motion.div>
+      {phoneUpdateOpen && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4" data-testid="phone-update-modal">
+          <button type="button" className="absolute inset-0 bg-black/75" aria-label="Yopish" onClick={() => setPhoneUpdateOpen(false)} />
+          <div className="relative w-full max-w-sm bg-card border border-white/10 rounded-3xl p-5 shadow-2xl">
+            <h3 className="text-lg font-bold mb-3">📱 Raqamni yangilash</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Xavfsizlik yuzasidan telefon raqam faqat Telegram akkauntingizga biriktirilgan rasmiy raqam orqali yangilanadi.
+            </p>
+            <p className="text-sm text-muted-foreground leading-relaxed mt-3">
+              Davom etsangiz, botimizda <b>'Raqamni yuborish'</b> tugmasi paydo bo'ladi.
+            </p>
+            <button type="button" onClick={leaveForPhoneUpdate} data-testid="phone-update-go"
+              className="w-full mt-5 h-12 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm">
+              🚀 Telegram'ga o'tish
+            </button>
+            <button type="button" onClick={() => setPhoneUpdateOpen(false)}
+              className="w-full mt-2 h-11 rounded-2xl bg-white/5 text-sm font-semibold text-muted-foreground">
+              ✕ Bekor qilish
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -682,6 +811,18 @@ function PublicView({ barber }: { barber: BarberData }) {
   });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bookingOpen, setBookingOpen] = useState(false);
+  const [resume, setResume] = useState<BookingDraft | null>(null);
+
+  useEffect(() => {
+    const draft = readBookingDraft();
+    if (!draft || draft.slug !== barber.username) return;
+    const ids = draft.serviceIds.filter(id => barber.services.some(s => s.id === id));
+    if (ids.length === 0) return;
+    setSelectedIds(ids);
+    setResume(draft);
+    setTab("xizmatlar");
+    setBookingOpen(true);
+  }, [barber]);
 
   const displayName = barber.brandName || barber.name;
   const specs = barber.specializations
@@ -1000,7 +1141,12 @@ function PublicView({ barber }: { barber: BarberData }) {
             selectedServices={selectedServices}
             totalDuration={totalDur}
             totalPrice={totalPrice}
-            onClose={() => setBookingOpen(false)}
+            resume={resume}
+            onClose={() => {
+              setBookingOpen(false);
+              setResume(null);
+              clearBookingDraft();
+            }}
           />
         )}
       </AnimatePresence>
@@ -1038,10 +1184,13 @@ export default function BarberPublicPage() {
         .catch(() => {});
     };
     recover();
+    void refreshSavedClientPhone();
     window.addEventListener("pageshow", recover);
+    window.addEventListener("pageshow", refreshSavedClientPhone);
     return () => {
       cancelled = true;
       window.removeEventListener("pageshow", recover);
+      window.removeEventListener("pageshow", refreshSavedClientPhone);
     };
   }, []);
 

@@ -1,5 +1,6 @@
 export * from "./users";
 export * from "./clients";
+export * from "./phone-update-intents";
 export * from "./service-categories";
 export * from "./services";
 export * from "./bookings";
