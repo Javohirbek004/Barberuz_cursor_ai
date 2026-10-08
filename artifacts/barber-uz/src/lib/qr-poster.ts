@@ -1,9 +1,19 @@
+export const QR_CARD = {
+  width: 1080,
+  height: 1280,
+  qrSize: 860,
+  qrY: 80,
+};
+
+export function qrCenterRatio() {
+  return (QR_CARD.qrY + QR_CARD.qrSize / 2) / QR_CARD.height;
+}
+
 export async function drawQrPoster(
   canvas: HTMLCanvasElement,
-  opts: { url: string; address: string; cta: string; logoUrl: string; qrSvg: SVGSVGElement },
+  opts: { cta: string; logoUrl?: string | null; qrSvg: SVGSVGElement },
 ) {
-  const width = 1080;
-  const height = 1520;
+  const { width, height, qrSize, qrY } = QR_CARD;
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
@@ -11,31 +21,28 @@ export async function drawQrPoster(
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
 
-  const logo = await loadImage(opts.logoUrl);
-  drawContain(ctx, logo, (width - 220) / 2, 64, 220, 220);
-
   const qr = await svgToImage(opts.qrSvg);
-  const qrSize = 680;
   const qrX = (width - qrSize) / 2;
-  const qrY = 340;
   ctx.drawImage(qr, qrX, qrY, qrSize, qrSize);
 
-  const badge = 156;
-  const badgeX = qrX + (qrSize - badge) / 2;
-  const badgeY = qrY + (qrSize - badge) / 2;
-  roundRect(ctx, badgeX, badgeY, badge, badge, 32, "#ffffff");
-  drawContain(ctx, logo, badgeX + 18, badgeY + 18, badge - 36, badge - 36);
+  if (opts.logoUrl) {
+    try {
+      const logo = await loadImage(opts.logoUrl);
+      const badge = 176;
+      const badgeX = qrX + (qrSize - badge) / 2;
+      const badgeY = qrY + (qrSize - badge) / 2;
+      roundRect(ctx, badgeX, badgeY, badge, badge, 36, "#ffffff");
+      drawContain(ctx, logo, badgeX + 18, badgeY + 18, badge - 36, badge - 36);
+    } catch {
+      // A broken upload must not put a default mark back in the middle.
+    }
+  }
 
   ctx.fillStyle = "#1a1a1a";
-  ctx.font = "600 40px sans-serif";
+  ctx.font = "600 44px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
-  wrapText(ctx, opts.cta, width / 2, qrY + qrSize + 48, width - 160, 52);
-
-  ctx.fillStyle = "#8a6a12";
-  ctx.font = "700 34px sans-serif";
-  ctx.textBaseline = "alphabetic";
-  ctx.fillText(opts.address, width / 2, height - 78);
+  wrapText(ctx, opts.cta.trim(), width / 2, qrY + qrSize + 56, width - 140, 58);
 }
 
 export async function canvasToPdf(canvas: HTMLCanvasElement): Promise<Blob> {

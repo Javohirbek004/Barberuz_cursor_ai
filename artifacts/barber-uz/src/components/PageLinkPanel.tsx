@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import { APP_DISPLAY_HOST, APP_ORIGIN } from "@/lib/config";
-import { canvasToPdf, drawQrPoster } from "@/lib/qr-poster";
+import { QR_CARD, canvasToPdf, drawQrPoster, qrCenterRatio } from "@/lib/qr-poster";
 
 const MONTHS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
 const DEFAULT_CTA = "Onlayn navbat olish uchun skanerlang";
@@ -11,12 +11,22 @@ const CTA_PRESETS = [
   "Navbatingizni oldindan band qiling",
 ];
 const RESERVED = new Set(["admin", "login", "settings", "services", "barber", "register", "dashboard", "calendar", "clients", "client", "api", "b"]);
-const DEFAULT_LOGO = "/images/logo.png";
 
 type CheckStatus = "ok" | "space" | "format" | "length" | "reserved" | "taken" | "";
 
 function authHeaders() {
   return { Authorization: `Bearer ${localStorage.getItem("barber_token") || ""}`, "Content-Type": "application/json" };
+}
+
+function rememberSlug(next: string) {
+  try {
+    const stored = JSON.parse(localStorage.getItem("barber_user") || "null");
+    if (!stored || typeof stored !== "object") return;
+    stored.username = next;
+    localStorage.setItem("barber_user", JSON.stringify(stored));
+  } catch {
+    // Storage can be blocked. The page still shows the new address.
+  }
 }
 
 function displayAddress(slug: string) {
@@ -80,6 +90,8 @@ export function PageLinkPanel({
   const [toast, setToast] = useState("");
   const [copied, setCopied] = useState(false);
   const qrReady = useRef(false);
+  const onSlugChangeRef = useRef(onSlugChange);
+  onSlugChangeRef.current = onSlugChange;
 
   useEffect(() => { setSlug(userSlug); }, [userSlug]);
 
@@ -91,6 +103,11 @@ export function PageLinkPanel({
         if (cancelled || !data) return;
         setChangedAt(data.slugChangedAt || null);
         setNextAt(data.nextChangeAt || null);
+        if (typeof data.username === "string" && data.username && data.username !== slug) {
+          setSlug(data.username);
+          onSlugChangeRef.current(data.username);
+          rememberSlug(data.username);
+        }
         if (typeof data.qrCta === "string" && data.qrCta.trim()) setCta(data.qrCta);
         if (typeof data.qrLogo === "string" && data.qrLogo) setLogo(data.qrLogo);
         qrReady.current = true;
@@ -163,7 +180,6 @@ export function PageLinkPanel({
 
       <QrStudio
         slug={slug}
-        address={address}
         cta={cta}
         logo={logo}
         onCta={setCta}
@@ -190,6 +206,7 @@ export function PageLinkPanel({
             setChangedAt(next.slugChangedAt);
             setNextAt(next.nextChangeAt);
             onSlugChange(next.username);
+            rememberSlug(next.username);
             setEditorOpen(false);
             setToast(`✅ Sahifa manzili yangilandi! Yangi havolangiz: ${displayAddress(next.username)} (Keyingi o‘zgartirish imkoniyati: ${formatUz(next.nextChangeAt)} kuni ochiladi)`);
             setTimeout(() => setToast(""), 5000);
@@ -207,10 +224,9 @@ export function PageLinkPanel({
 }
 
 function QrStudio({
-  slug, address, cta, logo, onCta, onLogo,
+  slug, cta, logo, onCta, onLogo,
 }: {
   slug: string;
-  address: string;
   cta: string;
   logo: string | null;
   onCta: (value: string) => void;
@@ -218,8 +234,8 @@ function QrStudio({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const qrRef = useRef<HTMLDivElement>(null);
-  const logoUrl = logo || DEFAULT_LOGO;
   const scanUrl = `${APP_ORIGIN}/${slug}?qr=1`;
+  const center = `${qrCenterRatio() * 100}%`;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -227,11 +243,11 @@ function QrStudio({
     if (!canvas || !svg) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      drawQrPoster(canvas, { url: scanUrl, address, cta, logoUrl, qrSvg: svg }).catch(() => {});
       if (cancelled) return;
+      drawQrPoster(canvas, { cta, logoUrl: logo, qrSvg: svg }).catch(() => {});
     }, 60);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [scanUrl, address, cta, logoUrl]);
+  }, [scanUrl, cta, logo]);
 
   async function downloadPng() {
     const canvas = canvasRef.current;
@@ -255,13 +271,40 @@ function QrStudio({
 
   return (
     <div className="bg-card border border-white/6 rounded-2xl p-4 space-y-4">
-      <canvas ref={canvasRef} className="w-full rounded-2xl bg-white" />
+      <div className="relative">
+        <canvas ref={canvasRef} data-testid="qr-canvas" className="w-full rounded-2xl bg-white" style={{ aspectRatio: `${QR_CARD.width} / ${QR_CARD.height}` }} />
+        <label
+          data-testid="qr-logo-upload"
+          className={`absolute left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 cursor-pointer flex-col items-center justify-center rounded-full text-center shadow-md ${logo ? "h-10 w-10 bg-black/70 text-base" : "w-[28%] bg-white px-2 text-neutral-900 aspect-square"}`}
+          style={{ top: center }}
+        >
+          {logo ? "✏️" : (
+            <>
+              <span className="text-xl leading-none">📷</span>
+              <span className="mt-1 text-[10px] font-semibold leading-tight">Logo yuklash</span>
+            </>
+          )}
+          <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file) void pickLogo(file);
+          }} />
+        </label>
+      </div>
       <div ref={qrRef} className="absolute h-0 w-0 overflow-hidden" aria-hidden>
         <QRCode value={scanUrl} size={680} level="H" bgColor="#ffffff" fgColor="#111111" />
       </div>
-      <label className="block text-xs font-semibold text-muted-foreground">QR ostidagi yozuv</label>
-      <input value={cta} maxLength={80} onChange={(event) => onCta(event.target.value)}
-        className="w-full rounded-xl border border-white/10 bg-background/60 px-3 py-2.5 text-sm outline-none" />
+      {logo && (
+        <button type="button" onClick={() => onLogo(null)} className="text-xs text-muted-foreground underline underline-offset-2">
+          Logoni olib tashlash
+        </button>
+      )}
+      <label className="block text-xs font-semibold text-muted-foreground">QR ostidagi yozuvni tahrirlash (✏️)</label>
+      <div className="relative">
+        <input value={cta} maxLength={80} onChange={(event) => onCta(event.target.value)}
+          className="w-full rounded-xl border border-white/10 bg-background/60 px-3 py-2.5 pr-10 text-sm outline-none" />
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm" aria-hidden>✏️</span>
+      </div>
       <div className="flex flex-wrap gap-2">
         {CTA_PRESETS.map((preset) => (
           <button key={preset} type="button" onClick={() => onCta(preset)}
@@ -269,20 +312,6 @@ function QrStudio({
             {preset}
           </button>
         ))}
-      </div>
-      <div className="flex gap-2">
-        <label className="flex-1 h-10 rounded-xl border border-white/10 bg-white/5 text-xs font-semibold flex items-center justify-center cursor-pointer">
-          Logo yuklash
-          <input type="file" accept="image/*" className="hidden" onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void pickLogo(file);
-          }} />
-        </label>
-        {logo && (
-          <button type="button" onClick={() => onLogo(null)} className="h-10 px-3 rounded-xl border border-white/10 text-xs">
-            Asl belgi
-          </button>
-        )}
       </div>
       <p className="text-xs text-amber-200/80 leading-relaxed">
         💡 Eslatma: Sahifa manzilingizni o‘zgartirsangiz ham, chop etilgan ushbu QR-kod 30 kun davomida avtomatik ravishda yangi havolangizga yo‘naltirib turiladi.

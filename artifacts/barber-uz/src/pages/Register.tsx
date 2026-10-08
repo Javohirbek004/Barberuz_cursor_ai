@@ -14,10 +14,12 @@ function generateUsername(name: string): string {
   const base = name
     .toLowerCase()
     .trim()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_]/g, "");
-  const suffix = Math.floor(Math.random() * 9000) + 1000;
-  return `${base || "barber"}_${suffix}`;
+    .replace(/['’`]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return (base || "usta").slice(0, 24);
 }
 
 export default function Register() {

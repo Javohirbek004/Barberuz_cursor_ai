@@ -57,7 +57,11 @@ router.post("/register", async (req, res) => {
     // The public address comes from the shop name, then the barber's name.
     // A name the client sends is ignored so the first link stays readable.
     void providedUsername;
-    const username = await allocatePublicSlug({ brandName, name });
+    const username = await allocatePublicSlug({
+      brandName,
+      name,
+      phone: typeof req.body?.phone === "string" ? req.body.phone : null,
+    });
     const passwordHash = hashPassword(password);
     const [user] = await db.insert(usersTable).values({
       name,

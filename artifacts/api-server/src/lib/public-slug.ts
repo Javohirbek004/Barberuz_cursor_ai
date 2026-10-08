@@ -66,33 +66,99 @@ export async function isSlugAvailable(slug: string, forUserId?: string): Promise
   return !!forUserId && held.userId === forUserId;
 }
 
+export function identityBases(brandName?: string | null, name?: string | null): string[] {
+  const seen = new Set<string>();
+  const bases: string[] = [];
+  for (const raw of [brandName, name]) {
+    const base = slugify(raw);
+    if (base.length < 3 || seen.has(base) || validateSlug(base) !== "ok") continue;
+    seen.add(base);
+    bases.push(base);
+  }
+  return bases;
+}
+
+/**
+ * Clean shop name, then clean barber name.
+ * The phone's last 4 digits are listed only after those, for a real clash.
+ */
+export function slugCandidates(input: {
+  brandName?: string | null;
+  name?: string | null;
+  phone?: string | null;
+}): string[] {
+  const bases = identityBases(input.brandName, input.name);
+  const phone4 = last4(input.phone);
+  if (!phone4) return bases;
+  return [...bases, ...bases.map((base) => withSuffix(base, phone4))];
+}
+
+/**
+ * Signup used to store names like sardor-2000 or sardor_4821.
+ * If that tail is not the phone's last 4 digits, and the barber has not
+ * chosen the address themselves, the clean name is the one to keep.
+ */
+export function accidentalCleanSlug(input: {
+  username: string;
+  brandName?: string | null;
+  name?: string | null;
+  phone?: string | null;
+  slugChangedAt?: Date | string | null;
+}): string | null {
+  if (input.slugChangedAt) return null;
+  const match = input.username.match(/^([a-z0-9](?:[a-z0-9_-]*[a-z0-9])?)[-_](\d{4})$/);
+  if (!match) return null;
+  const base = match[1];
+  const suffix = match[2];
+  if (last4(input.phone) === suffix) return null;
+  if (!identityBases(input.brandName, input.name).includes(base)) return null;
+  return base;
+}
+
 export async function allocatePublicSlug(input: {
   brandName?: string | null;
   name: string;
   phone?: string | null;
 }): Promise<string> {
-  const phone4 = last4(input.phone);
-  const bases = [slugify(input.brandName), slugify(input.name)].filter((item) => item.length >= 3);
-  const seen = new Set<string>();
-  const candidates: string[] = [];
-  for (const base of bases) {
-    candidates.push(base);
-    if (phone4) candidates.push(withSuffix(base, phone4));
-  }
-  for (const candidate of candidates) {
-    if (seen.has(candidate) || validateSlug(candidate) !== "ok") continue;
-    seen.add(candidate);
+  for (const candidate of slugCandidates(input)) {
     if (await isSlugAvailable(candidate)) return candidate;
   }
 
-  const fallback = slugify(input.name).slice(0, 18) || "usta";
-  for (let i = 0; i < 30; i++) {
-    const suffix = phone4 && i === 0 ? phone4 : String(1000 + i);
-    const candidate = withSuffix(fallback, suffix);
+  // The clean name and the phone suffix are both taken, or the name has no
+  // latin letters. This tail is not a fixed 4-digit number.
+  const stem = identityBases(input.brandName, input.name)[0] || "usta";
+  const phone4 = last4(input.phone);
+  for (let i = 0; i < 36; i++) {
+    const tail = phone4 ? `${phone4}${i.toString(36)}` : `x${(Date.now() + i).toString(36).slice(-4)}`;
+    const candidate = withSuffix(stem, tail);
     if (validateSlug(candidate) === "ok" && await isSlugAvailable(candidate)) return candidate;
   }
-  const emergency = `usta-${Date.now().toString().slice(-6)}`.slice(0, 24);
-  return emergency;
+  return withSuffix("usta", Date.now().toString(36).slice(-6));
+}
+
+export async function repairAccidentalSlug<T extends {
+  id: string;
+  username: string;
+  brandName: string | null;
+  name: string;
+  phone: string | null;
+  slugChangedAt: Date | null;
+}>(user: T): Promise<T> {
+  const clean = accidentalCleanSlug(user);
+  if (!clean || clean === user.username) return user;
+  if (!(await isSlugAvailable(clean, user.id))) return user;
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SLUG_LOCK_MS);
+  await db.transaction(async (tx) => {
+    await tx.insert(slugRedirectsTable).values({
+      oldSlug: user.username,
+      newSlug: clean,
+      userId: user.id,
+      expiresAt,
+    });
+    await tx.update(usersTable).set({ username: clean, updatedAt: now }).where(eq(usersTable.id, user.id));
+  });
+  return { ...user, username: clean };
 }
 
 export async function suggestSlug(wanted: string, phone: string | null | undefined, forUserId?: string): Promise<string | null> {

@@ -16,19 +16,9 @@ import {
 } from "../middleware/validate";
 import { hashPassword } from "../../lib/auth";
 
-function slugify(name: string): string {
-  return name.toLowerCase().trim().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") || "barber";
-}
-
-async function buildUsername(name: string): Promise<string> {
-  const { db, usersTable } = await import("@workspace/db");
-  const { eq } = await import("drizzle-orm");
-  for (let i = 0; i < 10; i++) {
-    const candidate = `${slugify(name)}_${Math.floor(Math.random() * 9000) + 1000}`;
-    const [exists] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.username, candidate)).limit(1);
-    if (!exists) return candidate;
-  }
-  return `barber_${Date.now()}`;
+async function buildUsername(name: string, brandName?: string | null, phone?: string | null): Promise<string> {
+  const { allocatePublicSlug } = await import("../../lib/public-slug");
+  return allocatePublicSlug({ name, brandName, phone });
 }
 
 /** GET /api/v1/users */
@@ -78,7 +68,7 @@ export async function postUser(req: Request, res: Response) {
       return res.status(409).json({ error: "conflict", message: "A user with this phone number already exists" });
     }
 
-    const username = await buildUsername(name);
+    const username = await buildUsername(name, brand_name, phone);
     const row = await createUser({
       name: name.trim(),
       username,

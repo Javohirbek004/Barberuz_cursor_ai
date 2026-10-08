@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, usersTable, slugRedirectsTable, bookingsTable, qrScansTable } from "@workspace/db";
 import { and, eq, gte, isNull, lt, notInArray, sql } from "drizzle-orm";
 import { authenticate, getUser, hashPassword } from "../lib/auth";
-import { SLUG_LOCK_MS, isSlugAvailable, suggestSlug, validateSlug } from "../lib/public-slug";
+import { SLUG_LOCK_MS, isSlugAvailable, repairAccidentalSlug, suggestSlug, validateSlug } from "../lib/public-slug";
 
 const router = Router();
 const ALLOWED_BUFFER_MINUTES = [0, 5, 10, 15, 20];
@@ -68,7 +68,13 @@ function tashkentMonthRange(now = new Date()) {
 
 router.get("/profile", authenticate, async (req, res) => {
   const user = getUser(req);
-  res.json(formatProfile(user));
+  try {
+    const cleaned = await repairAccidentalSlug(user);
+    res.json(formatProfile(cleaned));
+  } catch (err) {
+    console.error("[settings] GET /profile slug repair error:", err);
+    res.json(formatProfile(user));
+  }
 });
 
 router.put("/profile", authenticate, async (req, res) => {

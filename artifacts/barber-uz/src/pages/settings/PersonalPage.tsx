@@ -1937,7 +1937,21 @@ export default function PersonalPage() {
     let cancelled = false;
     setLoadingProfile(true);
     apiGet("/api/settings/profile")
-      .then((data: Record<string, unknown>) => { if (!cancelled) { setProfile(apiToProfile(data)); setLoadingProfile(false); } })
+      .then((data: Record<string, unknown>) => {
+        if (cancelled) return;
+        setProfile(apiToProfile(data));
+        if (typeof data.username === "string" && data.username) {
+          setUserSlug(data.username);
+          try {
+            const stored = JSON.parse(localStorage.getItem("barber_user") || "null");
+            if (stored && typeof stored === "object") {
+              stored.username = data.username;
+              localStorage.setItem("barber_user", JSON.stringify(stored));
+            }
+          } catch { /* storage can be blocked */ }
+        }
+        setLoadingProfile(false);
+      })
       .catch(() => { if (!cancelled) setLoadingProfile(false); });
     return () => { cancelled = true; };
   }, []);
