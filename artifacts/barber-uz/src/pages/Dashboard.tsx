@@ -301,7 +301,7 @@ function TodayStatsModal({ open, onClose, total, completed, remaining, cancelled
             <div className={`${metricValue} text-red-400`}>{cancelled} ta</div>
           </div>
           <div className={`${metricCard} bg-white/5 border border-white/8`}>
-            <div className={`${metricLabel} text-muted-foreground`}>⏱️ Bandlik</div>
+            <div className={`${metricLabel} text-muted-foreground`}>⏱️ Ishlangan vaqt</div>
             <div className={`${metricValue} text-foreground`}>{durationMins > 0 ? durStr : "—"}</div>
           </div>
         </div>
@@ -448,7 +448,7 @@ function IndividualDashboard() {
   const todayCancelled = bookings.length - todayCompleted - todayRemaining;
   const todayTotal = bookings.length;
   const todayDurMins = bookings
-    .filter(b => b.status === "completed" || b.status === "confirmed" || b.status === "pending")
+    .filter(b => b.status === "completed")
     .reduce((s, b) => s + toMins(b.endTime) - toMins(b.startTime), 0);
 
   const durationLabel = calcTotalDuration(todayUpcoming);
