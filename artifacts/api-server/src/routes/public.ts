@@ -178,7 +178,10 @@ router.post("/sessions", async (req, res) => {
       : null;
 
     if (tgCustomer?.tgId) {
-      const clientFirstName = (tgCustomer.name as string || "Mijoz").split(" ")[0];
+      const chosenName = (typeof req.body.clientName === "string" && req.body.clientName.trim())
+        ? req.body.clientName.trim()
+        : ((tgCustomer.name as string) || "Mijoz");
+      const clientFirstName = chosenName.split(" ")[0] || "Mijoz";
       const tgIdStr = String(tgCustomer.tgId);
 
       await db.insert(bookingSessionsTable).values({
@@ -186,7 +189,7 @@ router.post("/sessions", async (req, res) => {
         barberId,
         bookingData: JSON.stringify(bookingData),
         clientTelegramId: tgIdStr,
-        clientName: tgCustomer.name || "Mijoz",
+        clientName: chosenName,
         clientTelegramUsername: tgCustomer.username || null,
         clientPhone: safeClientPhone,
         status: "confirmed",
@@ -211,7 +214,7 @@ router.post("/sessions", async (req, res) => {
 
         if (existing) {
           await db.update(clientsTable).set({
-            name: (tgCustomer.name as string) || existing.name,
+            name: chosenName || existing.name,
             telegramId: tgIdStr,
             ...(safeClientPhone && { phone: safeClientPhone }),
             visitCount: sql`${clientsTable.visitCount} + 1`,
@@ -223,7 +226,7 @@ router.post("/sessions", async (req, res) => {
         } else {
           const [newClient] = await db.insert(clientsTable).values({
             barberId,
-            name: (tgCustomer.name as string) || "Mijoz",
+            name: chosenName,
             phone: safeClientPhone,
             telegramId: tgIdStr,
             status: "new",
@@ -253,7 +256,7 @@ router.post("/sessions", async (req, res) => {
         const [inserted] = await db.insert(bookingsTable).values({
           barberId,
           clientId: clientId || null,
-          clientName: (tgCustomer.name as string) || "Mijoz",
+          clientName: chosenName,
           serviceName: svcName,
           date: isoDate,
           startTime: time,
@@ -266,7 +269,7 @@ router.post("/sessions", async (req, res) => {
           await db.update(bookingSessionsTable)
             .set({ bookingId: inserted.id })
             .where(eq(bookingSessionsTable.sessionId, sessionId));
-          await deliverBookingReceipt(inserted.id, {
+          deliverBookingReceipt(inserted.id, {
             telegramId: tgIdStr,
             phone: safeClientPhone,
           }).catch((err) => console.error("[PublicAPI] client receipt failed:", err));
@@ -362,6 +365,7 @@ router.get("/sessions/:sessionId", async (req, res) => {
       clientName: session.clientName,
       clientTelegramId: session.clientTelegramId,
       clientTelegramUsername: session.clientTelegramUsername,
+      clientPhone: session.clientPhone,
     });
   } catch (err) {
     console.error("[PublicAPI] GET /sessions/:id error:", err);

@@ -113,6 +113,45 @@ function dateFullLabel(iso: string, todayISO: string, tomorrowISO: string): stri
 
 type PubBookingStep = "time" | "name" | "confirm" | "verifying" | "done";
 
+interface SavedClient {
+  tgId: string;
+  name: string;
+  phone: string;
+  username: string | null;
+}
+
+const CLIENT_PROFILE_KEY = "barber_client_profile";
+const PENDING_SESSION_KEY = "barber_pending_session";
+
+function phoneDigits(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+function phoneReady(value: string): boolean {
+  return phoneDigits(value).length >= 9;
+}
+
+function loadClientProfile(): SavedClient | null {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CLIENT_PROFILE_KEY) || "null") as SavedClient | null;
+    if (!raw?.tgId || !raw.name?.trim() || !phoneReady(raw.phone || "")) return null;
+    return { tgId: String(raw.tgId), name: raw.name.trim(), phone: raw.phone.trim(), username: raw.username || null };
+  } catch {
+    return null;
+  }
+}
+
+function saveClientProfile(profile: SavedClient) {
+  if (!profile.tgId || !profile.name.trim() || !phoneReady(profile.phone)) return;
+  localStorage.setItem(CLIENT_PROFILE_KEY, JSON.stringify({
+    tgId: profile.tgId,
+    name: profile.name.trim(),
+    phone: profile.phone.trim(),
+    username: profile.username,
+  }));
+  localStorage.removeItem(PENDING_SESSION_KEY);
+}
+
 function PublicBookingModal({
   barber, selectedServices, totalDuration, totalPrice, onClose
 }: {
@@ -138,10 +177,16 @@ function PublicBookingModal({
   const [dateOpt, setDateOpt] = useState<string>(firstOpenISO);
   const [period, setPeriod] = useState<SlotPeriod>("all");
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [clientName, setClientName] = useState("");
+  const savedClient = useRef(loadClientProfile());
+  const [clientName, setClientName] = useState(savedClient.current?.name || "");
+  const [clientPhone, setClientPhone] = useState(savedClient.current?.phone || "");
+  const [editingProfile, setEditingProfile] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [deepLink, setDeepLink] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [bookedDirect, setBookedDirect] = useState(false);
+  const knownClient = !!savedClient.current?.tgId;
   const [busySlots, setBusySlots] = useState<{ startTime: string; endTime: string }[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -203,24 +248,89 @@ function PublicBookingModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allSlots.join("|"), selectedTime]);
 
+  function rememberConfirmed(poll: { clientTelegramId?: string; clientName?: string; clientPhone?: string; clientTelegramUsername?: string }) {
+    if (!poll.clientTelegramId) return;
+    const phone = poll.clientPhone || clientPhone;
+    if (!phoneReady(phone)) return;
+    const next = {
+      tgId: String(poll.clientTelegramId),
+      name: (poll.clientName || clientName).trim(),
+      phone: phone.trim(),
+      username: poll.clientTelegramUsername || savedClient.current?.username || null,
+    };
+    savedClient.current = next;
+    saveClientProfile(next);
+  }
+
+  async function createSession(direct: boolean) {
+    const services = selectedServices.map(s => ({ name: s.name, price: s.price, duration: s.duration }));
+    const pageLink = `${window.location.origin}/${barber.username}`;
+    const profile = savedClient.current;
+    return fetch("/api/public/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        barberId: barber.id, barberName: displayName,
+        barberAddress: barber.address || "", mapLink: barber.mapLink || "",
+        barberPageLink: pageLink, isTeam: false, teamBarberName: null,
+        services, totalPrice, totalDuration, date: dateOpt, time: selectedTime,
+        clientName: clientName.trim(),
+        ...(direct && profile ? {
+          clientPhone: clientPhone.trim(),
+          tgCustomer: { tgId: profile.tgId, name: clientName.trim(), username: profile.username },
+        } : {}),
+      }),
+    });
+  }
+
+  function showSlotTaken() {
+    setSubmitting(false);
+    setSelectedTime(null);
+    setStep("time");
+    setSlotsLoading(true);
+    fetch(`/api/public/barber/${barber.username}/slots?date=${dateOpt}`)
+      .then(r => r.ok ? r.json() : { slots: [] })
+      .then((d: { slots: { startTime: string; endTime: string }[] }) => {
+        setBusySlots(d.slots ?? []);
+        setSlotsLoading(false);
+      })
+      .catch(() => { setBusySlots([]); setSlotsLoading(false); });
+  }
+
+  async function handleDirectConfirm() {
+    if (submitting || !selectedTime || !clientName.trim() || !phoneReady(clientPhone) || editingProfile) return;
+    setSubmitting(true);
+    setFormError("");
+    try {
+      const res = await createSession(true);
+      if (res.status === 409) { showSlotTaken(); return; }
+      if (!res.ok) throw new Error("booking failed");
+      const data = await res.json();
+      if (data.status !== "confirmed") throw new Error("not confirmed");
+      const next = {
+        tgId: savedClient.current!.tgId,
+        name: clientName.trim(),
+        phone: clientPhone.trim(),
+        username: savedClient.current?.username || null,
+      };
+      savedClient.current = next;
+      saveClientProfile(next);
+      setBookedDirect(true);
+      setStep("done");
+      setSubmitting(false);
+    } catch {
+      setFormError("Bron saqlanmadi. Qayta urinib ko'ring.");
+      setSubmitting(false);
+    }
+  }
+
   async function handleConfirm() {
     if (submitting || !selectedTime || !clientName.trim()) return;
     setSubmitting(true);
+    setFormError("");
 
     try {
-      const services = selectedServices.map(s => ({ name: s.name, price: s.price, duration: s.duration }));
-      const pageLink = `${window.location.origin}/${barber.username}`;
-      const res = await fetch("/api/public/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          barberId: barber.id, barberName: displayName,
-          barberAddress: barber.address || "", mapLink: barber.mapLink || "",
-          barberPageLink: pageLink, isTeam: false, teamBarberName: null,
-          services, totalPrice, totalDuration, date: dateOpt, time: selectedTime,
-          clientName: clientName.trim(),
-        }),
-      });
+      const res = await createSession(false);
       if (res.status === 409) {
         // The selected slot was taken by another booking (race condition).
         // Refresh busy slots so the now-taken time disappears, then step back.
@@ -246,6 +356,7 @@ function PublicBookingModal({
           : "";
       setSessionId(data.sessionId);
       setDeepLink(link || null);
+      localStorage.setItem(PENDING_SESSION_KEY, data.sessionId);
       setStep("verifying");
       setSubmitting(false);
 
@@ -253,9 +364,13 @@ function PublicBookingModal({
         try {
           const poll = await fetch(`/api/public/sessions/${data.sessionId}`).then(r => r.json());
           if (poll.status === "confirmed") {
-            stopPolling(); setStep("done");
+            stopPolling();
+            rememberConfirmed(poll);
+            setStep("done");
           } else if (poll.status === "expired" || poll.status === "cancelled" || poll.error) {
-            stopPolling(); setStep("confirm");
+            stopPolling();
+            localStorage.removeItem(PENDING_SESSION_KEY);
+            setStep("confirm");
           }
         } catch {
           // Network error — keep polling silently
@@ -280,7 +395,7 @@ function PublicBookingModal({
         <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 shrink-0" />
         <div className="flex items-center gap-3 px-5 py-4 shrink-0 border-b border-white/6">
           {(step === "name" || step === "confirm") && (
-            <button onClick={() => setStep(step === "confirm" ? "name" : "time")}
+            <button onClick={() => setStep(step === "confirm" ? (knownClient ? "time" : "name") : "time")}
               className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
               <ArrowLeft className="w-4 h-4" />
             </button>
@@ -364,7 +479,7 @@ function PublicBookingModal({
                     ))}
                   </div>
                 )}
-                <button onClick={() => selectedTime && setStep("name")} disabled={!selectedTime || slotsLoading}
+                <button onClick={() => selectedTime && setStep(knownClient ? "confirm" : "name")} disabled={!selectedTime || slotsLoading}
                   className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base mt-6 disabled:opacity-30 shadow-lg shadow-primary/20">
                   Davom etish →
                 </button>
@@ -410,15 +525,60 @@ function PublicBookingModal({
                     </div>
                   ))}
                 </div>
-                <div className="bg-[#2AABEE]/8 border border-[#2AABEE]/20 rounded-2xl px-4 py-3 mb-4">
-                  <p className="text-xs text-[#2AABEE]/80 leading-relaxed">💬 Navbatingizni ro'yxatga olish va eslatma yuborish uchun jarayonni Telegram botimizda yakunlang.</p>
-                </div>
-                <button onClick={handleConfirm} disabled={submitting}
-                  className="w-full py-3.5 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60 shadow-lg shadow-[#2AABEE]/20">
-                  {submitting
-                    ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Yuklanmoqda...</>
-                    : <><Send className="w-4 h-4" /> Telegram orqali tasdiqlash</>}
-                </button>
+                {knownClient ? (
+                  <div className="bg-white/4 border border-white/8 rounded-2xl p-4 mb-4" data-testid="client-profile">
+                    {editingProfile ? (
+                      <div className="space-y-3">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-muted-foreground">Ism</label>
+                          <input value={clientName} onChange={e => setClientName(e.target.value)}
+                            className="w-full h-11 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary/50" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-muted-foreground">Telefon</label>
+                          <input value={clientPhone} onChange={e => setClientPhone(e.target.value)} inputMode="tel"
+                            className="w-full h-11 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary/50" />
+                        </div>
+                        <button type="button" onClick={() => setEditingProfile(false)} disabled={!clientName.trim() || !phoneReady(clientPhone)}
+                          className="w-full h-10 rounded-xl bg-primary text-black text-sm font-bold disabled:opacity-40">
+                          Saqlash
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground">Mijoz: {clientName}</p>
+                          <p className="text-sm text-muted-foreground mt-1">Tel: {clientPhone}</p>
+                        </div>
+                        <button type="button" onClick={() => setEditingProfile(true)}
+                          className="shrink-0 text-xs font-bold text-primary underline underline-offset-2">
+                          ✏️ Tahrirlash
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-[#2AABEE]/8 border border-[#2AABEE]/20 rounded-2xl px-4 py-3 mb-4">
+                    <p className="text-xs text-[#2AABEE]/80 leading-relaxed">💬 Navbatingizni ro'yxatga olish va eslatma yuborish uchun jarayonni Telegram botimizda yakunlang.</p>
+                  </div>
+                )}
+                {formError && <p className="text-xs text-red-400 mb-3">{formError}</p>}
+                {knownClient ? (
+                  <button onClick={handleDirectConfirm} disabled={submitting || editingProfile || !clientName.trim() || !phoneReady(clientPhone)}
+                    data-testid="direct-confirm"
+                    className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40 shadow-lg shadow-primary/20">
+                    {submitting
+                      ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Saqlanmoqda...</>
+                      : "✅ Bron qilishni tasdiqlash"}
+                  </button>
+                ) : (
+                  <button onClick={handleConfirm} disabled={submitting}
+                    className="w-full py-3.5 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60 shadow-lg shadow-[#2AABEE]/20">
+                    {submitting
+                      ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Yuklanmoqda...</>
+                      : <><Send className="w-4 h-4" /> Telegram orqali tasdiqlash</>}
+                  </button>
+                )}
               </motion.div>
             )}
             {step === "verifying" && (
@@ -446,7 +606,7 @@ function PublicBookingModal({
               <motion.div key="done" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-8">
                 <div className="w-24 h-24 rounded-3xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-5xl mx-auto mb-5">🎉</div>
                 <h2 className="text-xl font-bold mb-2">Navbat band qilindi!</h2>
-                <p className="text-sm text-muted-foreground mb-5">Barcha ma'lumotlar Telegram orqali yuborildi.</p>
+                <p className="text-sm text-muted-foreground mb-5">{bookedDirect ? "Navbat saqlandi. Chek Telegramga yuborildi." : "Barcha ma'lumotlar Telegram orqali yuborildi."}</p>
                 <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-5 text-left space-y-1">
                   <p className="text-sm font-semibold">{dateLabel}, soat {selectedTime}</p>
                   <p className="text-xs text-muted-foreground">{selectedServices.map(s => s.name).join(", ")}</p>
@@ -828,6 +988,29 @@ export default function BarberPublicPage() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
   const [, navigate] = useLocation();
+
+  useEffect(() => {
+    const pending = localStorage.getItem(PENDING_SESSION_KEY);
+    if (!pending) return;
+    let cancelled = false;
+    fetch(`/api/public/sessions/${pending}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((poll: { status?: string; clientTelegramId?: string; clientName?: string; clientPhone?: string; clientTelegramUsername?: string } | null) => {
+        if (cancelled || !poll) return;
+        if (poll.status === "confirmed" && poll.clientTelegramId && phoneReady(poll.clientPhone || "")) {
+          saveClientProfile({
+            tgId: String(poll.clientTelegramId),
+            name: (poll.clientName || "").trim() || "Mijoz",
+            phone: (poll.clientPhone || "").trim(),
+            username: poll.clientTelegramUsername || null,
+          });
+        } else if (poll.status === "expired" || poll.status === "cancelled") {
+          localStorage.removeItem(PENDING_SESSION_KEY);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const [status, setStatus] = useState<Status>("loading");
   const [barber, setBarber] = useState<BarberData | null>(null);
