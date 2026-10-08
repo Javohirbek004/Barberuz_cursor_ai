@@ -1,24 +1,24 @@
 import { Router } from "express";
 import { db, bookingsTable, clientsTable, servicesTable } from "@workspace/db";
-import { eq, and, sql, or, gte, lte, inArray, notInArray } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, notInArray } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 import { sendDirectBookingNotification } from "../lib/telegram-bot";
 import { deliverBookingReceipt } from "../lib/client-notifications";
+import { syncClientMetrics } from "../lib/client-metrics";
 
 const router = Router();
 
 /**
- * Find an existing client by phone number for this barber, or create a new one.
- * Returns the clientId and whether stats were already updated (true if existing).
+ * Find an existing client by phone, or create one.
+ * A new booking does not count as a visit. The visit is added only when
+ * the barber marks the booking completed.
  */
 async function findOrCreateClient(
   barberId: string,
   clientName: string,
   clientPhone: string,
-  price: number,
 ): Promise<string> {
   const normalizedPhone = clientPhone.replace(/\s+/g, "");
-  const bookingDate = new Date();
 
   const [existing] = await db
     .select()
@@ -26,26 +26,16 @@ async function findOrCreateClient(
     .where(and(eq(clientsTable.barberId, barberId), eq(clientsTable.phone, normalizedPhone)))
     .limit(1);
 
-  if (existing) {
-    await db.update(clientsTable)
-      .set({
-        visitCount: sql`${clientsTable.visitCount} + 1`,
-        totalSpent: sql`${clientsTable.totalSpent} + ${price}`,
-        lastVisit: bookingDate,
-        updatedAt: bookingDate,
-      })
-      .where(eq(clientsTable.id, existing.id));
-    return existing.id;
-  }
+  if (existing) return existing.id;
 
   const [newClient] = await db.insert(clientsTable).values({
     barberId,
     name: clientName,
     phone: normalizedPhone,
     status: "new",
-    visitCount: 1,
-    totalSpent: String(price),
-    lastVisit: bookingDate,
+    visitCount: 0,
+    totalSpent: "0",
+    lastVisit: null,
   }).returning();
   return newClient.id;
 }
@@ -155,29 +145,17 @@ router.post("/", authenticate, async (req, res) => {
     }
 
     // Smart client resolution:
-    // 1. If phone provided → find-or-create by phone (deduplicates, updates stats)
-    // 2. Else if explicit clientId → update that client's stats
-    // 3. Otherwise → booking with no client link
+    // Link the client, but do not count a visit until the booking is completed.
     let resolvedClientId: string | null = clientId || null;
     const numericPrice = Number(price) || 0;
 
     const rawPhone = (typeof clientPhone === "string" ? clientPhone : "").trim();
     if (rawPhone) {
       try {
-        resolvedClientId = await findOrCreateClient(user.id, clientName, rawPhone, numericPrice);
+        resolvedClientId = await findOrCreateClient(user.id, clientName, rawPhone);
       } catch (err) {
         console.warn("[Bookings] findOrCreateClient failed:", (err as Error).message);
       }
-    } else if (resolvedClientId) {
-      // Phone not provided but clientId was given — update stats directly
-      await db.update(clientsTable)
-        .set({
-          visitCount: sql`${clientsTable.visitCount} + 1`,
-          totalSpent: sql`${clientsTable.totalSpent} + ${numericPrice}`,
-          lastVisit: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(and(eq(clientsTable.id, resolvedClientId), eq(clientsTable.barberId, user.id)));
     }
 
     let [booking] = await db.insert(bookingsTable).values({
@@ -262,6 +240,9 @@ router.put("/:bookingId", authenticate, async (req, res) => {
       res.status(404).json({ error: "not_found" });
       return;
     }
+    if (status !== undefined || price !== undefined) {
+      await syncClientMetrics(booking.clientId, user.id);
+    }
     res.json(formatBooking(booking));
   } catch (err) {
     res.status(500).json({ error: "server_error" });
@@ -294,6 +275,9 @@ router.patch("/:bookingId", authenticate, async (req, res) => {
       res.status(404).json({ error: "not_found" });
       return;
     }
+    if (status !== undefined || price !== undefined) {
+      await syncClientMetrics(booking.clientId, user.id);
+    }
     res.json(formatBooking(booking));
   } catch (err) {
     res.status(500).json({ error: "server_error" });
@@ -303,8 +287,10 @@ router.patch("/:bookingId", authenticate, async (req, res) => {
 router.delete("/:bookingId", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
-    await db.delete(bookingsTable)
-      .where(and(eq(bookingsTable.id, req.params.bookingId), eq(bookingsTable.barberId, user.id)));
+    const [removed] = await db.delete(bookingsTable)
+      .where(and(eq(bookingsTable.id, req.params.bookingId), eq(bookingsTable.barberId, user.id)))
+      .returning({ clientId: bookingsTable.clientId });
+    await syncClientMetrics(removed?.clientId, user.id);
     res.json({ success: true, message: "Booking deleted" });
   } catch (err) {
     res.status(500).json({ error: "server_error" });

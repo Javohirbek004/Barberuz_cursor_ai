@@ -8,6 +8,7 @@ import {
   useUpdateClient,
   getListBookingsQueryKey,
   getGetClientQueryKey,
+  getListClientsQueryKey,
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
@@ -309,6 +310,13 @@ export function BookingDetailModal({
     setBookingNoteEditing(false);
   };
 
+  const refreshClientLists = () => {
+    queryClient.invalidateQueries({ queryKey: getListClientsQueryKey() });
+    if (booking.clientId) {
+      queryClient.invalidateQueries({ queryKey: getGetClientQueryKey(booking.clientId) });
+    }
+  };
+
   // ── Booking status actions ─────────────────────────────────────
   const [priceText, setPriceText] = useState(String(booking.price));
   useEffect(() => { setPriceText(String(booking.price)); }, [booking.id, booking.price]);
@@ -322,6 +330,7 @@ export function BookingDetailModal({
       { bookingId: booking.id, data: { status: "completed", price: editedPrice } },
       {
         onSuccess: () => {
+          refreshClientLists();
           onClose();
           onRefetch();
           onRefetchStats?.();
@@ -340,6 +349,7 @@ export function BookingDetailModal({
       { bookingId: booking.id, data: { status: "no_show" as "cancelled" } },
       {
         onSuccess: () => {
+          refreshClientLists();
           onClose();
           onRefetch();
           onRefetchStats?.();
@@ -354,6 +364,7 @@ export function BookingDetailModal({
       { bookingId: booking.id, data: { status: "cancelled" } },
       {
         onSuccess: () => {
+          refreshClientLists();
           onClose();
           onRefetch();
           onRefetchStats?.();

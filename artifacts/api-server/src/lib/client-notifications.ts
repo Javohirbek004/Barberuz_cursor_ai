@@ -5,6 +5,7 @@
  */
 
 import { db, bookingsTable, bookingSessionsTable, clientsTable, usersTable } from "@workspace/db";
+import { syncClientMetrics } from "./client-metrics";
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -456,6 +457,7 @@ export async function handleClientCancel(
     status: "cancelled",
     updatedAt: new Date(),
   }).where(eq(bookingsTable.id, booking.id));
+  await syncClientMetrics(booking.clientId, booking.barberId);
   await db.update(bookingSessionsTable).set({ status: "cancelled" })
     .where(eq(bookingSessionsTable.bookingId, booking.id));
 
@@ -474,6 +476,7 @@ async function cancelUnconfirmed(booking: BookingCard, barber: BarberCard): Prom
     inArray(bookingsTable.status, [...OPEN_STATUSES]),
   )).returning();
   if (!updated.length) return;
+  await syncClientMetrics(booking.clientId, booking.barberId);
   await db.update(bookingSessionsTable).set({ status: "cancelled" })
     .where(eq(bookingSessionsTable.bookingId, booking.id));
 

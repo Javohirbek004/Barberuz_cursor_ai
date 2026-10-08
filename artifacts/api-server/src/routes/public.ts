@@ -8,7 +8,7 @@
 
 import { Router } from "express";
 import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable, clientsTable, phoneUpdateIntentsTable, qrScansTable } from "@workspace/db";
-import { eq, and, lt, isNull, notInArray, or, sql, inArray, desc, gt } from "drizzle-orm";
+import { eq, and, lt, isNull, notInArray, or, inArray, desc, gt } from "drizzle-orm";
 import { deliverBookingReceipt } from "../lib/client-notifications";
 import { randomBytes } from "crypto";
 import { sendBarberBookingNotification } from "../lib/telegram-bot";
@@ -217,9 +217,6 @@ router.post("/sessions", async (req, res) => {
             name: chosenName || existing.name,
             telegramId: tgIdStr,
             ...(safeClientPhone && { phone: safeClientPhone }),
-            visitCount: sql`${clientsTable.visitCount} + 1`,
-            totalSpent: sql`${clientsTable.totalSpent} + ${Number(totalPrice) || 0}`,
-            lastVisit: new Date(),
             updatedAt: new Date(),
           }).where(eq(clientsTable.id, existing.id));
           clientId = existing.id;
@@ -230,9 +227,8 @@ router.post("/sessions", async (req, res) => {
             phone: safeClientPhone,
             telegramId: tgIdStr,
             status: "new",
-            visitCount: 1,
-            totalSpent: String(Number(totalPrice) || 0),
-            lastVisit: new Date(),
+            visitCount: 0,
+            totalSpent: "0",
           }).returning();
           clientId = newClient?.id ?? null;
         }

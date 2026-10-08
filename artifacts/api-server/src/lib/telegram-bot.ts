@@ -25,6 +25,7 @@
 import { randomBytes } from "crypto";
 import { db, usersTable, bookingSessionsTable, bookingsTable, clientsTable, phoneUpdateIntentsTable } from "@workspace/db";
 import { eq, and, or, isNull, desc, sql } from "drizzle-orm";
+import { syncClientMetrics } from "./client-metrics";
 import { generateToken, hashPassword } from "./auth";
 import {
   callbackBookingId,
@@ -1672,6 +1673,23 @@ async function handleNoPayloadContact(
   await sendNotRegistered(chatId, "uz");
 }
 
+/** Cancel the still-open booking and refresh that client's visit count. */
+async function cancelOpenBooking(barberId: string, isoDate: string, startTime: string) {
+  const rows = await db
+    .update(bookingsTable)
+    .set({ status: "cancelled", updatedAt: new Date() })
+    .where(and(
+      eq(bookingsTable.barberId, barberId),
+      eq(bookingsTable.date, isoDate),
+      eq(bookingsTable.startTime, startTime),
+      eq(bookingsTable.status, "confirmed"),
+    ))
+    .returning({ clientId: bookingsTable.clientId, barberId: bookingsTable.barberId });
+  for (const row of rows) {
+    await syncClientMetrics(row.clientId, row.barberId);
+  }
+}
+
 // ──────────────────────────────────────────────────────────────
 // Cancel flow handler
 // ──────────────────────────────────────────────────────────────
@@ -1701,16 +1719,7 @@ async function handleConfirmCancel(chatId: number, sessionId: string) {
 
   // Also cancel the matching entry in bookingsTable (if it was inserted by confirmBookingSession)
   try {
-    const isoDate = toISODate(data.date);
-    await db
-      .update(bookingsTable)
-      .set({ status: "cancelled", updatedAt: new Date() })
-      .where(and(
-        eq(bookingsTable.barberId, session.barberId),
-        eq(bookingsTable.date, isoDate),
-        eq(bookingsTable.startTime, data.time),
-        eq(bookingsTable.status, "confirmed"),
-      ));
+    await cancelOpenBooking(session.barberId, toISODate(data.date), data.time);
   } catch (err) {
     console.warn("[Bot] bookingsTable cancel skipped:", (err as Error).message);
   }
@@ -1795,16 +1804,7 @@ async function handleCustomerConfirmCancel(chatId: number, sessionId: string) {
 
   // Also cancel the matching entry in bookingsTable
   try {
-    const isoDate = toISODate(data.date);
-    await db
-      .update(bookingsTable)
-      .set({ status: "cancelled", updatedAt: new Date() })
-      .where(and(
-        eq(bookingsTable.barberId, session.barberId),
-        eq(bookingsTable.date, isoDate),
-        eq(bookingsTable.startTime, data.time),
-        eq(bookingsTable.status, "confirmed"),
-      ));
+    await cancelOpenBooking(session.barberId, toISODate(data.date), data.time);
   } catch (err) {
     console.warn("[Bot] bookingsTable customer-cancel skipped:", (err as Error).message);
   }
@@ -2166,7 +2166,6 @@ async function confirmBookingSession(
   let clientId: string | null = null;
   try {
     const bookingDate = new Date();
-    const totalPrice = data.totalPrice || 0;
 
     // Build lookup conditions: prefer phone match, fall back to telegramId
     const conditions = [];
@@ -2191,9 +2190,6 @@ async function confirmBookingSession(
           name: firstName,
           ...(effectivePhone && { phone: effectivePhone }),
           telegramId: tgUserId,
-          visitCount: sql`${clientsTable.visitCount} + 1`,
-          totalSpent: sql`${clientsTable.totalSpent} + ${totalPrice}`,
-          lastVisit: bookingDate,
           updatedAt: bookingDate,
         })
         .where(eq(clientsTable.id, existing.id));
@@ -2205,9 +2201,8 @@ async function confirmBookingSession(
         phone: effectivePhone || null,
         telegramId: tgUserId,
         status: "new",
-        visitCount: 1,
-        totalSpent: String(totalPrice),
-        lastVisit: bookingDate,
+        visitCount: 0,
+        totalSpent: "0",
       }).returning();
       clientId = newClient.id;
     }

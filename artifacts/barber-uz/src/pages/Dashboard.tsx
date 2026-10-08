@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -7,6 +8,7 @@ import {
   useListBookings,
   useGetProfile,
   useUpdateBooking,
+  getListClientsQueryKey,
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
@@ -391,6 +393,7 @@ function IndividualDashboard() {
   }, []);
 
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const updateBooking = useUpdateBooking();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -473,7 +476,12 @@ function IndividualDashboard() {
         bookingId: row.id,
         data: { status: status as "completed" },
       })));
-      await Promise.all([refetch(), refetchUpcoming(), refetchStats()]);
+      await Promise.all([
+        refetch(),
+        refetchUpcoming(),
+        refetchStats(),
+        queryClient.invalidateQueries({ queryKey: getListClientsQueryKey() }),
+      ]);
       const sum = rows.reduce((total, row) => total + Number(row.price || 0), 0);
       if (status === "completed") {
         toast({

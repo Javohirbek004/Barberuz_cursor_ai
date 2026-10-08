@@ -13,6 +13,16 @@ function todayStr() {
   return new Date().toLocaleDateString("sv-SE", { timeZone: getTz() });
 }
 
+/** Money and visit totals only move when the barber marks the booking completed. */
+function countsAsIncome(status: string): boolean {
+  return status === "completed";
+}
+
+/** No-show sits with cancelled bookings in the "Bekor qilingan" history count. */
+function countsAsCancelled(status: string): boolean {
+  return status === "cancelled" || status === "auto_cancelled" || status === "no_show";
+}
+
 function getDateRange(period: string): { start: string; end: string } {
   const tz = getTz();
   const today = todayStr();
@@ -149,9 +159,9 @@ router.get("/solo", authenticate, async (req, res) => {
       ),
     ]);
 
-    const completed = bookings.filter(b => b.status === "completed" || b.status === "confirmed");
-    const cancelled = bookings.filter(b => b.status === "cancelled" || b.status === "auto_cancelled");
-    const prevCompleted = prevBookings.filter(b => b.status === "completed" || b.status === "confirmed");
+    const completed = bookings.filter(b => countsAsIncome(b.status));
+    const cancelled = bookings.filter(b => countsAsCancelled(b.status));
+    const prevCompleted = prevBookings.filter(b => countsAsIncome(b.status));
 
     const revenue = completed.reduce((s, b) => s + Number(b.price), 0);
     const prevRevenue = prevCompleted.reduce((s, b) => s + Number(b.price), 0);
@@ -246,9 +256,9 @@ router.get("/team", authenticate, async (req, res) => {
       ),
     ]);
 
-    const completed = bookings.filter(b => b.status === "completed" || b.status === "confirmed");
-    const cancelled = bookings.filter(b => b.status === "cancelled" || b.status === "auto_cancelled");
-    const prevCompleted = prevBookings.filter(b => b.status === "completed" || b.status === "confirmed");
+    const completed = bookings.filter(b => countsAsIncome(b.status));
+    const cancelled = bookings.filter(b => countsAsCancelled(b.status));
+    const prevCompleted = prevBookings.filter(b => countsAsIncome(b.status));
 
     const revenue = completed.reduce((s, b) => s + Number(b.price), 0);
     const prevRevenue = prevCompleted.reduce((s, b) => s + Number(b.price), 0);
@@ -308,7 +318,7 @@ router.get("/detail", authenticate, async (req, res) => {
     );
 
     const completedBookings = bookings
-      .filter(b => b.status === "completed" || b.status === "confirmed")
+      .filter(b => countsAsIncome(b.status))
       .map(b => ({
         id: b.id,
         clientName: b.clientName,
@@ -458,7 +468,7 @@ type ClientSegment = "regular" | "new" | "lost" | null;
  * GET /api/analytics/clients?from=YYYY-MM-DD&to=YYYY-MM-DD
  * Also accepts ?period=today|week|month when from/to are omitted.
  *
- * A "visit" is a confirmed or completed booking that is not in the future.
+ * A "visit" is a completed booking that is not in the future.
  *  - all     : clients with at least one visit in the selected range
  *  - regular : of those, clients with 2+ visits in the last 30 days
  *  - new     : clients whose very first visit falls in the selected range
@@ -518,7 +528,7 @@ router.get("/clients", authenticate, async (req, res) => {
       }
       if (r.date > today) {
         agg.hasUpcoming = true;
-      } else if (r.status === "completed" || r.status === "confirmed") {
+      } else if (r.status === "completed") {
         agg.visits.push({ date: r.date, time: r.startTime });
       }
     }
@@ -619,8 +629,8 @@ router.get("/barber/:barberId", authenticate, async (req, res) => {
       return;
     }
 
-    const active = bookings.filter(b => b.status !== "cancelled" && b.status !== "auto_cancelled");
-    const cancelled = bookings.filter(b => b.status === "cancelled" || b.status === "auto_cancelled");
+    const active = bookings.filter(b => countsAsIncome(b.status));
+    const cancelled = bookings.filter(b => countsAsCancelled(b.status));
 
     const revenue = active.reduce((s, b) => s + Number(b.price), 0);
     const uniqueClients = new Set(active.filter(b => b.clientId).map(b => b.clientId)).size;
