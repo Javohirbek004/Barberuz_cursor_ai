@@ -23,6 +23,8 @@ interface BarberCard {
   brandName: string | null;
   address: string | null;
   mapLink: string | null;
+  latitude: string | null;
+  longitude: string | null;
   phone: string | null;
   phoneVisible: boolean;
   username: string;
@@ -118,6 +120,21 @@ function safeMap(url: string | null | undefined): string {
   return value;
 }
 
+function resolveMapUrl(barber: {
+  mapLink?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
+}): string {
+  const link = safeMap(barber.mapLink);
+  if (link) return link;
+  const lat = Number((barber.latitude || "").trim());
+  const lng = Number((barber.longitude || "").trim());
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "";
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return "";
+  if (lat === 0 && lng === 0) return "";
+  return `https://www.google.com/maps?q=${lat},${lng}`;
+}
+
 function addressLine(mapUrl: string, address: string): string | null {
   const link = safeMap(mapUrl);
   const place = address.trim();
@@ -155,7 +172,7 @@ export function receiptText(barber: BarberCard, service: string, date: string, t
     `✂️ Xizmat: ${esc(service)}`,
     `🗓️ Sana: ${esc(uzDate(date))}`,
     `⏰ Vaqt: ${esc(time)}`,
-    addressLine(barber.mapLink || "", barber.address || ""),
+    addressLine(resolveMapUrl(barber), barber.address || ""),
     "",
     "⚠️ Iltimos, kelishingizni tasdiqlang! Agar eslatmalarga javob berilmasa, broningiz avtomatik bekor qilinishi mumkin.",
   );
@@ -169,7 +186,7 @@ export function reminder24Text(barber: BarberCard, service: string, date: string
     `✂️ Xizmat: ${esc(service)}`,
     `🗓️ Sana: Ertaga (${esc(uzDate(date))})`,
     `⏰ Vaqt: ${esc(time)}`,
-    addressLine(barber.mapLink || "", barber.address || ""),
+    addressLine(resolveMapUrl(barber), barber.address || ""),
     "",
     "Kelishingizni tasdiqlaysizmi?",
   );
@@ -188,7 +205,7 @@ export function reminder1hText(barber: BarberCard, time: string): string {
     "",
     `Soat ${esc(time)} da sizni ${esc(salonName(barber))} salonida kutib qolamiz ✂️`,
     "",
-    addressLine(barber.mapLink || "", barber.address || ""),
+    addressLine(resolveMapUrl(barber), barber.address || ""),
     contactLine(barber),
     "",
     "Xush kayfiyat bilan kutamiz! 💈",
@@ -292,6 +309,8 @@ async function loadBarber(barberId: string): Promise<BarberCard | null> {
       brandName: usersTable.brandName,
       address: usersTable.address,
       mapLink: usersTable.mapLink,
+      latitude: usersTable.latitude,
+      longitude: usersTable.longitude,
       phone: usersTable.phone,
       phoneVisible: usersTable.phoneVisible,
       username: usersTable.username,
@@ -554,6 +573,8 @@ export async function sendReminderPreview(chatId: string | number): Promise<void
     brandName: "Barber.uz",
     address: "Chilonzor, 9-kvartal (Moʻljal: Metro yonida)",
     mapLink: "https://maps.google.com/?q=Chilonzor",
+    latitude: null,
+    longitude: null,
     phone: "+998901234567",
     phoneVisible: true,
     username: "barber",
@@ -567,6 +588,8 @@ export async function sendReminderPreview(chatId: string | number): Promise<void
         brandName: usersTable.brandName,
         address: usersTable.address,
         mapLink: usersTable.mapLink,
+        latitude: usersTable.latitude,
+        longitude: usersTable.longitude,
         phone: usersTable.phone,
         phoneVisible: usersTable.phoneVisible,
         username: usersTable.username,
@@ -580,7 +603,9 @@ export async function sendReminderPreview(chatId: string | number): Promise<void
         ...barber,
         ...user,
         address: user.address || barber.address,
-        mapLink: user.mapLink || barber.mapLink,
+        mapLink: user.mapLink || (user.latitude && user.longitude ? null : barber.mapLink),
+        latitude: user.latitude,
+        longitude: user.longitude,
         phone: user.phone || barber.phone,
       };
     }

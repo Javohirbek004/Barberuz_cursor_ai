@@ -30,6 +30,7 @@ import {
   handleClientConfirm,
   isClientCallback,
   deliverBookingReceipt,
+  receiptText,
   sendReminderPreview,
 } from "./client-notifications";
 
@@ -2019,28 +2020,65 @@ async function confirmBookingSession(
   }
 
   const serviceNames = data.services.map((s: { name: string }) => s.name).join(", ");
-  const place = data.barberAddress?.trim();
-  const confirmText =
-    `\u2705 <b>Broningiz muvaffaqiyatli tasdiqlandi!</b>\n\n` +
-    `\uD83D\uDC88 <b>Barber:</b> ${data.barberName}\n` +
-    `\u2702\uFE0F <b>Xizmat:</b> ${serviceNames}\n` +
-    `\uD83D\uDCC5 <b>Sana:</b> ${formatDateLabel(data.date)}\n` +
-    `\u23F0 <b>Vaqt:</b> ${data.time}\n` +
-    `\uD83D\uDCB0 <b>Narxi:</b> ${Number(data.totalPrice || 0).toLocaleString()} SO\u02BBM\n` +
-    (place ? `\uD83D\uDCCD <b>Manzil:</b> ${place}\n\n` : `\n`) +
-    `<i>Uchrashuv vaqtidan 10 daqiqa oldin yetib kelishingizni so\u02BBraymiz. \uD83D\uDE0A</i>`;
+  const [barberRow] = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      brandName: usersTable.brandName,
+      address: usersTable.address,
+      mapLink: usersTable.mapLink,
+      latitude: usersTable.latitude,
+      longitude: usersTable.longitude,
+      phone: usersTable.phone,
+      phoneVisible: usersTable.phoneVisible,
+      username: usersTable.username,
+      telegramId: usersTable.telegramId,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, session.barberId))
+    .limit(1);
 
-  await callTelegram("sendMessage", {
+  const confirmText = barberRow
+    ? receiptText(
+        {
+          ...barberRow,
+          address: barberRow.address || data.barberAddress || null,
+          mapLink: barberRow.mapLink || data.mapLink || null,
+        },
+        serviceNames,
+        toISODate(data.date),
+        data.time,
+      )
+    : `\u2705 <b>Broningiz qabul qilindi!</b>\n\n\uD83D\uDC88 Salon: ${data.barberName}\n\u2702\uFE0F Xizmat: ${serviceNames}\n\uD83D\uDCC5 Sana: ${formatDateLabel(data.date)}\n\u23F0 Vaqt: ${data.time}`;
+
+  const sent = await callTelegram("sendMessage", {
     chat_id: chatId,
     text: confirmText,
     parse_mode: "HTML",
-    reply_markup: {
-      remove_keyboard: true,
-      inline_keyboard: [[
-        { text: "\u274C Navbatni bekor qilish", callback_data: `customer_cancel_${sessionId}` },
-      ]],
-    },
-  });
+    disable_web_page_preview: true,
+    reply_markup: bookingRowId
+      ? {
+          inline_keyboard: [[
+            { text: "\u2705 Tasdiqlash", callback_data: `confirm_${bookingRowId}` },
+            { text: "\u274C Bekor qilish", callback_data: `cancel_${bookingRowId}` },
+          ]],
+        }
+      : {
+          remove_keyboard: true,
+          inline_keyboard: [[
+            { text: "\u274C Navbatni bekor qilish", callback_data: `customer_cancel_${sessionId}` },
+          ]],
+        },
+  }) as { ok?: boolean } | null;
+
+  if (sent?.ok && bookingRowId) {
+    await db.update(bookingsTable).set({
+      clientTelegramId: tgUserId,
+      clientConfirmed: false,
+      status: "pending",
+      updatedAt: new Date(),
+    }).where(eq(bookingsTable.id, bookingRowId));
+  }
 
   // Notify barber
   sendBarberBookingNotification(
