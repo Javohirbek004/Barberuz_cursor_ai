@@ -11,7 +11,7 @@ import {
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { ChevronLeft, BellRing, BellOff, Clock } from "lucide-react";
+import { ChevronLeft, BellRing, BellOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type ClientOff = "quick" | "auto";
@@ -143,24 +143,9 @@ export default function NotificationSettings() {
           </div>
         </section>
 
-        <section>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 px-1 mb-3">
-            {t("notif.section.reminders")}
-          </p>
-          <div className="space-y-2">
-            <SwitchRow
-              icon={<Clock className="w-4 h-4 text-amber-400" />}
-              title={t("notif.reminder")}
-              desc={t("notif.reminder_desc")}
-              checked={formData.reminders}
-              onChange={v => handleChange("reminders", v)}
-            />
-          </div>
-        </section>
-
         <section data-testid="client-notifications">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 px-1 mb-3">
-            Mijozlarga eslatmalar va Avto-bekor qilish
+            ⏰ Mijozlarga eslatmalar va Avto-bekor qilish
           </p>
           <div className="space-y-2">
             <SwitchRow
