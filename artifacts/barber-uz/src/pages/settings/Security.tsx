@@ -8,9 +8,9 @@ import { useUpdatePassword } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronLeft, Eye, EyeOff, Loader2, ShieldCheck, Smartphone } from "lucide-react";
+import { ChevronLeft, Eye, EyeOff, Loader2, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { deviceHeaders } from "@/lib/device";
+import { deviceHeaders, deviceTitle, resolveDeviceName, telegramPlatform } from "@/lib/device";
 
 function PasswordField({
   label,
@@ -61,9 +61,15 @@ function PasswordField({
   );
 }
 
+function accountRole(mode: string | undefined): string {
+  if (mode === "team") return "Admin";
+  if (mode === "member") return "Usta";
+  return "Yakka barber";
+}
+
 export default function SecuritySettings() {
   const { t } = useTranslation();
-  useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
   const updatePasswordMutation = useUpdatePassword();
   const oldRef = useRef("");
@@ -74,6 +80,10 @@ export default function SecuritySettings() {
   const [oldState, setOldState] = useState<"idle" | "checking" | "ok" | "bad">("idle");
   const [loggingOut, setLoggingOut] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [deviceName, setDeviceName] = useState(() => deviceTitle(
+    typeof navigator === "undefined" ? "" : navigator.userAgent,
+    telegramPlatform(),
+  ));
 
   oldRef.current = oldPassword;
 
@@ -86,6 +96,11 @@ export default function SecuritySettings() {
   useEffect(() => {
     localStorage.removeItem("barber_quick_pin");
     localStorage.removeItem("barber_quick_cred");
+    let cancelled = false;
+    resolveDeviceName().then((name) => {
+      if (!cancelled && name) setDeviceName(name);
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -240,11 +255,22 @@ export default function SecuritySettings() {
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 px-1 mb-3">
           Faol qurilmalar
         </p>
-        <div data-testid="device-current" className="bg-card/50 px-4 py-4 rounded-2xl border border-white/5 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
-            <Smartphone className="w-4 h-4 text-[#FACC15]" />
+        <div data-testid="device-current" className="bg-card/50 px-4 py-4 rounded-2xl border border-white/5">
+          <div className="flex flex-wrap items-center gap-2">
+            <p data-testid="device-name" className="font-semibold text-sm">📱 {deviceName}</p>
+            <span
+              data-testid="device-badge"
+              className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 shadow-[0_0_14px_rgba(52,211,153,0.55)]"
+            >
+              🟢 Bu sizning telefoningiz
+            </span>
           </div>
-          <p className="font-semibold text-sm">Joriy qurilma (Hozir faol)</p>
+          <p data-testid="device-identity" className="text-xs text-foreground/90 mt-2">
+            {(user?.name || "").trim() || "Barber"} • {accountRole(user?.mode)}
+          </p>
+          <p data-testid="device-place" className="text-xs text-muted-foreground mt-1">
+            Toshkent, O'zbekiston • Hozir faol
+          </p>
         </div>
         <button
           type="button"

@@ -7,33 +7,70 @@ export function deviceKey(): string {
   return key;
 }
 
-export function deviceLabel(ua = typeof navigator === "undefined" ? "" : navigator.userAgent): string {
-  const android = ua.match(/Android\s[\d.]+;\s*([^;)]+)/i);
+type TelegramWebApp = {
+  platform?: string;
+};
+
+function cleanModel(raw: string): string | null {
+  const model = raw.replace(/\s+Build\b.*/i, "").trim();
+  if (!model || /^(linux|android|k|mobile|wv)$/i.test(model)) return null;
+  return model;
+}
+
+export function telegramPlatform(): string {
+  if (typeof window === "undefined") return "";
+  const webApp = (window as Window & { Telegram?: { WebApp?: TelegramWebApp } }).Telegram?.WebApp;
+  return webApp?.platform || "";
+}
+
+/** Phone or computer name from the browser string, a model hint, and Telegram's platform. */
+export function deviceTitle(ua = "", platform = "", modelHint = ""): string {
+  const hinted = cleanModel(modelHint);
+  if (hinted) return hinted;
+
+  const android = ua.match(/Android(?:\s[\d.]+)?;\s*([^;)]+)/i);
   if (android) {
-    const model = android[1].replace(/\s+Build.*/i, "").trim();
-    if (model && !/linux/i.test(model)) return model;
+    const model = cleanModel(android[1]);
+    if (model) return model;
   }
   if (/iPhone/i.test(ua)) return "iPhone";
   if (/iPad/i.test(ua)) return "iPad";
-  const browser = /Edg\//.test(ua)
-    ? "Edge"
-    : /Chrome\//.test(ua)
-      ? "Chrome"
-      : /Firefox\//.test(ua)
-        ? "Firefox"
-        : /Safari\//.test(ua)
-          ? "Safari"
-          : "Brauzer";
-  const os = /Windows/i.test(ua)
-    ? "Windows"
-    : /Mac OS/i.test(ua)
-      ? "macOS"
-      : /Android/i.test(ua)
-        ? "Android"
-        : /Linux/i.test(ua)
-          ? "Linux"
-          : "Qurilma";
-  return `${browser} / ${os}`;
+  if (/Windows/i.test(ua)) return "Windows PC";
+  if (/Mac OS|Macintosh/i.test(ua)) return "Mac";
+  if (platform === "ios") return "iPhone";
+  if (platform === "macos") return "Mac";
+  if (platform === "android" || /Android/i.test(ua)) return "Android Smartphone";
+  if (/Linux/i.test(ua)) return "Linux";
+  if (platform === "tdesktop") return "Windows PC";
+  return "Qurilma";
+}
+
+export function deviceLabel(ua = typeof navigator === "undefined" ? "" : navigator.userAgent): string {
+  return deviceTitle(ua, telegramPlatform());
+}
+
+type AgentData = {
+  getHighEntropyValues?: (hints: string[]) => Promise<{ model?: string; platform?: string }>;
+};
+
+/** Prefer the real phone model when the browser is allowed to share it. */
+export async function resolveDeviceName(): Promise<string> {
+  const ua = typeof navigator === "undefined" ? "" : navigator.userAgent;
+  const platform = telegramPlatform();
+  let modelHint = "";
+  try {
+    const data = (navigator as Navigator & { userAgentData?: AgentData }).userAgentData;
+    if (data?.getHighEntropyValues) {
+      const hints = await data.getHighEntropyValues(["model", "platform"]);
+      modelHint = hints.model || "";
+      if (!modelHint && /android/i.test(hints.platform || "")) {
+        return deviceTitle(ua, platform || "android");
+      }
+    }
+  } catch {
+    // The plain browser string is enough.
+  }
+  return deviceTitle(ua, platform, modelHint);
 }
 
 export function deviceHeaders(): Record<string, string> {
