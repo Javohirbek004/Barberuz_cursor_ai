@@ -98,7 +98,9 @@ function calcNextBookingInfo(
       const diff = start - nowMins;
       const h = Math.floor(diff / 60);
       const m = diff % 60;
-      const main = h > 0 ? `${h}s ${m}d keyin` : `${m}d keyin`;
+      const main = h > 0
+        ? (m > 0 ? `${h} soat ${m} daq keyin` : `${h} soat keyin`)
+        : `${m} daq keyin`;
       return { main, sub: b.startTime.slice(0, 5), nextId: b.id };
     }
   }

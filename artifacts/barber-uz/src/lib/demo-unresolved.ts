@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { Booking, Client } from "@workspace/api-client-react";
 import { isOpenBooking, tashkentClock } from "@/lib/booking-feed";
 
-export const DEMO_STORAGE_KEY = "barber_demo_unresolved_v1";
+export const DEMO_STORAGE_KEY = "barber_demo_unresolved_v2";
 export const DEMO_EVENT = "barber-demo-bookings";
 
 const DEMO_PREFIX = "demo-unresolved-";
@@ -78,6 +78,16 @@ export function getDemoBookings(now = new Date()): Booking[] {
   })()));
   const saved = readStatuses();
 
+  const twoDaysAgo = shiftIsoDate(today, -2);
+  const laterUpcoming = fmtMins(Math.min(22 * 60 + 30, Math.max((() => {
+    const [h, m] = upcoming.split(":").map(Number);
+    return (h ?? 21) * 60 + (m ?? 0) + 70;
+  })(), clock.mins + 90)));
+  const laterUpcomingEnd = fmtMins(Math.min(23 * 60 + 50, (() => {
+    const [h, m] = laterUpcoming.split(":").map(Number);
+    return (h ?? 22) * 60 + (m ?? 0) + 45;
+  })()));
+
   const seeds: Array<Omit<Booking, "barberId" | "createdAt" | "serviceId" | "status"> & { id: string; defaultStatus: string }> = [
     {
       id: `${DEMO_PREFIX}namuna3`,
@@ -92,6 +102,30 @@ export function getDemoBookings(now = new Date()): Booking[] {
       defaultStatus: "confirmed",
     },
     {
+      id: `${DEMO_PREFIX}jasur`,
+      clientId: `${DEMO_PREFIX}jasur`,
+      clientName: "Jasur",
+      serviceName: "Fade",
+      date: yesterday,
+      startTime: "11:20",
+      endTime: "12:00",
+      price: 70000,
+      notes: "Namuna: kechagi ikkinchi tasdiqlanmagan bron",
+      defaultStatus: "confirmed",
+    },
+    {
+      id: `${DEMO_PREFIX}sardor`,
+      clientId: `${DEMO_PREFIX}sardor`,
+      clientName: "Sardor",
+      serviceName: "Soqol",
+      date: twoDaysAgo,
+      startTime: "16:00",
+      endTime: "16:40",
+      price: 40000,
+      notes: "Namuna: 2 kun oldingi tasdiqlanmagan bron",
+      defaultStatus: "pending",
+    },
+    {
       id: `${DEMO_PREFIX}vaqt`,
       clientId: `${DEMO_PREFIX}vaqt`,
       clientName: "Vaqt testi",
@@ -101,6 +135,18 @@ export function getDemoBookings(now = new Date()): Booking[] {
       endTime: "15:30",
       price: 60000,
       notes: "Namuna: bugungi o'tgan, tasdiqlanmagan bron",
+      defaultStatus: "confirmed",
+    },
+    {
+      id: `${DEMO_PREFIX}dilshod`,
+      clientId: `${DEMO_PREFIX}dilshod`,
+      clientName: "Dilshod",
+      serviceName: "Soch + soqol",
+      date: today,
+      startTime: "12:00",
+      endTime: "13:00",
+      price: 80000,
+      notes: "Namuna: bugungi o'tgan bron",
       defaultStatus: "confirmed",
     },
     {
@@ -116,6 +162,18 @@ export function getDemoBookings(now = new Date()): Booking[] {
       defaultStatus: "completed",
     },
     {
+      id: `${DEMO_PREFIX}bekzod`,
+      clientId: `${DEMO_PREFIX}bekzod`,
+      clientName: "Bekzod",
+      serviceName: "Bolalar soch",
+      date: today,
+      startTime: "09:00",
+      endTime: "09:40",
+      price: 50000,
+      notes: "Namuna: bajarilgan bron",
+      defaultStatus: "completed",
+    },
+    {
       id: `${DEMO_PREFIX}alixon`,
       clientId: `${DEMO_PREFIX}alixon`,
       clientName: "Alixon",
@@ -126,6 +184,18 @@ export function getDemoBookings(now = new Date()): Booking[] {
       price: 60000,
       notes: "Namuna: yaqin bron",
       defaultStatus: "pending",
+    },
+    {
+      id: `${DEMO_PREFIX}kamol`,
+      clientId: `${DEMO_PREFIX}kamol`,
+      clientName: "Kamol",
+      serviceName: "Kontur",
+      date: today,
+      startTime: laterUpcoming,
+      endTime: laterUpcomingEnd,
+      price: 45000,
+      notes: "Namuna: ikkinchi yaqin bron",
+      defaultStatus: "confirmed",
     },
   ];
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useListBookings, useGetDashboardStats, useUpdateBooking, getListClientsQueryKey } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
@@ -10,7 +10,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { isOpenBooking } from "@/lib/booking-feed";
 import {
-  demoUnresolvedDates,
   isDemoBookingId,
   mergeDemoBookings,
   setDemoBookingStatus,
@@ -31,6 +30,11 @@ function toISO(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function fromISO(iso: string): Date {
+  const [y = 1970, m = 1, d = 1] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
 /** Same calendar day the booking form and API use (Tashkent), not the computer clock. */
@@ -99,10 +103,14 @@ function MonthNav({
   selected,
   onSelect,
   unresolvedDates,
+  unresolvedCount,
+  jumpIso,
 }: {
   selected: Date;
   onSelect: (d: Date) => void;
   unresolvedDates: Set<string>;
+  unresolvedCount: number;
+  jumpIso: string | null;
 }) {
   const today = tashkentTodayDate();
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -110,17 +118,19 @@ function MonthNav({
 
   const days = getDaysInMonth(viewYear, viewMonth);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const todayRef = useRef<HTMLButtonElement>(null);
+  const pillRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const isCurrentMonth = viewYear === today.getFullYear() && viewMonth === today.getMonth();
 
   useEffect(() => {
-    if (isCurrentMonth && todayRef.current && scrollRef.current) {
-      todayRef.current.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
-    } else if (scrollRef.current) {
+    const iso = toISO(selected);
+    const el = pillRefs.current[iso];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    } else if (scrollRef.current && isCurrentMonth) {
       scrollRef.current.scrollLeft = 0;
     }
-  }, [viewMonth, viewYear, isCurrentMonth]);
+  }, [viewMonth, viewYear, isCurrentMonth, selected]);
 
   const goToPrev = () => {
     if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
@@ -151,6 +161,25 @@ function MonthNav({
         </button>
       </div>
 
+      {unresolvedCount > 0 && jumpIso && (
+        <button
+          type="button"
+          data-testid="unresolved-banner"
+          onClick={() => {
+            const day = fromISO(jumpIso);
+            setViewYear(day.getFullYear());
+            setViewMonth(day.getMonth());
+            onSelect(day);
+          }}
+          className="w-full flex items-center gap-2 rounded-xl bg-card border border-white/5 px-3 py-2.5 text-left hover:bg-white/5 active:scale-[0.99] transition-all"
+        >
+          <span className="text-lg leading-none text-foreground shrink-0">←</span>
+          <span className="text-sm font-medium text-foreground">
+            🔴 {unresolvedCount} ta tasdiqlanmagan bron bor
+          </span>
+        </button>
+      )}
+
       <div ref={scrollRef} className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
         {days.map((day) => {
           const isSelected = isSameDay(day, selected);
@@ -162,7 +191,7 @@ function MonthNav({
           return (
             <button
               key={day.toISOString()}
-              ref={isToday ? todayRef : undefined}
+              ref={(el) => { pillRefs.current[iso] = el; }}
               onClick={() => onSelect(day)}
               data-testid={`cal-pill-${iso}`}
               className={`relative flex flex-col items-center min-w-[3rem] py-2.5 px-1 rounded-2xl transition-all flex-shrink-0 ${
@@ -223,12 +252,12 @@ function IndividualCalendar() {
     : [];
   const reviewIds = new Set(reviewBookings.map((b) => b.id));
   const listedBookings = bookings.filter((b) => !reviewIds.has(b.id));
-  const unresolvedDates = new Set([
-    ...demoUnresolvedDates(),
-    ...(overdueData?.bookings ?? [])
-      .filter((b) => isOpenBooking(b.status))
-      .map((b) => b.date),
-  ]);
+  const pastUnresolved = mergeDemoBookings(overdueData?.bookings ?? [], { mode: "overdue" })
+    .filter((b) => isOpenBooking(b.status) && b.date < todayISO)
+    .sort((a, b) => b.date.localeCompare(a.date) || a.startTime.localeCompare(b.startTime));
+  const unresolvedDates = new Set(pastUnresolved.map((b) => b.date));
+  const unresolvedCount = pastUnresolved.length;
+  const jumpIso = pastUnresolved[0]?.date ?? null;
 
   async function markBooking(row: Booking, status: "completed" | "no_show") {
     if (busyKey) return;
@@ -279,7 +308,13 @@ function IndividualCalendar() {
       </div>
 
       {/* Month nav */}
-      <MonthNav selected={selectedDate} onSelect={setSelectedDate} unresolvedDates={unresolvedDates} />
+      <MonthNav
+        selected={selectedDate}
+        onSelect={setSelectedDate}
+        unresolvedDates={unresolvedDates}
+        unresolvedCount={unresolvedCount}
+        jumpIso={jumpIso}
+      />
 
       {/* Booking list */}
       <div className="space-y-3">
@@ -289,12 +324,14 @@ function IndividualCalendar() {
               type="button"
               data-testid="calendar-review-toggle"
               onClick={() => setReviewOpen((open) => !open)}
-              className="w-full flex items-center justify-between text-left py-1"
+              className="w-full min-h-11 flex items-center justify-between gap-3 text-left py-2.5 px-1 rounded-xl hover:bg-white/5 active:bg-white/8"
             >
               <span className="text-sm font-bold text-foreground">
                 ⚠️ Tasdiqlash kutilmoqda ({reviewBookings.length})
               </span>
-              <span className="text-muted-foreground text-xs">{reviewOpen ? "⌃" : "⌄"}</span>
+              {reviewOpen
+                ? <ChevronUp className="w-5 h-5 text-muted-foreground shrink-0" />
+                : <ChevronDown className="w-5 h-5 text-muted-foreground shrink-0" />}
             </button>
             {reviewOpen && (
               <div className="space-y-2">
