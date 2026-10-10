@@ -1,12 +1,20 @@
 import { Router, type Request, type Response } from "express";
 import { db, bookingsTable, bookingSessionsTable, servicesTable } from "@workspace/db";
-import { eq, and, gte, lt, lte, inArray, isNull, notInArray } from "drizzle-orm";
+import { eq, and, gte, lt, lte, inArray, isNull } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 import { sendDirectBookingNotification } from "../lib/telegram-bot";
 import { deliverBookingReceipt, notifyClientOfBarberChange } from "../lib/client-notifications";
 import { syncClientMetrics } from "../lib/client-metrics";
 import { findOrCreateClientByPhone } from "../lib/client-lookup";
 import { normalizePhone } from "../lib/phone";
+import {
+  findBookingConflict,
+  isCalendarDate,
+  isInactiveStatus,
+  minsToTime,
+  parseClockTime,
+  timeToMins,
+} from "../lib/booking-conflicts";
 
 const router = Router();
 
@@ -89,30 +97,16 @@ router.post("/", authenticate, async (req, res) => {
       return;
     }
 
-    const timeToMins = (t: string) => {
-      const [h, m] = String(t).split(":").map(Number);
-      return (h || 0) * 60 + (m || 0);
-    };
-    const reqStart = timeToMins(startTime);
-    const reqEnd = timeToMins(endTime);
-    const existingOnDate = await db
-      .select({ startTime: bookingsTable.startTime, endTime: bookingsTable.endTime })
-      .from(bookingsTable)
-      .where(
-        and(
-          eq(bookingsTable.barberId, user.id),
-          eq(bookingsTable.date, date),
-          notInArray(bookingsTable.status, ["cancelled", "auto_cancelled", "no_show"]),
-        ),
-      );
     // "Oraliq tanaffus": keep the barber's preparation gap between two services.
     const bufferMins = typeof user.bufferTime === "number" ? user.bufferTime : 10;
-    const hasConflict = existingOnDate.some((b) => {
-      const s = timeToMins(b.startTime);
-      const e = timeToMins(b.endTime);
-      return reqStart < e + bufferMins && reqEnd + bufferMins > s;
+    const clash = await findBookingConflict({
+      barberId: user.id,
+      date,
+      startTime,
+      endTime,
+      bufferMins,
     });
-    if (hasConflict) {
+    if (clash) {
       res.status(409).json({ error: "conflict", message: "Tanlangan vaqt allaqachon band" });
       return;
     }
@@ -200,6 +194,51 @@ router.get("/:bookingId", authenticate, async (req, res) => {
   }
 });
 
+type ScheduleResult =
+  | { ok: true; date: string; startTime: string; endTime: string }
+  | { ok: false; message: string };
+
+/**
+ * The day and times a booking will have after an edit. A new start time on its own
+ * keeps the booking's length. Wrong dates, wrong times and an end before the start are refused.
+ */
+function resolveSchedule(
+  before: typeof bookingsTable.$inferSelect,
+  sent: { date?: unknown; startTime?: unknown; endTime?: unknown },
+): ScheduleResult {
+  let date = before.date;
+  if (sent.date !== undefined) {
+    if (!isCalendarDate(sent.date)) return { ok: false, message: "Sana noto'g'ri" };
+    date = sent.date;
+  }
+
+  const oldStart = parseClockTime(before.startTime) ?? "00:00";
+  const oldEnd = parseClockTime(before.endTime) ?? oldStart;
+  let startTime = oldStart;
+  if (sent.startTime !== undefined) {
+    const parsed = parseClockTime(sent.startTime);
+    if (!parsed) return { ok: false, message: "Boshlanish vaqti noto'g'ri" };
+    startTime = parsed;
+  }
+
+  let endTime = oldEnd;
+  if (sent.endTime !== undefined) {
+    const parsed = parseClockTime(sent.endTime);
+    if (!parsed) return { ok: false, message: "Tugash vaqti noto'g'ri" };
+    endTime = parsed;
+  } else if (sent.startTime !== undefined) {
+    const length = Math.max(timeToMins(oldEnd) - timeToMins(oldStart), 1);
+    const shifted = timeToMins(startTime) + length;
+    if (shifted > 23 * 60 + 59) return { ok: false, message: "Tugash vaqti kechadan oshib ketadi" };
+    endTime = minsToTime(shifted);
+  }
+
+  if (timeToMins(endTime) <= timeToMins(startTime)) {
+    return { ok: false, message: "Tugash vaqti boshlanishdan keyin bo'lishi kerak" };
+  }
+  return { ok: true, date, startTime, endTime };
+}
+
 function isOpenStatus(status: string): boolean {
   return status === "confirmed" || status === "pending";
 }
@@ -222,20 +261,45 @@ async function updateBooking(req: Request, res: Response) {
       return;
     }
 
-    const nextDate = date !== undefined ? date : before.date;
-    const nextStart = startTime !== undefined ? startTime : before.startTime;
-    const nextEnd = endTime !== undefined ? endTime : before.endTime;
+    const scheduleSent = date !== undefined || startTime !== undefined || endTime !== undefined;
+    let nextDate = before.date;
+    let nextStart = before.startTime.slice(0, 5);
+    let nextEnd = before.endTime.slice(0, 5);
+    if (scheduleSent) {
+      const checked = resolveSchedule(before, { date, startTime, endTime });
+      if (!checked.ok) {
+        res.status(400).json({ error: "validation", message: checked.message });
+        return;
+      }
+      ({ date: nextDate, startTime: nextStart, endTime: nextEnd } = checked);
+    }
     const timeMoved = nextDate !== before.date
-      || String(nextStart).slice(0, 5) !== before.startTime.slice(0, 5)
-      || String(nextEnd).slice(0, 5) !== before.endTime.slice(0, 5);
+      || nextStart !== before.startTime.slice(0, 5)
+      || nextEnd !== before.endTime.slice(0, 5);
+
+    // A moved or re-opened booking must not land on a time that is already taken.
+    const nextStatus = status !== undefined ? status : before.status;
+    const reopened = isInactiveStatus(before.status) && !isInactiveStatus(nextStatus);
+    if (!isInactiveStatus(nextStatus) && (timeMoved || reopened)) {
+      const clash = await findBookingConflict({
+        barberId: user.id,
+        date: nextDate,
+        startTime: nextStart,
+        endTime: nextEnd,
+        bufferMins: typeof user.bufferTime === "number" ? user.bufferTime : 10,
+        exceptBookingId: before.id,
+      });
+      if (clash) {
+        res.status(409).json({ error: "conflict", message: "Tanlangan vaqt allaqachon band" });
+        return;
+      }
+    }
 
     const [booking] = await db.update(bookingsTable)
       .set({
         ...(clientName !== undefined && { clientName }),
         ...(serviceId !== undefined && { serviceId }),
-        ...(date !== undefined && { date }),
-        ...(startTime !== undefined && { startTime }),
-        ...(endTime !== undefined && { endTime }),
+        ...(scheduleSent && { date: nextDate, startTime: nextStart, endTime: nextEnd }),
         ...(timeMoved && { reminded24h: false, reminded1h: false, remindedFollowup: false }),
         ...(price !== undefined && { price: price.toString() }),
         ...(status !== undefined && { status }),
