@@ -12,8 +12,16 @@ import {
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { isElapsedBooking, isOpenBooking, reviewDayLabel, tashkentClock } from "@/lib/booking-feed";
+import { isElapsedBooking, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
+import {
+  demoCompletedRevenue,
+  isDemoBookingId,
+  mergeDemoBookings,
+  setDemoBookingStatus,
+  useDemoUnresolved,
+} from "@/lib/demo-unresolved";
 import { Layout } from "@/components/Layout";
+import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 import { Card } from "@/components/ui/card";
 import {
   CalendarDays, Wallet, Timer, Clock,
@@ -382,8 +390,7 @@ function IndividualDashboard() {
   const { data: bookingsData, isLoading: bookingsLoading, refetch } = useListBookings({ date: today });
   // Separate query for the "Yaqin bronlar" list — shows today + future bookings
   const { data: upcomingData, isLoading: upcomingLoading, refetch: refetchUpcoming } = useListBookings({ date: "upcoming" as any });
-  // Earlier days that nobody marked yet. They stay on the review list until Keldi / Kelmadi.
-  const { data: overdueData, isLoading: overdueLoading, refetch: refetchOverdue } = useListBookings({ date: "overdue" as any });
+  useDemoUnresolved();
 
   // Refresh often and when the app comes back to the screen, so Telegram changes
   // (new, confirmed or cancelled bookings) show up without a reload.
@@ -392,7 +399,6 @@ function IndividualDashboard() {
       void refetch();
       void refetchStats();
       void refetchUpcoming();
-      void refetchOverdue();
     };
     const id = setInterval(refreshAll, 20_000);
     const onVisible = () => { if (document.visibilityState === "visible") refreshAll(); };
@@ -401,7 +407,7 @@ function IndividualDashboard() {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [refetch, refetchStats, refetchUpcoming, refetchOverdue]);
+  }, [refetch, refetchStats, refetchUpcoming]);
 
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -418,23 +424,23 @@ function IndividualDashboard() {
   const [showBronModal, setShowBronModal] = useState(false);
   const [showSlotModal, setShowSlotModal] = useState(false);
   const [isFinancialModalOpen, setIsFinancialModalOpen] = useState(false);
+  const [noShowTarget, setNoShowTarget] = useState<Booking | null>(null);
 
   const bookingsListRef = useRef<HTMLDivElement>(null);
   const bookingItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Today's bookings — for stats, free-slot calc, and TodayStatsModal
-  const bookings = bookingsData?.bookings ?? [];
+  const bookings = mergeDemoBookings(bookingsData?.bookings ?? [], { date: today }, now);
   const activeStats = stats;
+  const todayRevenue = (activeStats?.todayRevenue ?? 0) + demoCompletedRevenue(today, now);
 
-  const openBookings = (upcomingData?.bookings ?? [])
+  const openBookings = mergeDemoBookings(upcomingData?.bookings ?? [], { mode: "upcoming" }, now)
     .filter((b) => isOpenBooking(b.status))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
-  const reviewBookings = [
-    ...(overdueData?.bookings ?? []).filter((b) => isOpenBooking(b.status)),
-    ...openBookings.filter((b) => isElapsedBooking(b.date, b.startTime, now.getTime())),
-  ]
-    .filter((b, index, all) => all.findIndex((other) => other.id === b.id) === index)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+  // After midnight, earlier days leave this home list. Only today's elapsed visits wait here.
+  const reviewBookings = openBookings
+    .filter((b) => b.date === today && isElapsedBooking(b.date, b.startTime, now.getTime()))
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
   const upcomingBookings = openBookings
     .filter((b) => !isElapsedBooking(b.date, b.startTime, now.getTime()))
     .slice(0, 10);
@@ -495,14 +501,19 @@ function IndividualDashboard() {
     const key = rows.length === 1 ? rows[0].id : "all";
     setBusyKey(key);
     try {
-      await Promise.all(rows.map((row) => updateBooking.mutateAsync({
-        bookingId: row.id,
-        data: { status: status as "completed" },
-      })));
+      await Promise.all(rows.map((row) => {
+        if (isDemoBookingId(row.id)) {
+          setDemoBookingStatus(row.id, status);
+          return Promise.resolve();
+        }
+        return updateBooking.mutateAsync({
+          bookingId: row.id,
+          data: { status: status as "completed" },
+        });
+      }));
       await Promise.all([
         refetch(),
         refetchUpcoming(),
-        refetchOverdue(),
         refetchStats(),
         queryClient.invalidateQueries({ queryKey: getListClientsQueryKey() }),
       ]);
@@ -551,7 +562,7 @@ function IndividualDashboard() {
         {/* Card 2: Bugungi daromad */}
         <StatCard
           label="Bugungi daromad"
-          value={statsLoading ? "..." : `${(activeStats?.todayRevenue ?? 0).toLocaleString()} so'm`}
+          value={statsLoading ? "..." : `${todayRevenue.toLocaleString()} so'm`}
           pillLabel="Tafsilotlar"
           icon={Wallet}
           iconColor="text-emerald-400"
@@ -585,10 +596,53 @@ function IndividualDashboard() {
         />
       </div>
 
-      {(bookingsLoading || upcomingLoading || overdueLoading) ? (
+      {(bookingsLoading || upcomingLoading) ? (
         <p className="text-muted-foreground text-center py-8 text-sm">{t("loading")}</p>
       ) : (
         <div ref={bookingsListRef} className="space-y-8">
+          {reviewBookings.length > 0 && (
+            <section data-testid="review-feed">
+              <h2 className="text-lg font-bold text-foreground mb-1">⚠️ Tasdiqlash kutilmoqda</h2>
+              <p className="text-[11px] text-amber-200/70 mb-3">
+                *(⚠️ Holati belgilanmaguncha daromadga qoʻshilmaydi)*
+              </p>
+              <div className="space-y-2">
+                {reviewBookings.map((b) => (
+                  <Card key={b.id} className="bg-card border-amber-500/20 overflow-hidden">
+                    <button type="button" onClick={() => setSelectedBooking(b)} className="w-full px-3 py-2.5 flex items-center gap-3 text-left">
+                      <div className="w-12 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-300 font-bold flex-shrink-0">
+                        <span className="text-xs whitespace-nowrap">{b.startTime.slice(0, 5)}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-foreground truncate text-sm">{b.clientName}</div>
+                        <div className="text-[11px] text-muted-foreground truncate">
+                          {serviceNames(b.serviceName).join(", ") || t("dash.service_fallback")}
+                        </div>
+                      </div>
+                      <div className="text-xs font-semibold text-primary flex-shrink-0">{b.price.toLocaleString()} so'm</div>
+                    </button>
+                    <div className="flex gap-1.5 px-3 pb-2.5">
+                      <button
+                        type="button"
+                        data-testid={`keldi-${b.id}`}
+                        disabled={busyKey !== null}
+                        onClick={() => void markBookings([b], "completed")}
+                        className="flex-1 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold disabled:opacity-40"
+                      >✅ Keldi</button>
+                      <button
+                        type="button"
+                        data-testid={`kelmadi-${b.id}`}
+                        disabled={busyKey !== null}
+                        onClick={() => setNoShowTarget(b)}
+                        className="flex-1 h-8 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-semibold disabled:opacity-40"
+                      >❌ Kelmadi</button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          )}
+
           {upcomingBookings.length > 0 && (
             <section data-testid="upcoming-feed">
               <h2 className="text-lg font-bold text-foreground mb-4">{t("dash.recent_bookings")}</h2>
@@ -633,56 +687,6 @@ function IndividualDashboard() {
             </section>
           )}
 
-          {reviewBookings.length > 0 && (
-            <section data-testid="review-feed">
-              <h2 className="text-lg font-bold text-foreground mb-4">⚠️ Tasdiqlash kutilmoqda</h2>
-              <div className="space-y-2">
-                {reviewBookings.map((b) => (
-                  <Card key={b.id} className="bg-card border-amber-500/20 overflow-hidden">
-                    <button type="button" onClick={() => setSelectedBooking(b)} className="w-full px-4 py-3 flex items-center gap-4 text-left">
-                      <div className="w-14 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-300 font-bold flex-shrink-0">
-                        <span className="text-sm whitespace-nowrap">{b.startTime.slice(0, 5)}</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-foreground truncate">{b.clientName}</div>
-                        <div className="text-xs text-muted-foreground truncate">
-                          {b.date !== today && (
-                            <span data-testid="review-day" className="text-amber-300/90 font-medium">{reviewDayLabel(b.date, today)} · </span>
-                          )}
-                          {serviceNames(b.serviceName).join(", ") || t("dash.service_fallback")}
-                        </div>
-                      </div>
-                      <div className="text-sm font-semibold text-primary flex-shrink-0">{b.price.toLocaleString()} so'm</div>
-                    </button>
-                    <div className="grid grid-cols-2 gap-2 px-3 pb-3">
-                      <button
-                        type="button"
-                        data-testid={`keldi-${b.id}`}
-                        disabled={busyKey !== null}
-                        onClick={() => void markBookings([b], "completed")}
-                        className="h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-sm font-semibold disabled:opacity-40"
-                      >✅ Keldi</button>
-                      <button
-                        type="button"
-                        data-testid={`kelmadi-${b.id}`}
-                        disabled={busyKey !== null}
-                        onClick={() => void markBookings([b], "no_show")}
-                        className="h-10 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm font-semibold disabled:opacity-40"
-                      >❌ Kelmadi</button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-              <button
-                type="button"
-                data-testid="bulk-complete"
-                disabled={busyKey !== null}
-                onClick={() => void markBookings(reviewBookings, "completed")}
-                className="mt-3 w-full h-11 rounded-2xl bg-primary text-black text-sm font-bold disabled:opacity-40"
-              >{busyKey === "all" ? "Saqlanmoqda" : "🔘 Barchasini \"Bajarildi\" deb tasdiqlash"}</button>
-            </section>
-          )}
-
           {upcomingBookings.length === 0 && reviewBookings.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
@@ -701,7 +705,7 @@ function IndividualDashboard() {
           <BookingDetailModal
             booking={selectedBooking}
             onClose={() => setSelectedBooking(null)}
-            onRefetch={() => { void refetch(); void refetchUpcoming(); void refetchOverdue(); }}
+            onRefetch={() => { void refetch(); void refetchUpcoming(); }}
             onRefetchStats={refetchStats}
           />
         )}
@@ -724,6 +728,18 @@ function IndividualDashboard() {
         onClose={() => setShowSlotModal(false)}
         freeWindows={freeWindows}
         totalFreeSlots={freeSlots}
+      />
+
+      <NoShowConfirmModal
+        open={!!noShowTarget}
+        busy={busyKey !== null}
+        onCancel={() => setNoShowTarget(null)}
+        onConfirm={() => {
+          if (!noShowTarget) return;
+          const row = noShowTarget;
+          setNoShowTarget(null);
+          void markBookings([row], "no_show");
+        }}
       />
 
       <AnimatePresence>

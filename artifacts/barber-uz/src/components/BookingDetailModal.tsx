@@ -13,6 +13,8 @@ import {
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { isElapsedBooking } from "@/lib/booking-feed";
+import { isDemoBookingId, isDemoClientId, setDemoBookingStatus } from "@/lib/demo-unresolved";
+import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 
 const UZ_SHORT_MONTHS = [
   "Yan","Fev","Mar","Apr","May","Iyn","Iyl","Avg","Sen","Okt","Noy","Dek",
@@ -241,10 +243,11 @@ export function BookingDetailModal({
   const bookingTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmNoShow, setConfirmNoShow] = useState(false);
 
   const { data: clientData } = useGetClient(
     booking.clientId ?? "",
-    { query: { enabled: !!booking.clientId } },
+    { query: { enabled: !!booking.clientId && !isDemoClientId(booking.clientId) } },
   );
 
   const queryClient = useQueryClient();
@@ -363,36 +366,46 @@ export function BookingDetailModal({
   // ── Booking status actions ─────────────────────────────────────
   const bookingPrice = Number(booking.price) || 0;
 
+  const finishLocalStatus = (status: "completed" | "no_show") => {
+    refreshClientLists();
+    onClose();
+    onRefetch();
+    onRefetchStats?.();
+    if (status === "completed") {
+      toast({
+        title: "✓ Muvaffaqiyatli yakunlandi",
+        description: `${booking.clientName} — ${bookingPrice.toLocaleString()} so'm daromadga qo'shildi`,
+        duration: 3000,
+      });
+    } else {
+      toast({ title: "Kelmadi", description: "Bu bron daromadga qo'shilmadi" });
+    }
+  };
+
   const handleComplete = () => {
+    if (isDemoBookingId(booking.id)) {
+      setDemoBookingStatus(booking.id, "completed");
+      finishLocalStatus("completed");
+      return;
+    }
     updateBookingMut.mutate(
       { bookingId: booking.id, data: { status: "completed", price: bookingPrice } },
       {
-        onSuccess: () => {
-          refreshClientLists();
-          onClose();
-          onRefetch();
-          onRefetchStats?.();
-          toast({
-            title: "✓ Muvaffaqiyatli yakunlandi",
-            description: `${booking.clientName} — ${bookingPrice.toLocaleString()} so'm daromadga qo'shildi`,
-            duration: 3000,
-          });
-        },
+        onSuccess: () => finishLocalStatus("completed"),
       },
     );
   };
 
   const handleNoShow = () => {
+    if (isDemoBookingId(booking.id)) {
+      setDemoBookingStatus(booking.id, "no_show");
+      finishLocalStatus("no_show");
+      return;
+    }
     updateBookingMut.mutate(
       { bookingId: booking.id, data: { status: "no_show" as "cancelled" } },
       {
-        onSuccess: () => {
-          refreshClientLists();
-          onClose();
-          onRefetch();
-          onRefetchStats?.();
-          toast({ title: "Kelmadi", description: "Bu bron daromadga qo'shilmadi" });
-        },
+        onSuccess: () => finishLocalStatus("no_show"),
       },
     );
   };
@@ -519,15 +532,15 @@ export function BookingDetailModal({
 
           {/* ── Section 4: Action buttons ── */}
           {needsReview && (
-            <div className="pt-4 grid grid-cols-2 gap-3">
+            <div className="pt-4 grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={handleNoShow}
+                onClick={() => setConfirmNoShow(true)}
                 disabled={isBusy}
                 data-testid="modal-kelmadi"
-                className="flex items-center justify-center gap-2 py-3.5 rounded-2xl border border-red-500/30 text-red-400 text-sm font-semibold hover:bg-red-500/10 active:scale-[0.98] transition-all disabled:opacity-40"
+                className="flex items-center justify-center gap-1.5 h-10 rounded-xl border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-500/10 active:scale-[0.98] transition-all disabled:opacity-40"
               >
-                <XCircle className="w-4 h-4" />
+                <XCircle className="w-3.5 h-3.5" />
                 ❌ Kelmadi
               </button>
               <button
@@ -535,10 +548,10 @@ export function BookingDetailModal({
                 onClick={handleComplete}
                 disabled={isBusy}
                 data-testid="modal-keldi"
-                className="flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/25 active:scale-[0.98] transition-all disabled:opacity-40"
+                className="flex items-center justify-center gap-1.5 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/25 active:scale-[0.98] transition-all disabled:opacity-40"
               >
-                <CheckCircle className="w-4 h-4" />
-                {isBusy ? "..." : "✅ Keldi va to'ladi"}
+                <CheckCircle className="w-3.5 h-3.5" />
+                {isBusy ? "..." : "✅ Keldi"}
               </button>
             </div>
           )}
@@ -608,6 +621,15 @@ export function BookingDetailModal({
           )}
         </div>
       </motion.div>
+      <NoShowConfirmModal
+        open={confirmNoShow}
+        busy={isBusy}
+        onCancel={() => setConfirmNoShow(false)}
+        onConfirm={() => {
+          setConfirmNoShow(false);
+          handleNoShow();
+        }}
+      />
     </div>
   );
 }

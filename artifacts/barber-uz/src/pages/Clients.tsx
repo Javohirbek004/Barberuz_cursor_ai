@@ -7,6 +7,7 @@ import { Search, ChevronRight, Phone, Users, UserX } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
 import { SEGMENT_META, type Segment } from "@/data/mockClients";
+import { getDemoClients, useDemoUnresolved } from "@/lib/demo-unresolved";
 
 type SegmentFilter = "all" | Segment;
 
@@ -176,12 +177,13 @@ function EmptyState({ isSearch }: { isSearch: boolean }) {
 }
 
 function useClients(search: string, segment: SegmentFilter) {
+  useDemoUnresolved();
   const { data: apiData, isLoading } = useListClients({
     filter: segment !== "all" ? segment : undefined,
     search: search || undefined,
   });
 
-  const clients: ClientItem[] = (apiData?.clients ?? []).map((c) => ({
+  const apiClients: ClientItem[] = (apiData?.clients ?? []).map((c) => ({
     id: c.id,
     name: c.name,
     phone: c.phone ?? "",
@@ -190,8 +192,25 @@ function useClients(search: string, segment: SegmentFilter) {
     segment: (c.status as Segment) ?? "new",
     barber: "—",
   }));
+  const demoClients: ClientItem[] = getDemoClients()
+    .filter((c) => {
+      if (search && !c.name.toLowerCase().includes(search.toLowerCase())) return false;
+      if (segment !== "all" && (c.status as Segment) !== segment) return false;
+      return true;
+    })
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      phone: c.phone ?? "",
+      lastVisit: c.lastVisit ? formatLastVisit(c.lastVisit) : null,
+      visitCount: c.visitCount,
+      segment: (c.status as Segment) ?? "new",
+      barber: "—",
+    }));
+  const seen = new Set(apiClients.map((c) => c.id));
+  const clients = [...demoClients.filter((c) => !seen.has(c.id)), ...apiClients];
 
-  return { clients, isLoading, total: apiData?.total ?? 0 };
+  return { clients, isLoading, total: (apiData?.total ?? 0) + demoClients.length };
 }
 
 function IndividualView() {
