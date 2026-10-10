@@ -3,6 +3,7 @@ import type { Request } from "express";
 import { db, usersTable, slugRedirectsTable, bookingsTable, qrScansTable, loginDevicesTable } from "@workspace/db";
 import { and, eq, gte, isNull, lt, ne, notInArray, sql } from "drizzle-orm";
 import { authenticate, getUser, hashPassword, generateToken } from "../lib/auth";
+import { triggerBarber15MinTest } from "../lib/reminders";
 import { SLUG_LOCK_MS, isSlugAvailable, repairAccidentalSlug, suggestSlug, validateSlug } from "../lib/public-slug";
 
 const router = Router();
@@ -489,6 +490,31 @@ router.put("/notifications", authenticate, async (req, res) => {
     const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, user.id)).limit(1);
     res.json(notificationPayload(updated));
   } catch (err) {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+/**
+ * Temporary test: open a booking ~8 minutes from now and fire the real
+ * barber 15-min reminder so Telegram shows "8 daqiqa qoldi".
+ */
+router.post("/test-15min-reminder", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const result = await triggerBarber15MinTest(user, 8);
+    res.json({
+      ok: true,
+      remainingMinutes: result.remainingMinutes,
+      date: result.date,
+      time: result.time,
+      sent: result.sent,
+      telegramLinked: result.telegramLinked,
+      bookingId: result.bookingId,
+      sessionId: result.sessionId,
+      preview: result.text.replace(/<[^>]+>/g, ""),
+    });
+  } catch (err) {
+    console.error("[Settings] test-15min-reminder failed:", err);
     res.status(500).json({ error: "server_error" });
   }
 });

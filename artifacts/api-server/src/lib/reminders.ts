@@ -14,8 +14,10 @@
  * Server restarts clear the set; reminders won't re-fire within the same time window.
  */
 
+import { randomBytes } from "crypto";
 import { db, bookingSessionsTable, bookingsTable, usersTable } from "@workspace/db";
 import { eq, and, inArray, isNull } from "drizzle-orm";
+import { findBookingConflict, minsToTime, timeToMins } from "./booking-conflicts";
 import { runClientNotificationCycle } from "./client-notifications";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -29,17 +31,19 @@ async function sendTelegramMessage(
   chatId: string,
   text: string,
   extra: Record<string, unknown> = {},
-): Promise<void> {
+): Promise<boolean> {
   const token = getToken();
-  if (!token) return;
+  if (!token) return false;
   try {
-    await fetch(`${TELEGRAM_API}/bot${token}/sendMessage`, {
+    const res = await fetch(`${TELEGRAM_API}/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML", ...extra }),
     });
+    return res.ok;
   } catch (err) {
     console.error("[Reminders] sendTelegramMessage failed:", err);
+    return false;
   }
 }
 
@@ -87,7 +91,47 @@ function nowInTashkent(): { hour: number; minute: number; dateStr: string } {
   };
 }
 
-function buildBarber15MinText(
+export function remainingMinutesFromDiff(diffMinutes: number): number {
+  return Math.min(15, Math.max(1, Math.round(diffMinutes)));
+}
+
+/** Wall-clock date/time in Tashkent that the reminder will read as `minutes` left. */
+export function pickClockForRemainingMinutes(
+  minutes: number,
+  nowMs = Date.now(),
+): { date: string; time: string; remainingMinutes: number } {
+  const wanted = remainingMinutesFromDiff(minutes);
+  let probe = nowMs + wanted * 60 * 1000;
+  for (let i = 0; i < 8; i++) {
+    const date = new Date(probe).toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+    const time = new Date(probe).toLocaleTimeString("en-GB", {
+      timeZone: "Asia/Tashkent",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const appointment = new Date(`${date}T${time}:00+05:00`);
+    const remainingMinutes = remainingMinutesFromDiff((appointment.getTime() - nowMs) / 60000);
+    if (remainingMinutes === wanted && appointment.getTime() > nowMs) {
+      return { date, time, remainingMinutes };
+    }
+    probe += (wanted - remainingMinutes) * 60 * 1000;
+    if (probe <= nowMs) probe = nowMs + wanted * 60 * 1000 + 30 * 1000;
+  }
+  const fallback = new Date(nowMs + wanted * 60 * 1000 + 30 * 1000);
+  return {
+    date: fallback.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" }),
+    time: fallback.toLocaleTimeString("en-GB", {
+      timeZone: "Asia/Tashkent",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+    remainingMinutes: wanted,
+  };
+}
+
+export function buildBarber15MinText(
   clientName: string,
   clientPhone: string | null,
   data: BookingData,
@@ -128,6 +172,148 @@ function buildBarberMorningSummary(
   );
 }
 
+export async function sendDueBarber15MinReminders(
+  nowMs = Date.now(),
+  onlySessionId?: string,
+): Promise<{ sessionId: string; remainingMinutes: number; text: string; sent: boolean }[]> {
+  const sessions = await db
+    .select()
+    .from(bookingSessionsTable)
+    .where(eq(bookingSessionsTable.status, "confirmed"));
+
+  const scoped = onlySessionId
+    ? sessions.filter((session) => session.sessionId === onlySessionId)
+    : sessions;
+
+  const barberIds = [...new Set(scoped.map(s => s.barberId))];
+  const barberMap = new Map<string, { telegramId: string | null; name: string; phone: string | null }>();
+  for (const barberId of barberIds) {
+    try {
+      const [b] = await db
+        .select({ telegramId: usersTable.telegramId, name: usersTable.name, phone: usersTable.phone })
+        .from(usersTable)
+        .where(eq(usersTable.id, barberId))
+        .limit(1);
+      barberMap.set(barberId, {
+        telegramId: b?.telegramId ?? null,
+        name:       b?.name ?? "Barber",
+        phone:      b?.phone ?? null,
+      });
+    } catch {
+      barberMap.set(barberId, { telegramId: null, name: "Barber", phone: null });
+    }
+  }
+
+  const results: { sessionId: string; remainingMinutes: number; text: string; sent: boolean }[] = [];
+
+  for (const session of scoped) {
+    const barber = barberMap.get(session.barberId);
+
+    let data: BookingData;
+    try { data = JSON.parse(session.bookingData) as BookingData; } catch { continue; }
+
+    const appointmentDt = parseBookingDateTime(data);
+    if (!appointmentDt) continue;
+
+    const diffMinutes = (appointmentDt.getTime() - nowMs) / 60000;
+
+    // A booking made only a few minutes ahead still gets one reminder with the real time left.
+    if (!barber?.telegramId || sentReminders.has(`${session.sessionId}:barber_15`)) continue;
+    if (!(diffMinutes <= 15 && diffMinutes > 0)) continue;
+
+    const clientName = session.clientName?.split(" ")[0] || "Mijoz";
+    const remainingMinutes = remainingMinutesFromDiff(diffMinutes);
+    const text = buildBarber15MinText(clientName, session.clientPhone ?? null, data, remainingMinutes, session.clientName?.startsWith("Sinov") ? "Sinov — haqiqiy mijoz emas" : undefined);
+    const sent = await sendTelegramMessage(barber.telegramId, text);
+    sentReminders.add(`${session.sessionId}:barber_15`);
+    results.push({ sessionId: session.sessionId, remainingMinutes, text, sent });
+    console.log(`[Reminders] barber_15min sent: ${session.sessionId}`);
+  }
+
+  return results;
+}
+
+export async function triggerBarber15MinTest(
+  user: typeof usersTable.$inferSelect,
+  minutes = 8,
+): Promise<{
+  remainingMinutes: number;
+  date: string;
+  time: string;
+  text: string;
+  sent: boolean;
+  bookingId: string | null;
+  sessionId: string;
+  telegramLinked: boolean;
+}> {
+  const clock = pickClockForRemainingMinutes(minutes);
+  const sessionId = `test_${randomBytes(5).toString("hex")}`;
+  const startMins = timeToMins(clock.time);
+  const endTime = minsToTime(Math.min(startMins + 30, 24 * 60 - 1));
+  const notes = "Sinov bron — o'chirish mumkin";
+  const bookingData: BookingData = {
+    barberName: user.brandName || user.name || "Barber",
+    barberAddress: user.address || "",
+    mapLink: user.mapLink || "",
+    barberPageLink: user.username ? `https://barberuz-lovat.vercel.app/${user.username}` : "https://barberuz-lovat.vercel.app",
+    isTeam: user.mode === "team",
+    teamBarberName: null,
+    date: clock.date,
+    time: clock.time,
+    totalPrice: 0,
+    services: [{ name: "Sinov", price: 0, duration: 30 }],
+  };
+
+  const bufferMins = typeof user.bufferTime === "number" ? user.bufferTime : 10;
+  const clash = await findBookingConflict({
+    barberId: user.id,
+    date: clock.date,
+    startTime: clock.time,
+    endTime,
+    bufferMins,
+  });
+
+  let bookingId: string | null = null;
+  if (!clash) {
+    const [booking] = await db.insert(bookingsTable).values({
+      barberId: user.id,
+      clientName: "Sinov mijoz",
+      serviceName: "Sinov",
+      date: clock.date,
+      startTime: clock.time,
+      endTime,
+      price: "0",
+      notes,
+      status: "confirmed",
+    }).returning();
+    bookingId = booking?.id ?? null;
+  }
+
+  await db.insert(bookingSessionsTable).values({
+    sessionId,
+    barberId: user.id,
+    bookingId,
+    bookingData: JSON.stringify(bookingData),
+    clientName: "Sinov mijoz",
+    status: "confirmed",
+    expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+  });
+
+  const [result] = await sendDueBarber15MinReminders(Date.now(), sessionId);
+  const text = result?.text ?? buildBarber15MinText("Sinov", null, bookingData, clock.remainingMinutes, "Sinov — haqiqiy mijoz emas");
+
+  return {
+    remainingMinutes: result?.remainingMinutes ?? clock.remainingMinutes,
+    date: clock.date,
+    time: clock.time,
+    text,
+    sent: result?.sent ?? false,
+    bookingId,
+    sessionId,
+    telegramLinked: Boolean(user.telegramId),
+  };
+}
+
 async function checkAndSendReminders(): Promise<void> {
   const token = getToken();
   if (!token) return;
@@ -137,57 +323,7 @@ async function checkAndSendReminders(): Promise<void> {
 
   try {
     await runClientNotificationCycle(nowMs);
-    // ── Session-based reminders (barber 15-min) ──────────────────────────────
-    const sessions = await db
-      .select()
-      .from(bookingSessionsTable)
-      .where(eq(bookingSessionsTable.status, "confirmed"));
-
-    const barberIds = [...new Set(sessions.map(s => s.barberId))];
-    const barberMap = new Map<string, { telegramId: string | null; name: string; phone: string | null }>();
-    for (const barberId of barberIds) {
-      try {
-        const [b] = await db
-          .select({ telegramId: usersTable.telegramId, name: usersTable.name, phone: usersTable.phone })
-          .from(usersTable)
-          .where(eq(usersTable.id, barberId))
-          .limit(1);
-        barberMap.set(barberId, {
-          telegramId: b?.telegramId ?? null,
-          name:       b?.name ?? "Barber",
-          phone:      b?.phone ?? null,
-        });
-      } catch {
-        barberMap.set(barberId, { telegramId: null, name: "Barber", phone: null });
-      }
-    }
-
-    for (const session of sessions) {
-      const barber = barberMap.get(session.barberId);
-
-      let data: BookingData;
-      try { data = JSON.parse(session.bookingData) as BookingData; } catch { continue; }
-
-      const appointmentDt = parseBookingDateTime(data);
-      if (!appointmentDt) continue;
-
-      const diffMinutes = (appointmentDt.getTime() - nowMs) / 60000;
-
-      // ── Barber 15-min reminder ──────────────────────────────────────────
-      if (barber?.telegramId) {
-        const key = `${session.sessionId}:barber_15`;
-        // A booking made only a few minutes ahead still gets one reminder with the real time left.
-        if (!sentReminders.has(key) && diffMinutes <= 15 && diffMinutes > 0) {
-          const clientName = session.clientName?.split(" ")[0] || "Mijoz";
-          const remainingMinutes = Math.min(15, Math.max(1, Math.round(diffMinutes)));
-          const text = buildBarber15MinText(clientName, session.clientPhone ?? null, data, remainingMinutes);
-          await sendTelegramMessage(barber.telegramId, text);
-          sentReminders.add(key);
-          console.log(`[Reminders] barber_15min sent: ${session.sessionId}`);
-        }
-      }
-
-    }
+    await sendDueBarber15MinReminders(nowMs);
 
     // ── Barber morning summary (08:30–08:34 Tashkent) ────────────────────────
     if (hour === 8 && minute >= 30 && minute <= 34) {
