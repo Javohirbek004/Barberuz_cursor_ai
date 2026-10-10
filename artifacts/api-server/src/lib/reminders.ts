@@ -91,13 +91,14 @@ function buildBarber15MinText(
   clientName: string,
   clientPhone: string | null,
   data: BookingData,
+  remainingMinutes: number,
   notes?: string | null,
 ): string {
   const serviceNames = data.services.map(s => s.name).join(", ");
   const phoneLine    = clientPhone ? `\n\uD83D\uDCDE ${clientPhone}` : "";
   const notesLine    = notes       ? `\n\uD83D\uDCDD Eslatma: ${notes}` : "";
   return (
-    `\u26A1\uFE0F <b>Keyingi mijozingizga 15 daqiqa qoldi!</b>\n\n` +
+    `\u26A1\uFE0F <b>Keyingi mijozingizga ${remainingMinutes} daqiqa qoldi!</b>\n\n` +
     `\uD83D\uDC64 Mijoz: ${clientName}${phoneLine}\n` +
     `\u2702\uFE0F Xizmat: ${serviceNames}\n` +
     `\uD83D\uDD50 Vaqt: <b>${data.time}</b>` +
@@ -175,9 +176,11 @@ async function checkAndSendReminders(): Promise<void> {
       // ── Barber 15-min reminder ──────────────────────────────────────────
       if (barber?.telegramId) {
         const key = `${session.sessionId}:barber_15`;
-        if (!sentReminders.has(key) && diffMinutes <= 15 && diffMinutes > 10) {
+        // A booking made only a few minutes ahead still gets one reminder with the real time left.
+        if (!sentReminders.has(key) && diffMinutes <= 15 && diffMinutes > 0) {
           const clientName = session.clientName?.split(" ")[0] || "Mijoz";
-          const text = buildBarber15MinText(clientName, session.clientPhone ?? null, data);
+          const remainingMinutes = Math.min(15, Math.max(1, Math.round(diffMinutes)));
+          const text = buildBarber15MinText(clientName, session.clientPhone ?? null, data, remainingMinutes);
           await sendTelegramMessage(barber.telegramId, text);
           sentReminders.add(key);
           console.log(`[Reminders] barber_15min sent: ${session.sessionId}`);
