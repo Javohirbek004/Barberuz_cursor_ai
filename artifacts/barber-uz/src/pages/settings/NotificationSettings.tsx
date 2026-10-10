@@ -11,9 +11,8 @@ import {
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { ChevronLeft, BellRing, BellOff, Loader2, Zap } from "lucide-react";
+import { ChevronLeft, BellRing, BellOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { deviceHeaders } from "@/lib/device";
 
 type ClientOff = "quick" | "auto";
 
@@ -69,36 +68,6 @@ export default function NotificationSettings() {
     autoCancel: true,
   });
   const [confirmOff, setConfirmOff] = useState<ClientOff | null>(null);
-  const [testing15, setTesting15] = useState(false);
-
-  const run15MinTest = async () => {
-    if (testing15) return;
-    setTesting15(true);
-    try {
-      const res = await fetch("/api/settings/test-15min-reminder", {
-        method: "POST",
-        headers: deviceHeaders(),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast({ title: "Sinov yuborilmadi. Qayta urinib ko'ring.", variant: "destructive" });
-        return;
-      }
-      if (!data.telegramLinked) {
-        toast({ title: "Avval Telegramni ulang — xabar ketmadi.", variant: "destructive" });
-        return;
-      }
-      if (data.sent) {
-        toast({ title: `Telegramga «${data.remainingMinutes} daqiqa qoldi» ketdi` });
-      } else {
-        toast({ title: "Bron ochildi, lekin Telegramga xabar ketmadi.", variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "Sinov yuborilmadi. Qayta urinib ko'ring.", variant: "destructive" });
-    } finally {
-      setTesting15(false);
-    }
-  };
 
   useEffect(() => {
     if (settings) setFormData(readForm(settings));
@@ -220,36 +189,6 @@ export default function NotificationSettings() {
                 save({ ...formData, autoCancel: true });
               }}
             />
-          </div>
-        </section>
-
-        <section data-testid="barber-15min-test">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 px-1 mb-3">
-            Sinov
-          </p>
-          <div className="bg-card/50 px-4 py-4 rounded-2xl border border-white/5 space-y-3">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                <Zap className="w-4 h-4 text-amber-400" />
-              </div>
-              <div className="min-w-0">
-                <p className="font-semibold text-sm text-foreground leading-tight">
-                  8 daqiqa eslatmasini sinash
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  8 daqiqadan keyin «Sinov mijoz» bron ochiladi va Telegramga hozir xabar ketadi. Haqiqiy mijozlarga tegmaydi.
-                </p>
-              </div>
-            </div>
-            <Button
-              type="button"
-              data-testid="test-15min-reminder"
-              onClick={run15MinTest}
-              disabled={testing15}
-              className="w-full h-11 rounded-2xl font-semibold"
-            >
-              {testing15 ? <Loader2 className="w-4 h-4 animate-spin" /> : "Hozir sinash"}
-            </Button>
           </div>
         </section>
       </div>
