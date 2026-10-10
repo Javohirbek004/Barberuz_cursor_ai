@@ -69,52 +69,23 @@ function SheetRow({
   );
 }
 
-function PhoneChoiceBlock({ phone }: { phone: string }) {
+function PhoneRow({ phone }: { phone: string }) {
   const dial = formatDialPhone(phone);
   if (!dial) {
     return <SheetRow label="Telefon"><span className="text-muted-foreground/40">—</span></SheetRow>;
   }
   return (
-    <div className="py-3 border-b border-white/5">
-      <p className="text-[13px] text-muted-foreground mb-1">Telefon</p>
-      <p className="text-[11px] text-muted-foreground/70 mb-3 leading-snug">
-        Ikkita ko'rinish. Yoqqanini ayting: A yoki B.
-      </p>
-
-      <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3.5 py-3 mb-2.5">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/55 mb-2.5">
-          A-ko'rinish
-        </p>
-        <a
-          href={dial.href}
-          data-testid="call-client-a"
-          aria-label="Qo'ng'iroq qilish"
-          className="flex items-center justify-between gap-3 min-h-10 active:opacity-80"
-        >
-          <span className="text-[15px] font-medium tabular-nums text-foreground tracking-wide">
-            {dial.display}
-          </span>
-          <span className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-[0_0_0_4px_rgba(16,185,129,0.16)]">
-            <Phone className="w-4 h-4" />
-          </span>
-        </a>
-      </div>
-
-      <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3.5 py-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/55 mb-2.5">
-          B-ko'rinish
-        </p>
-        <a
-          href={dial.href}
-          data-testid="call-client-b"
-          aria-label="Qo'ng'iroq qilish"
-          className="inline-flex items-center gap-1.5 text-[15px] font-semibold tabular-nums text-emerald-400 hover:underline underline-offset-4 decoration-emerald-400/50 active:opacity-80"
-        >
-          <Phone className="w-4 h-4" />
-          {dial.display}
-        </a>
-      </div>
-    </div>
+    <SheetRow label="Telefon">
+      <a
+        href={dial.href}
+        data-testid="call-client"
+        aria-label={`Qo'ng'iroq qilish: ${dial.display}`}
+        className="inline-flex items-center justify-end gap-1.5 text-emerald-400 font-medium tabular-nums hover:underline underline-offset-4 decoration-emerald-400/50 active:opacity-80"
+      >
+        <Phone className="w-3.5 h-3.5 shrink-0" />
+        {dial.display}
+      </a>
+    </SheetRow>
   );
 }
 
@@ -492,7 +463,7 @@ export function BookingDetailModal({
               {`${dateLabel} • ${booking.startTime.slice(0, 5)} – ${booking.endTime.slice(0, 5)}`}
             </SheetRow>
             {phone
-              ? <PhoneChoiceBlock phone={phone} />
+              ? <PhoneRow phone={phone} />
               : <SheetRow label="Telefon"><span className="text-muted-foreground/40">—</span></SheetRow>}
             <SheetRow label="Narxi">
               <span className="font-semibold tabular-nums text-foreground/95">
