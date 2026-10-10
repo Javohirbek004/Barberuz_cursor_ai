@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import { db, usersTable } from "@workspace/db";
 import { eq, ilike, or, sql } from "drizzle-orm";
 import { hashPassword, legacyHash, generateToken, authenticate, getUser, secretsEqual } from "../lib/auth";
+import { clearRateLimit, clientIp, consumeRateLimit } from "../lib/rate-limit";
 import { getTelegramLoginResult, storeLoginToken } from "../lib/telegram-bot";
 import { allocatePublicSlug } from "../lib/public-slug";
 
@@ -45,6 +46,10 @@ async function findUserForLogin(identifier: string) {
 
 router.post("/register", async (req, res) => {
   try {
+    if (!consumeRateLimit(`register:${clientIp(req)}`, 8, 60 * 60 * 1000)) {
+      res.status(429).json({ error: "too_many", message: "Ko'p urinish. Biroz kuting." });
+      return;
+    }
     const { name, username: providedUsername, brandName, password, mode, lang } = req.body;
     if (!name || !password || !mode) {
       res.status(400).json({ error: "validation", message: "Missing required fields" });
@@ -90,6 +95,13 @@ router.post("/login", async (req, res) => {
       res.status(400).json({ error: "validation", message: "Missing credentials" });
       return;
     }
+    const ip = clientIp(req);
+    const ident = String(username).trim().toLowerCase().slice(0, 80);
+    if (!consumeRateLimit(`login:ip:${ip}`, 25, 15 * 60 * 1000)
+      || !consumeRateLimit(`login:id:${ip}:${ident}`, 5, 15 * 60 * 1000)) {
+      res.status(429).json({ error: "too_many", message: "Ko'p urinish. Biroz kuting." });
+      return;
+    }
     const user = await findUserForLogin(String(username));
     if (!user) {
       res.status(401).json({ error: "unauthorized", message: "Invalid credentials" });
@@ -103,6 +115,7 @@ router.post("/login", async (req, res) => {
       res.status(401).json({ error: "unauthorized", message: "Invalid credentials" });
       return;
     }
+    clearRateLimit(`login:id:${ip}:${ident}`);
 
     // Silently upgrade legacy hash to the corrected formula
     if (oldHash !== null && oldHash === user.passwordHash) {
@@ -138,7 +151,7 @@ router.get("/telegram-status/:userId", async (req, res) => {
       res.status(404).json({ error: "not_found", message: "User not found" });
       return;
     }
-    res.json({ verified: user.telegramVerified, telegramId: user.telegramId });
+    res.json({ verified: user.telegramVerified });
   } catch (err) {
     res.status(500).json({ error: "server_error" });
   }
@@ -183,6 +196,12 @@ router.get("/telegram-login-status/:code", async (req, res) => {
  */
 router.post("/telegram-token", async (req, res) => {
   try {
+    const expectedSecret = process.env.TELEGRAM_BOT_SECRET?.trim();
+    const secret = typeof req.body?.secret === "string" ? req.body.secret : "";
+    if (!expectedSecret || !secretsEqual(secret, expectedSecret)) {
+      res.status(403).json({ error: "forbidden", message: "Invalid secret" });
+      return;
+    }
     const { telegram_user_id } = req.body;
     if (!telegram_user_id) {
       res.status(400).json({ error: "validation", message: "telegram_user_id required" });

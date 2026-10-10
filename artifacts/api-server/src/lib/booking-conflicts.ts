@@ -1,11 +1,46 @@
-import { db, bookingsTable } from "@workspace/db";
-import { and, eq, isNull, ne, notInArray } from "drizzle-orm";
+import { db, bookingsTable, bookingSessionsTable } from "@workspace/db";
+import { and, eq, inArray, isNull, lt, ne, notInArray, or } from "drizzle-orm";
 
 /** Bookings in these states no longer hold the barber's time. */
 export const INACTIVE_STATUSES = ["cancelled", "auto_cancelled", "no_show"] as const;
 
 export function isInactiveStatus(status: string): boolean {
   return (INACTIVE_STATUSES as readonly string[]).includes(status);
+}
+
+const PENDING_HOLD_MS = 15 * 60 * 1000;
+
+/** Drop expired Telegram holds so they cannot lock the calendar forever. */
+export async function expirePendingHolds(now = new Date()): Promise<void> {
+  const cutoff = new Date(now.getTime() - PENDING_HOLD_MS);
+  try {
+    const expired = await db
+      .update(bookingSessionsTable)
+      .set({ status: "expired" })
+      .where(and(
+        eq(bookingSessionsTable.status, "pending"),
+        or(
+          lt(bookingSessionsTable.expiresAt, now),
+          lt(bookingSessionsTable.createdAt, cutoff),
+        ),
+      ))
+      .returning({ bookingId: bookingSessionsTable.bookingId });
+    const held = expired.map((row) => row.bookingId).filter((id): id is string => !!id);
+    if (held.length > 0) {
+      await db.update(bookingsTable)
+        .set({ status: "cancelled", updatedAt: now })
+        .where(and(inArray(bookingsTable.id, held), eq(bookingsTable.status, "pending")));
+    }
+    await db.update(bookingsTable)
+      .set({ status: "cancelled", updatedAt: now })
+      .where(and(
+        eq(bookingsTable.status, "pending"),
+        isNull(bookingsTable.deletedAt),
+        lt(bookingsTable.createdAt, cutoff),
+      ));
+  } catch (err) {
+    console.error("[Bookings] expirePendingHolds failed:", err);
+  }
 }
 
 export function timeToMins(time: string): number {
@@ -47,6 +82,7 @@ export async function findBookingConflict(params: {
   bufferMins: number;
   exceptBookingId?: string;
 }) {
+  await expirePendingHolds();
   const rows = await db
     .select({
       id: bookingsTable.id,

@@ -199,19 +199,7 @@ function clearBookingDraft() {
 }
 
 async function refreshSavedClientPhone() {
-  const profile = loadClientProfile();
-  if (!profile?.tgId) return;
-  try {
-    const res = await fetch(`/api/public/client-phone?tgId=${encodeURIComponent(profile.tgId)}`);
-    if (!res.ok) return;
-    const data = await res.json() as { phone?: string };
-    const phone = (data.phone || "").trim();
-    if (!phone || phone === profile.phone) return;
-    const latest = loadClientProfile() || profile;
-    saveClientProfile({ ...latest, phone });
-  } catch {
-    // Keep the number already saved on this phone.
-  }
+  // Phone numbers are not fetched from a public URL. This device already stored it.
 }
 
 function PublicBookingModal({
@@ -362,7 +350,7 @@ function PublicBookingModal({
   }
 
   async function createSession(direct: boolean) {
-    const services = selectedServices.map(s => ({ name: s.name, price: s.price, duration: s.duration }));
+    const services = selectedServices.map(s => ({ id: s.id, name: s.name, price: s.price, duration: s.duration }));
     const pageLink = `${window.location.origin}/${barber.username}`;
     const profile = savedClient.current;
     return fetch("/api/public/sessions", {

@@ -16,6 +16,7 @@
 
 import { db, bookingSessionsTable, bookingsTable, usersTable } from "@workspace/db";
 import { eq, and, inArray, isNull } from "drizzle-orm";
+import { expirePendingHolds } from "./booking-conflicts";
 import { runClientNotificationCycle } from "./client-notifications";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -191,6 +192,7 @@ async function checkAndSendReminders(): Promise<void> {
   const { hour, minute, dateStr: todayStr } = nowInTashkent();
 
   try {
+    await expirePendingHolds();
     await runClientNotificationCycle(nowMs);
     await sendDueBarber15MinReminders(nowMs);
 

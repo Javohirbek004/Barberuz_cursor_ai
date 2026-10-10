@@ -3,6 +3,8 @@ import type { Request } from "express";
 import { db, usersTable, slugRedirectsTable, bookingsTable, qrScansTable, loginDevicesTable } from "@workspace/db";
 import { and, eq, gte, isNull, lt, ne, notInArray, sql } from "drizzle-orm";
 import { authenticate, getUser, hashPassword, generateToken } from "../lib/auth";
+import { consumeRateLimit } from "../lib/rate-limit";
+import { bumpSessionEpoch } from "../lib/session-epoch";
 import { SLUG_LOCK_MS, isSlugAvailable, repairAccidentalSlug, suggestSlug, validateSlug } from "../lib/public-slug";
 
 const router = Router();
@@ -297,6 +299,10 @@ router.patch("/slug", authenticate, async (req, res) => {
 router.put("/password", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
+    if (!consumeRateLimit(`pwd:${user.id}`, 8, 15 * 60 * 1000)) {
+      res.status(429).json({ error: "too_many", message: "Ko'p urinish. Biroz kuting." });
+      return;
+    }
     const { oldPassword, newPassword } = req.body;
     if (!oldPassword || !newPassword) {
       res.status(400).json({ error: "validation", message: "Missing fields" });
@@ -314,7 +320,9 @@ router.put("/password", authenticate, async (req, res) => {
     await db.update(usersTable)
       .set({ passwordHash: hashPassword(newPassword), updatedAt: new Date() })
       .where(eq(usersTable.id, user.id));
-    res.json({ success: true, message: "Password updated" });
+    const { token } = await bumpSessionEpoch(user.id, deviceKeyOf(req));
+    if (deviceKeyOf(req)) await rememberDevice(user.id, deviceKeyOf(req)!, deviceLabelOf(req), clientIp(req));
+    res.json({ success: true, message: "Password updated", token });
   } catch (err) {
     res.status(500).json({ error: "server_error" });
   }
@@ -433,6 +441,10 @@ router.post("/devices/logout-others", authenticate, async (req, res) => {
 router.post("/verify-password", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
+    if (!consumeRateLimit(`verifypw:${user.id}`, 10, 15 * 60 * 1000)) {
+      res.status(429).json({ error: "too_many", message: "Ko'p urinish. Biroz kuting." });
+      return;
+    }
     const password = typeof req.body?.password === "string" ? req.body.password : "";
     const [fresh] = await db.select().from(usersTable).where(eq(usersTable.id, user.id)).limit(1);
     if (!password || hashPassword(password) !== fresh.passwordHash) {

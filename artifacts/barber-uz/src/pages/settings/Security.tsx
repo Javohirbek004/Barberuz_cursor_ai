@@ -143,7 +143,9 @@ export default function SecuritySettings() {
     updatePasswordMutation.mutate({
       data: { oldPassword, newPassword },
     }, {
-      onSuccess: () => {
+      onSuccess: (data) => {
+        const token = (data as { token?: string } | undefined)?.token;
+        if (token) localStorage.setItem("barber_token", token);
         toast({ title: "Parol yangilandi" });
         setOldPassword("");
         setNewPassword("");

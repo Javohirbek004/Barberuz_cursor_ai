@@ -29,6 +29,8 @@ import { syncClientMetrics } from "./client-metrics";
 import { findClientByPhone } from "./client-lookup";
 import { normalizePhone } from "./phone";
 import { generateToken, hashPassword } from "./auth";
+import { bumpSessionEpoch } from "./session-epoch";
+import { consumeRateLimit } from "./rate-limit";
 import {
   callbackBookingId,
   handleClientCancel,
@@ -235,6 +237,13 @@ function beginPasswordReset(chatId: number) {
 }
 
 async function handlePasswordResetStart(chatId: number) {
+  if (!consumeRateLimit(`reset:${chatId}`, 5, 60 * 60 * 1000)) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Ko'p urinish. Iltimos, keyinroq qayta urinib ko'ring.",
+    });
+    return;
+  }
   beginPasswordReset(chatId);
   log("password_reset_start", { chatId });
   await callTelegram("sendMessage", {
@@ -350,6 +359,7 @@ async function handlePasswordResetText(
       .update(usersTable)
       .set({ passwordHash: hashPassword(text), updatedAt: new Date() })
       .where(eq(usersTable.id, pending.userId));
+    await bumpSessionEpoch(pending.userId);
   } catch (err) {
     console.error("[TelegramBot] Password reset update failed:", err);
     pendingPasswordResets.delete(chatId);

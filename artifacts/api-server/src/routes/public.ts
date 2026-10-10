@@ -7,10 +7,13 @@
  */
 
 import { Router } from "express";
-import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable, clientsTable, phoneUpdateIntentsTable, qrScansTable } from "@workspace/db";
-import { eq, and, lt, isNull, notInArray, or, inArray, desc, gt } from "drizzle-orm";
+import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable, clientsTable, qrScansTable } from "@workspace/db";
+import { eq, and, isNull, or, desc, gt } from "drizzle-orm";
 import { deliverBookingReceipt } from "../lib/client-notifications";
 import { findClientByPhone } from "../lib/client-lookup";
+import { expirePendingHolds, findBookingConflict, minsToTime, parseClockTime } from "../lib/booking-conflicts";
+import { resolveCatalogServices } from "../lib/public-booking";
+import { slotOutsideWorkingHours } from "../lib/schedule-guard";
 import { normalizePhone } from "../lib/phone";
 import { randomBytes } from "crypto";
 import { sendBarberBookingNotification } from "../lib/telegram-bot";
@@ -53,26 +56,7 @@ function getAppUrl(): string {
 }
 
 async function expireOldSessions() {
-  try {
-    const expired = await db
-      .update(bookingSessionsTable)
-      .set({ status: "expired" })
-      .where(
-        and(
-          eq(bookingSessionsTable.status, "pending"),
-          lt(bookingSessionsTable.expiresAt, new Date()),
-        ),
-      )
-      .returning({ bookingId: bookingSessionsTable.bookingId });
-    const held = expired.map((row) => row.bookingId).filter((id): id is string => !!id);
-    if (held.length > 0) {
-      await db
-        .update(bookingsTable)
-        .set({ status: "cancelled", updatedAt: new Date() })
-        .where(and(inArray(bookingsTable.id, held), eq(bookingsTable.status, "pending")));
-    }
-  } catch {
-  }
+  await expirePendingHolds();
 }
 
 /**
@@ -122,38 +106,57 @@ router.post("/sessions", async (req, res) => {
       return;
     }
 
-    // Server-side conflict check — authoritative guard against race conditions.
-    // Reject if any non-cancelled booking overlaps the requested slot.
-    const isoDate = toISODate(date);
-    const reqStart = timeToMins(time);
-    const reqEnd   = reqStart + Math.max(Number(totalDuration) || 0, 1);
+    const startTime = parseClockTime(time);
+    if (!startTime) {
+      res.status(400).json({ error: "validation", message: "Vaqt noto'g'ri" });
+      return;
+    }
 
-    // "Oraliq tanaffus": every service keeps a preparation gap before the next one.
     const [barberRow] = await db
-      .select({ bufferTime: usersTable.bufferTime })
+      .select()
       .from(usersTable)
-      .where(eq(usersTable.id, barberId))
+      .where(and(eq(usersTable.id, barberId), isNull(usersTable.deletedAt)))
       .limit(1);
-    const bufferMins = barberRow?.bufferTime ?? 10;
+    if (!barberRow) {
+      res.status(404).json({ error: "not_found", message: "Sartarosh topilmadi" });
+      return;
+    }
 
-    const existingOnDate = await db
-      .select({ startTime: bookingsTable.startTime, endTime: bookingsTable.endTime })
-      .from(bookingsTable)
-      .where(
-        and(
-          eq(bookingsTable.barberId, barberId),
-          eq(bookingsTable.date, isoDate),
-          notInArray(bookingsTable.status, ["cancelled", "auto_cancelled"]),
-        ),
-      );
+    const catalog = await resolveCatalogServices(barberId, services);
+    if (!catalog.ok) {
+      res.status(400).json({ error: "validation", message: catalog.message });
+      return;
+    }
 
-    const hasConflict = existingOnDate.some(b => {
-      const s = timeToMins(b.startTime);
-      const e = timeToMins(b.endTime);
-      return reqStart < e + bufferMins && reqEnd + bufferMins > s;
+    const isoDate = toISODate(date);
+    const hoursError = slotOutsideWorkingHours({
+      isoDate,
+      startTime,
+      durationMins: catalog.totalDuration,
+      workingHoursStart: barberRow.workingHoursStart,
+      workingHoursEnd: barberRow.workingHoursEnd,
+      scheduleJson: barberRow.scheduleJson,
+      lunchBreakEnabled: barberRow.lunchBreakEnabled,
+      lunchBreakStart: barberRow.lunchBreakStart,
+      lunchBreakEnd: barberRow.lunchBreakEnd,
     });
+    if (hoursError) {
+      res.status(400).json({ error: "validation", message: hoursError });
+      return;
+    }
 
-    if (hasConflict) {
+    const reqStart = timeToMins(startTime);
+    const reqEnd = reqStart + catalog.totalDuration;
+    const endTimeStr = minsToTime(Math.min(reqEnd, 24 * 60 - 1));
+    const bufferMins = typeof barberRow.bufferTime === "number" ? barberRow.bufferTime : 10;
+    const clash = await findBookingConflict({
+      barberId,
+      date: isoDate,
+      startTime,
+      endTime: endTimeStr,
+      bufferMins,
+    });
+    if (clash) {
       res.status(409).json({ error: "conflict", message: "Tanlangan vaqt allaqachon band" });
       return;
     }
@@ -162,17 +165,17 @@ router.post("/sessions", async (req, res) => {
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     const bookingData = {
-      barberName:     barberName || "Barber",
-      barberAddress:  barberAddress || "",
-      mapLink:        mapLink || "",
+      barberName:     barberName || barberRow.brandName || barberRow.name || "Barber",
+      barberAddress:  barberAddress || barberRow.address || "",
+      mapLink:        mapLink || barberRow.mapLink || "",
       barberPageLink: barberPageLink || `${getAppUrl()}`,
       isTeam:         !!isTeam,
       teamBarberName: teamBarberName || null,
-      services:       services || [],
-      totalPrice:     totalPrice || 0,
-      totalDuration:  totalDuration || 0,
-      date,
-      time,
+      services:       catalog.services.map((s) => ({ name: s.name, price: s.price, duration: s.duration })),
+      totalPrice:     catalog.totalPrice,
+      totalDuration:  catalog.totalDuration,
+      date:           isoDate,
+      time:           startTime,
     };
 
     const typedPhone = typeof clientPhone === "string" ? clientPhone.trim() : "";
@@ -240,13 +243,7 @@ router.post("/sessions", async (req, res) => {
       // if confirmBookingSession ever runs for this session, it will see
       // session.bookingId is already set and skip the duplicate insert.
       try {
-        const durationMins = Math.max(Number(totalDuration) || 60, 1);
-        const startMins    = timeToMins(time);
-        const endMins      = startMins + durationMins;
-        const endTimeStr   = `${String(Math.floor(endMins / 60)).padStart(2, "0")}:${String(endMins % 60).padStart(2, "0")}`;
-        const svcName      = Array.isArray(services) && services.length > 0
-          ? (services as Array<{ name: string }>).map(s => s.name).join(", ")
-          : null;
+        const svcName = catalog.services.map((s) => s.name).join(", ");
 
         const [inserted] = await db.insert(bookingsTable).values({
           barberId,
@@ -254,9 +251,9 @@ router.post("/sessions", async (req, res) => {
           clientName: chosenName,
           serviceName: svcName,
           date: isoDate,
-          startTime: time,
+          startTime,
           endTime: endTimeStr,
-          price: String(Number(totalPrice) || 0),
+          price: String(catalog.totalPrice),
           status: "confirmed",
         }).returning({ id: bookingsTable.id });
 
@@ -295,21 +292,16 @@ router.post("/sessions", async (req, res) => {
       ? req.body.clientName.trim()
       : null;
 
-    const durationMins = Math.max(Number(totalDuration) || 30, 1);
-    const endMins = reqStart + durationMins;
-    const endTimeStr = `${String(Math.floor(endMins / 60)).padStart(2, "0")}:${String(endMins % 60).padStart(2, "0")}`;
-    const svcName = Array.isArray(services)
-      ? (services as Array<{ name: string }>).map((s) => s.name).filter(Boolean).join(", ")
-      : null;
+    const svcName = catalog.services.map((s) => s.name).join(", ");
 
     const [pendingBooking] = await db.insert(bookingsTable).values({
       barberId,
       clientName: safeClientName || "Mijoz",
       serviceName: svcName,
       date: isoDate,
-      startTime: time,
+      startTime,
       endTime: endTimeStr,
-      price: String(Number(totalPrice) || 0),
+      price: String(catalog.totalPrice),
       status: "pending",
     }).returning({ id: bookingsTable.id });
 
@@ -360,7 +352,6 @@ router.get("/sessions/:sessionId", async (req, res) => {
       clientName: session.clientName,
       clientTelegramId: session.clientTelegramId,
       clientTelegramUsername: session.clientTelegramUsername,
-      clientPhone: session.clientPhone,
     });
   } catch (err) {
     console.error("[PublicAPI] GET /sessions/:id error:", err);
@@ -369,47 +360,12 @@ router.get("/sessions/:sessionId", async (req, res) => {
 });
 
 /**
- * GET /api/public/client-phone?tgId=123
- * Latest phone saved for this Telegram user after they share their contact.
+ * GET /api/public/client-phone
+ * Phone numbers are not handed out by Telegram id. The booking form keeps
+ * the number on this device after the owner shares their contact.
  */
-router.get("/client-phone", async (req, res) => {
-  try {
-    const tgId = String(req.query.tgId || "").replace(/\D/g, "");
-    if (tgId.length < 5 || tgId.length > 20) {
-      res.status(400).json({ error: "bad_id" });
-      return;
-    }
-
-    const [client] = await db
-      .select({ phone: clientsTable.phone, updatedAt: clientsTable.updatedAt })
-      .from(clientsTable)
-      .where(eq(clientsTable.telegramId, tgId))
-      .orderBy(desc(clientsTable.updatedAt))
-      .limit(1);
-
-    let intentPhone: string | null = null;
-    let intentAt = 0;
-    try {
-      const [intent] = await db
-        .select({ phone: phoneUpdateIntentsTable.phone, updatedAt: phoneUpdateIntentsTable.updatedAt })
-        .from(phoneUpdateIntentsTable)
-        .where(eq(phoneUpdateIntentsTable.telegramId, tgId))
-        .limit(1);
-      if (intent?.phone) {
-        intentPhone = intent.phone;
-        intentAt = intent.updatedAt ? new Date(intent.updatedAt).getTime() : 0;
-      }
-    } catch {
-      // The intent table is created on startup. A miss here still returns the client phone.
-    }
-
-    const clientAt = client?.updatedAt ? new Date(client.updatedAt).getTime() : 0;
-    const phone = intentPhone && intentAt >= clientAt ? intentPhone : (client?.phone || intentPhone || null);
-    res.json({ phone });
-  } catch (err) {
-    console.error("[PublicAPI] GET /client-phone error:", err);
-    res.status(500).json({ error: "server_error" });
-  }
+router.get("/client-phone", async (_req, res) => {
+  res.json({ phone: null });
 });
 
 /**
@@ -420,6 +376,7 @@ router.get("/client-phone", async (req, res) => {
  */
 router.get("/barber/:slug/slots", async (req, res) => {
   try {
+    await expireOldSessions();
     const { slug } = req.params;
     const { date } = req.query;
 
@@ -582,7 +539,7 @@ router.get("/barber/:slug", async (req, res) => {
       brandName: barber.brandName,
       bio: barber.bio,
       avatarUrl: barber.avatarUrl,
-      phone: barber.phone,
+      phone: barber.phoneVisible ? barber.phone : null,
       specializations: barber.specializations,
       mode: barber.mode,
       lang: barber.lang,
