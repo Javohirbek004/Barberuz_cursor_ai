@@ -1,44 +1,14 @@
 import { Router } from "express";
-import { db, bookingsTable, clientsTable, servicesTable } from "@workspace/db";
+import { db, bookingsTable, servicesTable } from "@workspace/db";
 import { eq, and, gte, lt, lte, inArray, isNull, notInArray } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 import { sendDirectBookingNotification } from "../lib/telegram-bot";
 import { deliverBookingReceipt } from "../lib/client-notifications";
 import { syncClientMetrics } from "../lib/client-metrics";
+import { findOrCreateClientByPhone } from "../lib/client-lookup";
+import { normalizePhone } from "../lib/phone";
 
 const router = Router();
-
-/**
- * Find an existing client by phone, or create one.
- * A new booking does not count as a visit. The visit is added only when
- * the barber marks the booking completed.
- */
-async function findOrCreateClient(
-  barberId: string,
-  clientName: string,
-  clientPhone: string,
-): Promise<string> {
-  const normalizedPhone = clientPhone.replace(/\s+/g, "");
-
-  const [existing] = await db
-    .select()
-    .from(clientsTable)
-    .where(and(eq(clientsTable.barberId, barberId), eq(clientsTable.phone, normalizedPhone)))
-    .limit(1);
-
-  if (existing) return existing.id;
-
-  const [newClient] = await db.insert(clientsTable).values({
-    barberId,
-    name: clientName,
-    phone: normalizedPhone,
-    status: "new",
-    visitCount: 0,
-    totalSpent: "0",
-    lastVisit: null,
-  }).returning();
-  return newClient.id;
-}
 
 /** How far back the review list looks for bookings nobody marked. */
 const OVERDUE_DAYS = 60;
@@ -163,10 +133,12 @@ router.post("/", authenticate, async (req, res) => {
     let resolvedClientId: string | null = clientId || null;
     const numericPrice = Number(price) || 0;
 
-    const rawPhone = (typeof clientPhone === "string" ? clientPhone : "").trim();
+    const typedPhone = (typeof clientPhone === "string" ? clientPhone : "").trim();
+    // Saved in one standard form (+998XXXXXXXXX) so the same person is never split in two.
+    const rawPhone = normalizePhone(typedPhone) ?? typedPhone;
     if (rawPhone) {
       try {
-        resolvedClientId = await findOrCreateClient(user.id, clientName, rawPhone);
+        resolvedClientId = (await findOrCreateClientByPhone(user.id, clientName, rawPhone)) ?? resolvedClientId;
       } catch (err) {
         console.warn("[Bookings] findOrCreateClient failed:", (err as Error).message);
       }

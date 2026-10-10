@@ -10,6 +10,8 @@ import { Router } from "express";
 import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable, clientsTable, phoneUpdateIntentsTable, qrScansTable } from "@workspace/db";
 import { eq, and, lt, isNull, notInArray, or, inArray, desc, gt } from "drizzle-orm";
 import { deliverBookingReceipt } from "../lib/client-notifications";
+import { findClientByPhone } from "../lib/client-lookup";
+import { normalizePhone } from "../lib/phone";
 import { randomBytes } from "crypto";
 import { sendBarberBookingNotification } from "../lib/telegram-bot";
 
@@ -173,9 +175,8 @@ router.post("/sessions", async (req, res) => {
       time,
     };
 
-    const safeClientPhone = (typeof clientPhone === "string" && clientPhone.trim())
-      ? clientPhone.trim()
-      : null;
+    const typedPhone = typeof clientPhone === "string" ? clientPhone.trim() : "";
+    const safeClientPhone = typedPhone ? (normalizePhone(typedPhone) ?? typedPhone) : null;
 
     if (tgCustomer?.tgId) {
       const chosenName = (typeof req.body.clientName === "string" && req.body.clientName.trim())
@@ -200,17 +201,15 @@ router.post("/sessions", async (req, res) => {
       // so analytics client-identity counts remain correct.
       let clientId: string | null = null;
       try {
-        const conditions: ReturnType<typeof and>[] = [];
-        if (safeClientPhone) {
-          conditions.push(and(eq(clientsTable.barberId, barberId), eq(clientsTable.phone, safeClientPhone))!);
+        let existing: typeof clientsTable.$inferSelect | null | undefined =
+          safeClientPhone ? await findClientByPhone(barberId, safeClientPhone) : null;
+        if (!existing) {
+          [existing] = await db
+            .select()
+            .from(clientsTable)
+            .where(and(eq(clientsTable.barberId, barberId), eq(clientsTable.telegramId, tgIdStr)))
+            .limit(1);
         }
-        conditions.push(and(eq(clientsTable.barberId, barberId), eq(clientsTable.telegramId, tgIdStr))!);
-
-        const [existing] = await db
-          .select()
-          .from(clientsTable)
-          .where(or(...conditions))
-          .limit(1);
 
         if (existing) {
           await db.update(clientsTable).set({

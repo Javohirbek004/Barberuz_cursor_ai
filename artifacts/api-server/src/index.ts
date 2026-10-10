@@ -2,6 +2,7 @@ import "./load-env";
 import app from "./app";
 import { registerWebhook, isBotConfigured, startDevPolling } from "./lib/telegram-bot";
 import { startReminderJob } from "./lib/reminders";
+import { normalizeStoredClientPhones } from "./lib/phone-migration";
 import { assertAuthSecrets } from "./lib/auth";
 
 assertAuthSecrets();
@@ -45,6 +46,12 @@ function pickProdDomain(): string {
 app.listen(port, async () => {
   console.log(`Server listening on port ${port}`);
   startReminderJob();
+
+  normalizeStoredClientPhones()
+    .then(({ renamed, merged }) => {
+      if (renamed || merged) console.log(`[PhoneCleanup] standardised ${renamed} number(s), merged ${merged} duplicate card(s)`);
+    })
+    .catch((err) => console.error("[PhoneCleanup] failed:", err));
 
   if (!isBotConfigured()) {
     console.warn(

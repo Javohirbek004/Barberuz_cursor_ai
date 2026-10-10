@@ -2,6 +2,8 @@ import { Router } from "express";
 import { db, clientsTable, bookingsTable } from "@workspace/db";
 import { eq, and, ilike, count, or, sql, isNull, desc } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
+import { findClientByPhone } from "../lib/client-lookup";
+import { normalizePhone, phoneDigits, sqlPhoneDigits } from "../lib/phone";
 
 const router = Router();
 
@@ -31,6 +33,29 @@ function formatClient(c: typeof clientsTable.$inferSelect) {
   };
 }
 
+type PhoneChange =
+  | { ok: true; value: string | null }
+  | { ok: false; status: number; body: Record<string, unknown> };
+
+/** Standard form for a phone typed by the barber, or the reason it cannot be saved. */
+async function resolvePhoneChange(barberId: string, clientId: string, phone: unknown): Promise<PhoneChange> {
+  const typed = typeof phone === "string" ? phone.trim() : "";
+  if (!typed) return { ok: true, value: null };
+  const standard = normalizePhone(typed);
+  if (!standard) {
+    return { ok: false, status: 400, body: { error: "validation", message: "Telefon raqami noto'g'ri" } };
+  }
+  const other = await findClientByPhone(barberId, standard, clientId);
+  if (other) {
+    return {
+      ok: false,
+      status: 409,
+      body: { error: "duplicate", message: "Bu telefon raqami boshqa mijozda saqlangan", clientId: other.id },
+    };
+  }
+  return { ok: true, value: standard };
+}
+
 router.get("/", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
@@ -53,19 +78,31 @@ router.get("/", authenticate, async (req, res) => {
       }
     }
 
-    if (search) {
-      conditions.push(
-        or(
-          ilike(clientsTable.name, `%${search}%`),
-          ilike(clientsTable.phone, `%${search}%`)
-        )
-      );
+    const term = (search || "").trim();
+    if (term) {
+      // A number can be typed with spaces, brackets or dashes. Compare digits only.
+      const typedDigits = phoneDigits(term);
+      const matches = [
+        ilike(clientsTable.name, `%${term}%`),
+        ilike(clientsTable.phone, `%${term}%`),
+      ];
+      if (typedDigits.length >= 2) {
+        matches.push(sql`${sqlPhoneDigits(clientsTable.phone)} like ${`%${typedDigits}%`}`);
+      }
+      conditions.push(or(...matches));
     }
 
     const where = and(...conditions);
     const clients = await db.select().from(clientsTable)
       .where(where)
-      .orderBy(desc(clientsTable.lastVisit), desc(clientsTable.createdAt))
+      // People who really came are listed first, the most recent visitor on top.
+      // Clients who only booked and never came follow, newest first.
+      .orderBy(
+        sql`(${clientsTable.visitCount} > 0) DESC`,
+        sql`${clientsTable.lastVisit} DESC NULLS LAST`,
+        desc(clientsTable.visitCount),
+        desc(clientsTable.createdAt),
+      )
       .limit(limitNum)
       .offset(offset);
 
@@ -86,10 +123,23 @@ router.post("/", authenticate, async (req, res) => {
       res.status(400).json({ error: "validation", message: "Name is required" });
       return;
     }
+    const typedPhone = typeof phone === "string" ? phone.trim() : "";
+    const standardPhone = typedPhone ? normalizePhone(typedPhone) : null;
+    if (typedPhone && !standardPhone) {
+      res.status(400).json({ error: "validation", message: "Telefon raqami noto'g'ri" });
+      return;
+    }
+    if (standardPhone) {
+      const sameNumber = await findClientByPhone(user.id, standardPhone);
+      if (sameNumber) {
+        res.status(200).json(formatClient(sameNumber));
+        return;
+      }
+    }
     const [client] = await db.insert(clientsTable).values({
       barberId: user.id,
       name,
-      phone: phone || null,
+      phone: standardPhone,
       telegramId: telegramId || null,
       notes: notes || null,
       status: status || "new",
@@ -159,10 +209,19 @@ router.put("/:clientId", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
     const { name, phone, telegramId, notes, status } = req.body;
+    let phoneValue: string | null | undefined;
+    if (phone !== undefined) {
+      const change = await resolvePhoneChange(user.id, String(req.params.clientId), phone);
+      if (!change.ok) {
+        res.status(change.status).json(change.body);
+        return;
+      }
+      phoneValue = change.value;
+    }
     const [client] = await db.update(clientsTable)
       .set({
         ...(name !== undefined && { name }),
-        ...(phone !== undefined && { phone }),
+        ...(phoneValue !== undefined && { phone: phoneValue }),
         ...(telegramId !== undefined && { telegramId }),
         ...(notes !== undefined && { notes }),
         ...(status !== undefined && { status }),
@@ -184,10 +243,19 @@ router.patch("/:clientId", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
     const { name, phone, notes } = req.body;
+    let phoneValue: string | null | undefined;
+    if (phone !== undefined) {
+      const change = await resolvePhoneChange(user.id, String(req.params.clientId), phone);
+      if (!change.ok) {
+        res.status(change.status).json(change.body);
+        return;
+      }
+      phoneValue = change.value;
+    }
     const [client] = await db.update(clientsTable)
       .set({
         ...(name !== undefined && { name }),
-        ...(phone !== undefined && { phone }),
+        ...(phoneValue !== undefined && { phone: phoneValue }),
         ...(notes !== undefined && { notes }),
         updatedAt: new Date(),
       })

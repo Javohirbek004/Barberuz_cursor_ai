@@ -24,8 +24,10 @@
 
 import { randomBytes } from "crypto";
 import { db, usersTable, bookingSessionsTable, bookingsTable, clientsTable, phoneUpdateIntentsTable } from "@workspace/db";
-import { eq, and, or, isNull, desc, sql } from "drizzle-orm";
+import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { syncClientMetrics } from "./client-metrics";
+import { findClientByPhone } from "./client-lookup";
+import { normalizePhone } from "./phone";
 import { generateToken, hashPassword } from "./auth";
 import {
   callbackBookingId,
@@ -919,6 +921,8 @@ function escHtml(value: string): string {
 }
 
 function plusPhone(raw: string | null | undefined): string {
+  const standard = normalizePhone(raw);
+  if (standard) return standard;
   const digits = (raw || "").replace(/\D/g, "");
   return digits ? `+${digits}` : "";
 }
@@ -2156,7 +2160,8 @@ async function confirmBookingSession(
     return;
   }
 
-  const effectivePhone = phone || session.clientPhone || null;
+  const typedPhone = phone || session.clientPhone || null;
+  const effectivePhone = typedPhone ? (normalizePhone(typedPhone) ?? typedPhone) : null;
 
   // Update session
   await db.update(bookingSessionsTable).set({
@@ -2172,22 +2177,16 @@ async function confirmBookingSession(
   try {
     const bookingDate = new Date();
 
-    // Build lookup conditions: prefer phone match, fall back to telegramId
-    const conditions = [];
-    if (effectivePhone) {
-      conditions.push(
-        and(eq(clientsTable.barberId, session.barberId), eq(clientsTable.phone, effectivePhone))
-      );
+    // Prefer a phone match (any spelling of the number), fall back to the Telegram id
+    let existing: typeof clientsTable.$inferSelect | null | undefined =
+      effectivePhone ? await findClientByPhone(session.barberId, effectivePhone) : null;
+    if (!existing) {
+      [existing] = await db
+        .select()
+        .from(clientsTable)
+        .where(and(eq(clientsTable.barberId, session.barberId), eq(clientsTable.telegramId, tgUserId)))
+        .limit(1);
     }
-    conditions.push(
-      and(eq(clientsTable.barberId, session.barberId), eq(clientsTable.telegramId, tgUserId))
-    );
-
-    const [existing] = await db
-      .select()
-      .from(clientsTable)
-      .where(or(...conditions))
-      .limit(1);
 
     if (existing) {
       await db.update(clientsTable)
