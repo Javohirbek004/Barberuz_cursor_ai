@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 
 export function NoShowConfirmModal({
@@ -11,23 +12,24 @@ export function NoShowConfirmModal({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  return (
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[220] flex items-end sm:items-center justify-center px-4 pb-8 sm:pb-0">
+        <div className="fixed inset-0 z-[300] flex items-center justify-center px-5">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/80"
             onClick={busy ? undefined : onCancel}
           />
           <motion.div
             data-testid="noshow-confirm"
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 24 }}
-            className="relative z-10 w-full max-w-sm rounded-3xl border border-white/10 bg-[#1a1a1f] p-5 shadow-2xl"
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.98 }}
+            className="relative z-10 w-full max-w-sm rounded-3xl border border-white/15 bg-[#2a2a32] p-5 shadow-2xl"
           >
             <p className="text-[15px] font-semibold text-foreground leading-snug">
               Mijoz salonga kelmadi deb belgilashni tasdiqlaysizmi?
@@ -58,6 +60,7 @@ export function NoShowConfirmModal({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
