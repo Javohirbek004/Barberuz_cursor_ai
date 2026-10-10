@@ -33,6 +33,7 @@ interface BarberCard {
   eveningConfirm?: boolean;
   quickReminder?: boolean;
   autoCancel?: boolean;
+  notifyCancel?: boolean;
 }
 
 interface BookingCard {
@@ -249,6 +250,53 @@ function cancelledText(): string {
   ].join("\n");
 }
 
+function barberCancelledText(barber: BarberCard, service: string, date: string, time: string): string {
+  return lines(
+    "🗑️ <b>Navbatingiz bekor qilindi</b>",
+    "",
+    `💈 Salon: ${esc(salonName(barber))}`,
+    `✂️ Xizmat: ${esc(service)}`,
+    `🗓️ Sana: ${esc(uzDate(date))}`,
+    `⏰ Vaqt: ${esc(time)}`,
+    "",
+    "Noqulaylik uchun uzr so'raymiz. Qulay boshqa vaqtni tanlash uchun quyidagi tugmani bosing 👇",
+    contactLine(barber),
+  );
+}
+
+function barberRescheduledText(
+  barber: BarberCard,
+  service: string,
+  from: { date: string; time: string },
+  to: { date: string; time: string },
+): string {
+  return lines(
+    "🔄 <b>Navbatingiz vaqti o'zgartirildi</b>",
+    "",
+    `💈 Salon: ${esc(salonName(barber))}`,
+    `✂️ Xizmat: ${esc(service)}`,
+    `❌ Avvalgi vaqt: ${esc(uzDate(from.date))}, ${esc(from.time)}`,
+    `✅ Yangi vaqt: ${esc(uzDate(to.date))}, ${esc(to.time)}`,
+    addressLine(resolveMapUrl(barber), barber.address || ""),
+    contactLine(barber),
+    "",
+    "Yangi vaqt sizga mosmi? Iltimos, kelishingizni tasdiqlang.",
+  );
+}
+
+function clientCancelledBarberText(clientName: string, phone: string | null, service: string, date: string, time: string): string {
+  return lines(
+    "⚠️ <b>Bron bekor qilindi!</b>",
+    "",
+    `👤 Mijoz: ${esc(clientName)}`,
+    phone ? `📞 Telefon: ${esc(formatPhone(phone))}` : null,
+    `✂️ Xizmat: ${esc(service)}`,
+    `🗓️ Sana va vaqt: ${esc(uzDate(date))}, ${esc(time)}`,
+    "",
+    "Mijoz botdan bekor qildi. Bu vaqt kalendaringizda bo'shatildi.",
+  );
+}
+
 function autoClientText(): string {
   return "🗑️ Tasdiqlanmagani sababli navbatingiz avtomatik bekor qilindi.";
 }
@@ -325,6 +373,7 @@ async function loadBarber(barberId: string): Promise<BarberCard | null> {
       eveningConfirm: usersTable.notifClientEvening,
       quickReminder: usersTable.notifClientQuick,
       autoCancel: usersTable.notifClientAutoCancel,
+      notifyCancel: usersTable.notifCancellation,
     })
     .from(usersTable)
     .where(eq(usersTable.id, barberId))
@@ -470,6 +519,69 @@ export async function handleClientCancel(
   await editOrSend(String(chatId), messageId, cancelledText(), {
     reply_markup: rebookMarkup(barber.username),
   });
+
+  if (barber.telegramId && barber.notifyCancel !== false) {
+    let phone: string | null = null;
+    if (booking.clientId) {
+      const [client] = await db
+        .select({ phone: clientsTable.phone })
+        .from(clientsTable)
+        .where(eq(clientsTable.id, booking.clientId))
+        .limit(1);
+      phone = client?.phone ?? null;
+    }
+    await send(
+      barber.telegramId,
+      clientCancelledBarberText(
+        booking.clientName,
+        phone,
+        booking.serviceName?.trim() || "Xizmat",
+        booking.date,
+        booking.startTime.slice(0, 5),
+      ),
+    );
+  }
+}
+
+export type BarberBookingChange =
+  | { kind: "cancelled" }
+  | { kind: "rescheduled"; from: { date: string; time: string } };
+
+/**
+ * The barber cancelled or moved a booking in the app: tell the client on Telegram at once.
+ * Returns false when the client has no Telegram chat or the message could not be sent.
+ */
+export async function notifyClientOfBarberChange(bookingId: string, change: BarberBookingChange): Promise<boolean> {
+  const booking = await loadBooking(bookingId);
+  if (!booking || booking.deletedAt) return false;
+
+  let chat = booking.clientTelegramId;
+  if (!chat && booking.clientId) {
+    const [client] = await db
+      .select({ telegramId: clientsTable.telegramId })
+      .from(clientsTable)
+      .where(eq(clientsTable.id, booking.clientId))
+      .limit(1);
+    chat = client?.telegramId ?? null;
+  }
+  if (!chat) return false;
+
+  const barber = await loadBarber(booking.barberId);
+  if (!barber) return false;
+
+  const service = booking.serviceName?.trim() || "Xizmat";
+  const time = booking.startTime.slice(0, 5);
+
+  if (change.kind === "cancelled") {
+    return send(chat, barberCancelledText(barber, service, booking.date, time), {
+      reply_markup: rebookMarkup(barber.username),
+    });
+  }
+  return send(
+    chat,
+    barberRescheduledText(barber, service, change.from, { date: booking.date, time }),
+    { reply_markup: confirmKeyboard(booking.id, "✅ Ha, boraman") },
+  );
 }
 
 async function cancelUnconfirmed(booking: BookingCard, barber: BarberCard): Promise<void> {

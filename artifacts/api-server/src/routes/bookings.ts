@@ -1,9 +1,9 @@
-import { Router } from "express";
-import { db, bookingsTable, servicesTable } from "@workspace/db";
+import { Router, type Request, type Response } from "express";
+import { db, bookingsTable, bookingSessionsTable, servicesTable } from "@workspace/db";
 import { eq, and, gte, lt, lte, inArray, isNull, notInArray } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 import { sendDirectBookingNotification } from "../lib/telegram-bot";
-import { deliverBookingReceipt } from "../lib/client-notifications";
+import { deliverBookingReceipt, notifyClientOfBarberChange } from "../lib/client-notifications";
 import { syncClientMetrics } from "../lib/client-metrics";
 import { findOrCreateClientByPhone } from "../lib/client-lookup";
 import { normalizePhone } from "../lib/phone";
@@ -200,49 +200,35 @@ router.get("/:bookingId", authenticate, async (req, res) => {
   }
 });
 
-router.put("/:bookingId", authenticate, async (req, res) => {
-  try {
-    const user = getUser(req);
-    const { clientName, serviceId, date, startTime, endTime, price, status, notes } = req.body;
-    if (status !== undefined && !BOOKING_STATUSES.has(status)) {
-      res.status(400).json({ error: "validation", message: "Unknown status" });
-      return;
-    }
-    const [booking] = await db.update(bookingsTable)
-      .set({
-        ...(clientName !== undefined && { clientName }),
-        ...(serviceId !== undefined && { serviceId }),
-        ...(date !== undefined && { date }),
-        ...(startTime !== undefined && { startTime }),
-        ...(endTime !== undefined && { endTime }),
-        ...(price !== undefined && { price: price.toString() }),
-        ...(status !== undefined && { status }),
-        ...(notes !== undefined && { notes }),
-        updatedAt: new Date(),
-      })
-      .where(and(eq(bookingsTable.id, req.params.bookingId), eq(bookingsTable.barberId, user.id)))
-      .returning();
-    if (!booking) {
-      res.status(404).json({ error: "not_found" });
-      return;
-    }
-    if (status !== undefined || price !== undefined) {
-      await syncClientMetrics(booking.clientId, user.id);
-    }
-    res.json(formatBooking(booking));
-  } catch (err) {
-    res.status(500).json({ error: "server_error" });
-  }
-});
+function isOpenStatus(status: string): boolean {
+  return status === "confirmed" || status === "pending";
+}
 
-router.patch("/:bookingId", authenticate, async (req, res) => {
+async function updateBooking(req: Request, res: Response) {
   try {
     const user = getUser(req);
+    const bookingId = String(req.params.bookingId);
     const { clientName, serviceId, date, startTime, endTime, price, status, notes } = req.body;
     if (status !== undefined && !BOOKING_STATUSES.has(status)) {
       res.status(400).json({ error: "validation", message: "Unknown status" });
       return;
     }
+
+    const [before] = await db.select().from(bookingsTable)
+      .where(and(eq(bookingsTable.id, bookingId), eq(bookingsTable.barberId, user.id)))
+      .limit(1);
+    if (!before) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+
+    const nextDate = date !== undefined ? date : before.date;
+    const nextStart = startTime !== undefined ? startTime : before.startTime;
+    const nextEnd = endTime !== undefined ? endTime : before.endTime;
+    const timeMoved = nextDate !== before.date
+      || String(nextStart).slice(0, 5) !== before.startTime.slice(0, 5)
+      || String(nextEnd).slice(0, 5) !== before.endTime.slice(0, 5);
+
     const [booking] = await db.update(bookingsTable)
       .set({
         ...(clientName !== undefined && { clientName }),
@@ -250,12 +236,13 @@ router.patch("/:bookingId", authenticate, async (req, res) => {
         ...(date !== undefined && { date }),
         ...(startTime !== undefined && { startTime }),
         ...(endTime !== undefined && { endTime }),
+        ...(timeMoved && { reminded24h: false, reminded1h: false, remindedFollowup: false }),
         ...(price !== undefined && { price: price.toString() }),
         ...(status !== undefined && { status }),
         ...(notes !== undefined && { notes }),
         updatedAt: new Date(),
       })
-      .where(and(eq(bookingsTable.id, req.params.bookingId), eq(bookingsTable.barberId, user.id)))
+      .where(and(eq(bookingsTable.id, bookingId), eq(bookingsTable.barberId, user.id)))
       .returning();
     if (!booking) {
       res.status(404).json({ error: "not_found" });
@@ -264,11 +251,32 @@ router.patch("/:bookingId", authenticate, async (req, res) => {
     if (status !== undefined || price !== undefined) {
       await syncClientMetrics(booking.clientId, user.id);
     }
+
+    const wasOpen = isOpenStatus(before.status);
+    if (wasOpen && booking.status === "cancelled") {
+      // The online booking no longer needs its "15 minutes left" reminder either.
+      await db.update(bookingSessionsTable)
+        .set({ status: "cancelled" })
+        .where(eq(bookingSessionsTable.bookingId, booking.id))
+        .catch(() => {});
+      notifyClientOfBarberChange(booking.id, { kind: "cancelled" }).catch((err) =>
+        console.warn("[Bookings] cancel notice failed:", (err as Error).message));
+    } else if (wasOpen && isOpenStatus(booking.status) && timeMoved) {
+      notifyClientOfBarberChange(booking.id, {
+        kind: "rescheduled",
+        from: { date: before.date, time: before.startTime.slice(0, 5) },
+      }).catch((err) => console.warn("[Bookings] reschedule notice failed:", (err as Error).message));
+    }
+
     res.json(formatBooking(booking));
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "server_error" });
   }
-});
+}
+
+router.put("/:bookingId", authenticate, updateBooking);
+router.patch("/:bookingId", authenticate, updateBooking);
 
 router.delete("/:bookingId", authenticate, async (req, res) => {
   try {
