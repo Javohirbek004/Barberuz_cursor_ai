@@ -600,49 +600,6 @@ function IndividualDashboard() {
         <p className="text-muted-foreground text-center py-8 text-sm">{t("loading")}</p>
       ) : (
         <div ref={bookingsListRef} className="space-y-8">
-          {reviewBookings.length > 0 && (
-            <section data-testid="review-feed">
-              <h2 className="text-lg font-bold text-foreground mb-1">⚠️ Tasdiqlash kutilmoqda</h2>
-              <p className="text-[11px] text-amber-200/70 mb-3">
-                *(⚠️ Holati belgilanmaguncha daromadga qoʻshilmaydi)*
-              </p>
-              <div className="space-y-2">
-                {reviewBookings.map((b) => (
-                  <Card key={b.id} className="bg-card border-amber-500/20 overflow-hidden">
-                    <button type="button" onClick={() => setSelectedBooking(b)} className="w-full px-3 py-2.5 flex items-center gap-3 text-left">
-                      <div className="w-12 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-300 font-bold flex-shrink-0">
-                        <span className="text-xs whitespace-nowrap">{b.startTime.slice(0, 5)}</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-foreground truncate text-sm">{b.clientName}</div>
-                        <div className="text-[11px] text-muted-foreground truncate">
-                          {serviceNames(b.serviceName).join(", ") || t("dash.service_fallback")}
-                        </div>
-                      </div>
-                      <div className="text-xs font-semibold text-primary flex-shrink-0">{b.price.toLocaleString()} so'm</div>
-                    </button>
-                    <div className="flex gap-1.5 px-3 pb-2.5">
-                      <button
-                        type="button"
-                        data-testid={`keldi-${b.id}`}
-                        disabled={busyKey !== null}
-                        onClick={() => void markBookings([b], "completed")}
-                        className="flex-1 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold disabled:opacity-40"
-                      >✅ Keldi</button>
-                      <button
-                        type="button"
-                        data-testid={`kelmadi-${b.id}`}
-                        disabled={busyKey !== null}
-                        onClick={() => setNoShowTarget(b)}
-                        className="flex-1 h-8 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-semibold disabled:opacity-40"
-                      >❌ Kelmadi</button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </section>
-          )}
-
           {upcomingBookings.length > 0 && (
             <section data-testid="upcoming-feed">
               <h2 className="text-lg font-bold text-foreground mb-4">{t("dash.recent_bookings")}</h2>
@@ -682,6 +639,53 @@ function IndividualDashboard() {
                       </div>
                     </Card>
                   </motion.div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {reviewBookings.length > 0 && (
+            <section data-testid="review-feed">
+              <h2 className="text-lg font-bold text-foreground mb-4">⚠️ Tasdiqlash kutilmoqda</h2>
+              <div className="space-y-2">
+                {reviewBookings.map((b) => (
+                  <Card key={b.id} className="relative bg-card border-white/5 overflow-hidden">
+                    <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-amber-400/80" aria-hidden />
+                    <button type="button" onClick={() => setSelectedBooking(b)} className="w-full px-4 py-3 flex items-center gap-4 text-left">
+                      <div className="w-14 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold flex-shrink-0">
+                        <span className="text-sm whitespace-nowrap">{b.startTime.slice(0, 5)}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-foreground truncate">{b.clientName}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {serviceNames(b.serviceName).join(", ") || t("dash.service_fallback")}
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-sm font-semibold text-primary">{b.price.toLocaleString()} so'm</div>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-bold bg-amber-500/10 text-amber-400">Kutilmoqda</span>
+                      </div>
+                    </button>
+                    <p className="px-4 pb-2 text-xs text-muted-foreground leading-snug">
+                      ⚠️ Holati belgilanmaguncha daromadga qoʻshilmaydi
+                    </p>
+                    <div className="flex gap-1.5 px-4 pb-3">
+                      <button
+                        type="button"
+                        data-testid={`keldi-${b.id}`}
+                        disabled={busyKey !== null}
+                        onClick={() => void markBookings([b], "completed")}
+                        className="flex-1 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold disabled:opacity-40"
+                      >✅ Keldi</button>
+                      <button
+                        type="button"
+                        data-testid={`kelmadi-${b.id}`}
+                        disabled={busyKey !== null}
+                        onClick={() => setNoShowTarget(b)}
+                        className="flex-1 h-8 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-semibold disabled:opacity-40"
+                      >❌ Kelmadi</button>
+                    </div>
+                  </Card>
                 ))}
               </div>
             </section>
