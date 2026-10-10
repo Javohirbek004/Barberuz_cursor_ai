@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, bookingsTable, clientsTable, servicesTable } from "@workspace/db";
-import { eq, and, gte, lte, inArray, notInArray } from "drizzle-orm";
+import { eq, and, gte, lt, lte, inArray, isNull, notInArray } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 import { sendDirectBookingNotification } from "../lib/telegram-bot";
 import { deliverBookingReceipt } from "../lib/client-notifications";
@@ -39,6 +39,9 @@ async function findOrCreateClient(
   }).returning();
   return newClient.id;
 }
+
+/** How far back the review list looks for bookings nobody marked. */
+const OVERDUE_DAYS = 60;
 
 const BOOKING_STATUSES = new Set([
   "pending", "confirmed", "completed", "cancelled", "auto_cancelled", "no_show",
@@ -79,6 +82,17 @@ router.get("/", authenticate, async (req, res) => {
       conditions.push(gte(bookingsTable.date, todayDate));
       conditions.push(lte(bookingsTable.date, maxDateStr));
       conditions.push(inArray(bookingsTable.status, ["confirmed", "pending"]));
+    } else if (date === "overdue") {
+      // Earlier days that still wait for Keldi / Kelmadi. They stay on the review list
+      // until the barber marks them, so no visit or payment is silently lost.
+      const todayDate = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+      const oldest = new Date();
+      oldest.setDate(oldest.getDate() - OVERDUE_DAYS);
+      const oldestDate = oldest.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+      conditions.push(lt(bookingsTable.date, todayDate));
+      conditions.push(gte(bookingsTable.date, oldestDate));
+      conditions.push(inArray(bookingsTable.status, ["confirmed", "pending"]));
+      conditions.push(isNull(bookingsTable.deletedAt));
     } else if (date) {
       conditions.push(eq(bookingsTable.date, date));
     }

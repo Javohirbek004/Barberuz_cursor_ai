@@ -26,6 +26,20 @@ export function isElapsedBooking(date: string, startTime: string, now = Date.now
   return bookingStartMs(date, startTime) < now - GRACE_MS;
 }
 
+const MONTH_SHORT = ["yan", "fev", "mar", "apr", "may", "iyun", "iyul", "avg", "sen", "okt", "noy", "dek"];
+
+function shiftDay(iso: string, days: number): string {
+  const [y = 1970, m = 1, d = 1] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** "Kecha" for yesterday, otherwise "8-okt". Used on cards from earlier days. */
+export function reviewDayLabel(date: string, today: string): string {
+  if (date === shiftDay(today, -1)) return "Kecha";
+  const [, m = 1, d = 1] = date.split("-").map(Number);
+  return `${d}-${MONTH_SHORT[m - 1] ?? ""}`;
+}
+
 export function isOpenBooking(status: string): boolean {
   return status === "confirmed" || status === "pending";
 }

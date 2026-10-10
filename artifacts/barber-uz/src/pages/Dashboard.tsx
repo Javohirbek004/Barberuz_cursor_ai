@@ -12,7 +12,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { isElapsedBooking, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
+import { isElapsedBooking, isOpenBooking, reviewDayLabel, tashkentClock } from "@/lib/booking-feed";
 import { Layout } from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import {
@@ -382,16 +382,26 @@ function IndividualDashboard() {
   const { data: bookingsData, isLoading: bookingsLoading, refetch } = useListBookings({ date: today });
   // Separate query for the "Yaqin bronlar" list — shows today + future bookings
   const { data: upcomingData, isLoading: upcomingLoading, refetch: refetchUpcoming } = useListBookings({ date: "upcoming" as any });
+  // Earlier days that nobody marked yet. They stay on the review list until Keldi / Kelmadi.
+  const { data: overdueData, isLoading: overdueLoading, refetch: refetchOverdue } = useListBookings({ date: "overdue" as any });
 
-  // Periodic auto-refresh every 60 s so Telegram-confirmed bookings appear without reload
+  // Refresh often and when the app comes back to the screen, so Telegram changes
+  // (new, confirmed or cancelled bookings) show up without a reload.
   useEffect(() => {
-    const id = setInterval(() => {
-      refetch();
-      refetchStats();
+    const refreshAll = () => {
+      void refetch();
+      void refetchStats();
       void refetchUpcoming();
-    }, 60_000);
-    return () => clearInterval(id);
-  }, [refetch, refetchStats, refetchUpcoming]);
+      void refetchOverdue();
+    };
+    const id = setInterval(refreshAll, 20_000);
+    const onVisible = () => { if (document.visibilityState === "visible") refreshAll(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refetch, refetchStats, refetchUpcoming, refetchOverdue]);
 
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -419,7 +429,12 @@ function IndividualDashboard() {
   const openBookings = (upcomingData?.bookings ?? [])
     .filter((b) => isOpenBooking(b.status))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
-  const reviewBookings = openBookings.filter((b) => isElapsedBooking(b.date, b.startTime, now.getTime()));
+  const reviewBookings = [
+    ...(overdueData?.bookings ?? []).filter((b) => isOpenBooking(b.status)),
+    ...openBookings.filter((b) => isElapsedBooking(b.date, b.startTime, now.getTime())),
+  ]
+    .filter((b, index, all) => all.findIndex((other) => other.id === b.id) === index)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
   const upcomingBookings = openBookings
     .filter((b) => !isElapsedBooking(b.date, b.startTime, now.getTime()))
     .slice(0, 10);
@@ -487,14 +502,18 @@ function IndividualDashboard() {
       await Promise.all([
         refetch(),
         refetchUpcoming(),
+        refetchOverdue(),
         refetchStats(),
         queryClient.invalidateQueries({ queryKey: getListClientsQueryKey() }),
       ]);
       const sum = rows.reduce((total, row) => total + Number(row.price || 0), 0);
       if (status === "completed") {
+        const allToday = rows.every((row) => row.date === today);
         toast({
           title: rows.length > 1 ? "Barchasi bajarildi" : "✓ Keldi",
-          description: `${sum.toLocaleString()} so'm bugungi daromadga qo'shildi`,
+          description: allToday
+            ? `${sum.toLocaleString()} so'm bugungi daromadga qo'shildi`
+            : `${sum.toLocaleString()} so'm bron sanasidagi daromadga qo'shildi`,
         });
       } else {
         toast({ title: "Kelmadi", description: "Bu bron daromadga qo'shilmadi" });
@@ -566,7 +585,7 @@ function IndividualDashboard() {
         />
       </div>
 
-      {(bookingsLoading || upcomingLoading) ? (
+      {(bookingsLoading || upcomingLoading || overdueLoading) ? (
         <p className="text-muted-foreground text-center py-8 text-sm">{t("loading")}</p>
       ) : (
         <div ref={bookingsListRef} className="space-y-8">
@@ -627,6 +646,9 @@ function IndividualDashboard() {
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-foreground truncate">{b.clientName}</div>
                         <div className="text-xs text-muted-foreground truncate">
+                          {b.date !== today && (
+                            <span data-testid="review-day" className="text-amber-300/90 font-medium">{reviewDayLabel(b.date, today)} · </span>
+                          )}
                           {serviceNames(b.serviceName).join(", ") || t("dash.service_fallback")}
                         </div>
                       </div>
@@ -679,7 +701,7 @@ function IndividualDashboard() {
           <BookingDetailModal
             booking={selectedBooking}
             onClose={() => setSelectedBooking(null)}
-            onRefetch={() => { void refetch(); void refetchUpcoming(); }}
+            onRefetch={() => { void refetch(); void refetchUpcoming(); void refetchOverdue(); }}
             onRefetchStats={refetchStats}
           />
         )}
