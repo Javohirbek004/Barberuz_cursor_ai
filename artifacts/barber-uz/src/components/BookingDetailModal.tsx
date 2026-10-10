@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, PhoneCall, Check, CheckCircle, XCircle, AlertTriangle, Pencil } from "lucide-react";
+import { X, Phone, Check, CheckCircle, XCircle, AlertTriangle, Pencil } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetClient,
@@ -37,11 +37,24 @@ function formatBookingDate(dateStr: string): string {
   return `${d.getDate()}-${UZ_SHORT_MONTHS[d.getMonth()]}`;
 }
 
-function SheetRow({ label, value }: { label: string; value: string }) {
+function formatSom(value: number | string): string {
+  const n = Number(value);
+  return `${(Number.isFinite(n) ? n : 0).toLocaleString("uz-UZ")} so'm`;
+}
+
+function SheetRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
-      <span className="text-sm text-muted-foreground flex-shrink-0 mr-4">{label}</span>
-      <span className="text-sm font-medium text-foreground text-right">{value}</span>
+    <div className="flex items-center justify-between gap-4 min-h-[48px] py-3 border-b border-white/5 last:border-0">
+      <span className="text-[13px] text-muted-foreground shrink-0">{label}</span>
+      <div className="min-w-0 text-right text-[13px] font-medium text-foreground leading-snug">
+        {children}
+      </div>
     </div>
   );
 }
@@ -318,16 +331,11 @@ export function BookingDetailModal({
   };
 
   // ── Booking status actions ─────────────────────────────────────
-  const [priceText, setPriceText] = useState(String(booking.price));
-  useEffect(() => { setPriceText(String(booking.price)); }, [booking.id, booking.price]);
-  const editedPrice = (() => {
-    const value = Number(String(priceText).replace(/\s/g, "").replace(",", "."));
-    return Number.isFinite(value) && value >= 0 ? value : Number(booking.price);
-  })();
+  const bookingPrice = Number(booking.price) || 0;
 
   const handleComplete = () => {
     updateBookingMut.mutate(
-      { bookingId: booking.id, data: { status: "completed", price: editedPrice } },
+      { bookingId: booking.id, data: { status: "completed", price: bookingPrice } },
       {
         onSuccess: () => {
           refreshClientLists();
@@ -336,7 +344,7 @@ export function BookingDetailModal({
           onRefetchStats?.();
           toast({
             title: "✓ Muvaffaqiyatli yakunlandi",
-            description: `${booking.clientName} — ${editedPrice.toLocaleString()} so'm daromadga qo'shildi`,
+            description: `${booking.clientName} — ${bookingPrice.toLocaleString()} so'm daromadga qo'shildi`,
             duration: 3000,
           });
         },
@@ -419,56 +427,40 @@ export function BookingDetailModal({
           </div>
 
           {/* ── Section 2: Info grid ── */}
-          <div className="py-4 space-y-0 border-b border-white/8">
-            <SheetRow label="Xizmat" value={booking.serviceName ?? "—"} />
-            <SheetRow
-              label="Vaqt va Sana"
-              value={`${dateLabel} • ${booking.startTime.slice(0, 5)} – ${booking.endTime.slice(0, 5)}`}
-            />
-
-            {/* Phone call pill */}
-            <div className="flex items-center justify-between py-3 border-b border-white/5">
-              <span className="text-sm text-muted-foreground">Telefon raqami</span>
+          <div className="py-1 border-b border-white/8">
+            <SheetRow label="Xizmat">{booking.serviceName ?? "—"}</SheetRow>
+            <SheetRow label="Vaqt">
+              {`${dateLabel} • ${booking.startTime.slice(0, 5)} – ${booking.endTime.slice(0, 5)}`}
+            </SheetRow>
+            <SheetRow label="Telefon">
               {phone ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">{phone}</span>
+                <div className="flex items-center justify-end gap-2">
+                  <span className="tabular-nums truncate">{phone}</span>
                   <a
                     href={`tel:${phone}`}
                     data-testid="call-client"
-                    className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-semibold text-sm hover:bg-emerald-500/18 active:scale-95 transition-all"
+                    aria-label="Qo'ng'iroq qilish"
+                    className="inline-flex items-center gap-1 h-7 pl-2 pr-2.5 rounded-full bg-emerald-500/12 text-emerald-400 text-[11px] font-semibold tracking-wide hover:bg-emerald-500/18 active:scale-95 transition-all shrink-0"
                   >
-                    <PhoneCall className="w-4 h-4 flex-shrink-0" />
-                    Qo'ng'iroq qilish
+                    <Phone className="w-3 h-3" />
+                    Qo'ng'iroq
                   </a>
                 </div>
               ) : (
-                <span className="text-sm text-muted-foreground/40">—</span>
+                <span className="text-muted-foreground/40">—</span>
               )}
-            </div>
-
-            <div className="flex items-center justify-between py-3 border-b border-white/5 gap-3">
-              <span className="text-sm text-muted-foreground">Narxi</span>
-              {isActive ? (
-                <label className="flex items-center gap-2">
-                  <input
-                    inputMode="decimal"
-                    value={priceText}
-                    onChange={(event) => setPriceText(event.target.value)}
-                    className="w-28 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-right text-lg font-bold text-primary outline-none"
-                  />
-                  <span className="text-sm text-muted-foreground">so'm</span>
-                </label>
-              ) : (
-                <span className="text-xl font-bold text-primary">{booking.price.toLocaleString()} so'm</span>
-              )}
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <span className="text-sm text-muted-foreground">Holat</span>
-              <span className={`text-[11px] px-3 py-1 rounded-full font-bold uppercase tracking-wide ${
-                booking.status === "confirmed" ? "bg-emerald-500/12 text-emerald-400 border border-emerald-500/20" :
-                booking.status === "pending"   ? "bg-amber-500/12 text-amber-400 border border-amber-500/20" :
-                booking.status === "completed" ? "bg-blue-500/12 text-blue-400 border border-blue-500/20" :
-                                                  "bg-red-500/12 text-red-400 border border-red-500/20"
+            </SheetRow>
+            <SheetRow label="Narxi">
+              <span className="font-semibold tabular-nums text-foreground/95">
+                {formatSom(bookingPrice)}
+              </span>
+            </SheetRow>
+            <SheetRow label="Holat">
+              <span className={`inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-full font-semibold tracking-wide ${
+                booking.status === "confirmed" ? "bg-emerald-500/12 text-emerald-400" :
+                booking.status === "pending"   ? "bg-amber-500/12 text-amber-400" :
+                booking.status === "completed" ? "bg-blue-500/12 text-blue-400" :
+                                                  "bg-red-500/12 text-red-400"
               }`}>
                 {booking.status === "confirmed" ? "Tasdiqlangan" :
                  booking.status === "pending"   ? "Kutilmoqda" :
@@ -476,7 +468,7 @@ export function BookingDetailModal({
                  bookingStatus === "no_show" ? "Kelmadi" :
                  bookingStatus === "auto_cancelled" ? "Avtomatik bekor" : "Bekor qilingan"}
               </span>
-            </div>
+            </SheetRow>
           </div>
 
           {/* ── Section 3: Note (view/edit toggle) ── */}
