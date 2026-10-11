@@ -21,6 +21,14 @@ import {
   toMins,
   type SlotPeriod,
 } from "@/lib/schedule";
+import { toast } from "@/hooks/use-toast";
+import {
+  extractPhoneNumber,
+  getTelegramWebApp,
+  requestTelegramContact,
+  telegramWebAppUser,
+  wakeTelegramWebApp,
+} from "@/lib/telegram-webapp";
 
 interface BarberData {
   id: string;
@@ -233,16 +241,16 @@ function PublicBookingModal({
   const [clientName, setClientName] = useState(resume?.name || savedClient.current?.name || "");
   const [clientPhone, setClientPhone] = useState(savedClient.current?.phone || "");
   const [knownClient, setKnownClient] = useState(!!savedClient.current?.tgId);
-  const [editingProfile, setEditingProfile] = useState(!!savedClient.current && !phoneReady(savedClient.current.phone));
   const [phoneUpdateOpen, setPhoneUpdateOpen] = useState(false);
-  const editingRef = useRef(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [deepLink, setDeepLink] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [phoneRequesting, setPhoneRequesting] = useState(false);
   const [formError, setFormError] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
   const [bookedDirect, setBookedDirect] = useState(false);
-
-  useEffect(() => { editingRef.current = editingProfile; }, [editingProfile]);
+  const autoContactTried = useRef(false);
 
   useEffect(() => {
     const refresh = () => {
@@ -250,11 +258,13 @@ function PublicBookingModal({
       if (!profile) return;
       const phoneChanged = profile.phone !== (savedClient.current?.phone || "");
       savedClient.current = profile;
-      if (!editingRef.current) setClientName(profile.name);
+      setClientName((current) => current.trim() ? current : profile.name);
       setClientPhone(profile.phone);
       setKnownClient(true);
-      if (phoneChanged && phoneReady(profile.phone)) setPhoneUpdateOpen(false);
-      if (!phoneReady(profile.phone)) setEditingProfile(true);
+      if (phoneChanged && phoneReady(profile.phone)) {
+        setPhoneUpdateOpen(false);
+        setPhoneError("");
+      }
     };
     window.addEventListener("barber-client-saved", refresh);
     return () => window.removeEventListener("barber-client-saved", refresh);
@@ -274,6 +284,49 @@ function PublicBookingModal({
       document.removeEventListener("visibilitychange", onShow);
     };
   }, [phoneUpdateOpen]);
+
+  useEffect(() => {
+    wakeTelegramWebApp();
+    const user = telegramWebAppUser();
+    if (!user?.id) return;
+    const tgName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+    const tgPhone = extractPhoneNumber(user) || extractPhoneNumber(getTelegramWebApp()?.initDataUnsafe);
+    const existing = savedClient.current;
+    const next = {
+      tgId: String(user.id),
+      name: (existing?.name || clientName || tgName || "Mijoz").trim(),
+      phone: (existing?.phone || clientPhone || tgPhone).trim(),
+      username: existing?.username || user.username || null,
+    };
+    savedClient.current = next;
+    setKnownClient(true);
+    if (!clientName.trim() && next.name) setClientName(next.name);
+    if (tgPhone && !phoneReady(clientPhone)) setClientPhone(tgPhone);
+    saveClientProfile(next);
+    // Hydrate once when the Telegram Mini App opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function applySharedPhone(shared: string) {
+    const phone = shared.trim();
+    setClientPhone(phone);
+    setPhoneError("");
+    setFormError("");
+    const user = telegramWebAppUser();
+    const profile = savedClient.current;
+    const tgId = profile?.tgId || (user?.id ? String(user.id) : "");
+    if (!tgId) return;
+    const next = {
+      tgId,
+      name: (clientName.trim() || profile?.name || [user?.first_name, user?.last_name].filter(Boolean).join(" ") || "Mijoz").trim(),
+      phone,
+      username: profile?.username || user?.username || null,
+    };
+    savedClient.current = next;
+    setKnownClient(true);
+    saveClientProfile(next);
+  }
+
   const [busySlots, setBusySlots] = useState<{ startTime: string; endTime: string }[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -385,7 +438,19 @@ function PublicBookingModal({
   }
 
   async function handleDirectConfirm() {
-    if (submitting || !selectedTime || !clientName.trim() || !phoneReady(clientPhone) || editingProfile) return;
+    if (submitting || !selectedTime) return;
+    const nameOk = !!clientName.trim();
+    const phoneOk = phoneReady(clientPhone);
+    setNameError(nameOk ? "" : "Ism majburiy");
+    setPhoneError(phoneOk ? "" : "Telefon raqam majburiy");
+    if (!nameOk || !phoneOk) {
+      setFormError(phoneOk ? "Ismingizni kiriting." : "Telefon raqamini kiriting.");
+      return;
+    }
+    if (!savedClient.current?.tgId) {
+      setFormError("Telegram orqali kiring, so'ng qayta urinib ko'ring.");
+      return;
+    }
     setSubmitting(true);
     setFormError("");
     try {
@@ -395,50 +460,86 @@ function PublicBookingModal({
       const data = await res.json();
       if (data.status !== "confirmed") throw new Error("not confirmed");
       const next = {
-        tgId: savedClient.current!.tgId,
+        tgId: savedClient.current.tgId,
         name: clientName.trim(),
         phone: clientPhone.trim(),
-        username: savedClient.current?.username || null,
+        username: savedClient.current.username || null,
       };
       savedClient.current = next;
       saveClientProfile(next);
       clearBookingDraft();
       setBookedDirect(true);
       setStep("done");
-      setSubmitting(false);
     } catch {
-      setFormError("Bron saqlanmadi. Qayta urinib ko'ring.");
+      const text = "Bron saqlanmadi. Qayta urinib ko'ring.";
+      setFormError(text);
+      toast({ title: "Bron saqlanmadi", description: text, variant: "destructive" });
+    } finally {
       setSubmitting(false);
     }
   }
 
-  function saveEditedName() {
-    if (!clientName.trim()) return;
-    const profile = savedClient.current;
-    if (profile) {
-      const next = { ...profile, name: clientName.trim(), phone: clientPhone.trim() };
-      savedClient.current = next;
-      saveClientProfile(next);
+  async function leaveForPhoneUpdate() {
+    if (phoneRequesting) return;
+    setPhoneRequesting(true);
+    setPhoneError("");
+    setFormError("");
+    try {
+      if (getTelegramWebApp()?.requestContact) {
+        const shared = await requestTelegramContact();
+        if (phoneReady(shared)) {
+          applySharedPhone(shared);
+          setPhoneUpdateOpen(false);
+          return;
+        }
+        setPhoneError("Raqam yuborilmadi");
+        setFormError("Telegramda raqamni yuboring yoki telefon maydonini to'ldiring.");
+        return;
+      }
+      if (selectedTime) {
+        localStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify({
+          slug: barber.username,
+          serviceIds: selectedServices.map(s => s.id),
+          date: dateOpt,
+          time: selectedTime,
+          name: clientName.trim(),
+          at: Date.now(),
+        } satisfies BookingDraft));
+      }
+      setPhoneUpdateOpen(false);
+      window.location.assign(phoneUpdateLink(barber.username));
+    } catch {
+      const text = "Raqam olinmadi. Qo'lda kiriting yoki qayta urinib ko'ring.";
+      setFormError(text);
+      setPhoneError("Telefon raqam majburiy");
+      toast({ title: "Raqam olinmadi", description: text, variant: "destructive" });
+    } finally {
+      setPhoneRequesting(false);
     }
-    if (phoneReady(clientPhone)) setEditingProfile(false);
   }
 
-  function leaveForPhoneUpdate() {
-    if (selectedTime) {
-      localStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify({
-        slug: barber.username,
-        serviceIds: selectedServices.map(s => s.id),
-        date: dateOpt,
-        time: selectedTime,
-        name: clientName.trim(),
-        at: Date.now(),
-      } satisfies BookingDraft));
+  function onPhoneUpdateClick() {
+    if (getTelegramWebApp()?.requestContact) {
+      void leaveForPhoneUpdate();
+      return;
     }
-    window.location.assign(phoneUpdateLink(barber.username));
+    setPhoneUpdateOpen(true);
   }
+
+  useEffect(() => {
+    if (step !== "confirm" || autoContactTried.current || phoneReady(clientPhone)) return;
+    if (!getTelegramWebApp()?.requestContact) return;
+    autoContactTried.current = true;
+    void leaveForPhoneUpdate();
+  }, [step, clientPhone]);
 
   async function handleConfirm() {
-    if (submitting || !selectedTime || !clientName.trim()) return;
+    if (submitting || !selectedTime) return;
+    if (!clientName.trim()) {
+      setNameError("Ism majburiy");
+      setFormError("Ismingizni kiriting.");
+      return;
+    }
     setSubmitting(true);
     setFormError("");
 
@@ -492,6 +593,10 @@ function PublicBookingModal({
 
       if (link) window.location.assign(link);
     } catch {
+      const text = "Telegram ochilmadi. Qayta urinib ko'ring.";
+      setFormError(text);
+      toast({ title: "Xatolik", description: text, variant: "destructive" });
+    } finally {
       setSubmitting(false);
     }
   }
@@ -639,53 +744,56 @@ function PublicBookingModal({
                   ))}
                 </div>
                 {knownClient ? (
-                  <div className="bg-white/4 border border-white/8 rounded-2xl p-4 mb-4" data-testid="client-profile">
-                    {editingProfile ? (
-                      <div className="space-y-3">
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-muted-foreground">Ism</label>
-                          <input value={clientName} onChange={e => setClientName(e.target.value)}
-                            className="w-full h-11 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary/50" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-muted-foreground">Telefon</label>
-                          <input value={clientPhone} readOnly disabled inputMode="tel" data-testid="client-phone"
-                            className="w-full h-11 px-3 rounded-xl bg-white/5 border border-white/10 text-sm opacity-70 cursor-not-allowed" />
-                          <button type="button" onClick={() => setPhoneUpdateOpen(true)} data-testid="phone-update"
-                            className="text-sm font-bold text-primary">
-                            📱 Raqamni yangilash
-                          </button>
-                        </div>
-                        <button type="button" onClick={saveEditedName} disabled={!clientName.trim()}
-                          className="w-full h-10 rounded-xl bg-primary text-black text-sm font-bold disabled:opacity-40">
-                          Saqlash
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-foreground">Mijoz: {clientName}</p>
-                          <p className="text-sm text-muted-foreground mt-1">Tel: {clientPhone || "—"}</p>
-                          <button type="button" onClick={() => setPhoneUpdateOpen(true)} data-testid="phone-update"
-                            className="mt-2 text-sm font-bold text-primary">
-                            📱 Raqamni yangilash
-                          </button>
-                        </div>
-                        <button type="button" onClick={() => setEditingProfile(true)}
-                          className="shrink-0 text-xs font-bold text-primary underline underline-offset-2">
-                          ✏️ Tahrirlash
-                        </button>
-                      </div>
-                    )}
+                  <div className="bg-white/4 border border-white/8 rounded-2xl p-4 mb-4 space-y-3" data-testid="client-profile">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-muted-foreground">Ism *</label>
+                      <input
+                        value={clientName}
+                        onChange={e => { setClientName(e.target.value); setNameError(""); }}
+                        placeholder="masalan: Ali"
+                        required
+                        autoComplete="name"
+                        className={`w-full h-11 px-3 rounded-xl bg-white/5 text-sm focus:outline-none ${
+                          nameError ? "border border-red-500/70 focus:border-red-400" : "border border-white/10 focus:border-primary/50"
+                        }`}
+                      />
+                      {nameError && <p className="text-xs text-red-400">{nameError}</p>}
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-muted-foreground">Telefon *</label>
+                      <input
+                        value={clientPhone}
+                        onChange={e => { setClientPhone(e.target.value); setPhoneError(""); }}
+                        inputMode="tel"
+                        placeholder="+998 90 123 45 67"
+                        required
+                        autoComplete="tel"
+                        data-testid="client-phone"
+                        aria-invalid={!!phoneError}
+                        className={`w-full h-11 px-3 rounded-xl bg-white/5 text-sm focus:outline-none ${
+                          phoneError ? "border border-red-500/70 focus:border-red-400" : "border border-white/10 focus:border-primary/50"
+                        }`}
+                      />
+                      {phoneError && <p className="text-xs text-red-400">{phoneError}</p>}
+                      <button
+                        type="button"
+                        onClick={onPhoneUpdateClick}
+                        disabled={phoneRequesting}
+                        data-testid="phone-update"
+                        className="text-sm font-bold text-primary disabled:opacity-50"
+                      >
+                        {phoneRequesting ? "Raqam so‘ralmoqda..." : "📱 Raqamni yangilash"}
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="bg-[#2AABEE]/8 border border-[#2AABEE]/20 rounded-2xl px-4 py-3 mb-4">
                     <p className="text-xs text-[#2AABEE]/80 leading-relaxed">💬 Navbatingizni ro'yxatga olish va eslatma yuborish uchun jarayonni Telegram botimizda yakunlang.</p>
                   </div>
                 )}
-                {formError && <p className="text-xs text-red-400 mb-3">{formError}</p>}
+                {formError && <p className="text-sm text-red-400 mb-3" data-testid="booking-form-error">{formError}</p>}
                 {knownClient ? (
-                  <button onClick={handleDirectConfirm} disabled={submitting || editingProfile || !clientName.trim() || !phoneReady(clientPhone)}
+                  <button type="button" onClick={() => void handleDirectConfirm()} disabled={submitting}
                     data-testid="direct-confirm"
                     className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40 shadow-lg shadow-primary/20">
                     {submitting
@@ -693,7 +801,7 @@ function PublicBookingModal({
                       : "✅ Bron qilishni tasdiqlash"}
                   </button>
                 ) : (
-                  <button onClick={handleConfirm} disabled={submitting}
+                  <button onClick={() => void handleConfirm()} disabled={submitting}
                     className="w-full py-3.5 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60 shadow-lg shadow-[#2AABEE]/20">
                     {submitting
                       ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Yuklanmoqda...</>
@@ -753,9 +861,9 @@ function PublicBookingModal({
             <p className="text-sm text-muted-foreground leading-relaxed mt-3">
               Davom etsangiz, botimizda <b>'Raqamni yuborish'</b> tugmasi paydo bo'ladi.
             </p>
-            <button type="button" onClick={leaveForPhoneUpdate} data-testid="phone-update-go"
-              className="w-full mt-5 h-12 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm">
-              🚀 Telegram'ga o'tish
+            <button type="button" onClick={() => { void leaveForPhoneUpdate(); }} disabled={phoneRequesting} data-testid="phone-update-go"
+              className="w-full mt-5 h-12 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm disabled:opacity-50">
+              {phoneRequesting ? "Raqam so‘ralmoqda..." : "🚀 Telegram'ga o'tish"}
             </button>
             <button type="button" onClick={() => setPhoneUpdateOpen(false)}
               className="w-full mt-2 h-11 rounded-2xl bg-white/5 text-sm font-semibold text-muted-foreground">
