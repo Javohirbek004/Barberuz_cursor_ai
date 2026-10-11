@@ -3,6 +3,7 @@ import app from "./app";
 import { registerWebhook, isBotConfigured, startDevPolling } from "./lib/telegram-bot";
 import { startReminderJob } from "./lib/reminders";
 import { normalizeStoredClientPhones } from "./lib/phone-migration";
+import { moveSlugToProfileName } from "./lib/public-slug";
 import { assertAuthSecrets } from "./lib/auth";
 
 assertAuthSecrets();
@@ -52,6 +53,12 @@ app.listen(port, async () => {
       if (renamed || merged) console.log(`[PhoneCleanup] standardised ${renamed} number(s), merged ${merged} duplicate card(s)`);
     })
     .catch((err) => console.error("[PhoneCleanup] failed:", err));
+
+  moveSlugToProfileName("sardor-2000", "Javohir")
+    .then((moved) => {
+      if (moved) console.log("[PublicSlug] page address is now javohir");
+    })
+    .catch((err) => console.error("[PublicSlug] rename failed:", err));
 
   if (!isBotConfigured()) {
     console.warn(

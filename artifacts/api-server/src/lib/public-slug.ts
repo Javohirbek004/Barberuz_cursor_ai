@@ -161,6 +161,44 @@ export async function repairAccidentalSlug<T extends {
   return { ...user, username: clean };
 }
 
+/**
+ * Move one public page to the barber's profile name.
+ * The old address keeps opening the new page for 30 days.
+ * Does nothing if the name does not match or the new address is taken.
+ */
+export async function moveSlugToProfileName(currentSlug: string, profileName: string): Promise<boolean> {
+  const next = slugify(profileName);
+  if (next === currentSlug || validateSlug(next) !== "ok") return false;
+
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(and(eq(usersTable.username, currentSlug), isNull(usersTable.deletedAt)))
+    .limit(1);
+  if (!user || slugify(user.name) !== next) return false;
+  if (!(await isSlugAvailable(next, user.id))) return false;
+
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SLUG_LOCK_MS);
+  await db.transaction(async (tx) => {
+    await tx.delete(slugRedirectsTable).where(and(
+      eq(slugRedirectsTable.oldSlug, next),
+      eq(slugRedirectsTable.userId, user.id),
+    ));
+    await tx.insert(slugRedirectsTable).values({
+      oldSlug: currentSlug,
+      newSlug: next,
+      userId: user.id,
+      expiresAt,
+    });
+    await tx.update(usersTable).set({
+      username: next,
+      updatedAt: now,
+    }).where(eq(usersTable.id, user.id));
+  });
+  return true;
+}
+
 export async function suggestSlug(wanted: string, phone: string | null | undefined, forUserId?: string): Promise<string | null> {
   const four = last4(phone);
   if (!four) return null;
