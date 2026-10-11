@@ -9,12 +9,6 @@ import type { Booking } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { isOpenBooking } from "@/lib/booking-feed";
-import {
-  isDemoBookingId,
-  mergeDemoBookings,
-  setDemoBookingStatus,
-  useDemoUnresolved,
-} from "@/lib/demo-unresolved";
 import { BookingDetailModal } from "@/components/BookingDetailModal";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 
@@ -233,7 +227,6 @@ function IndividualCalendar() {
   const [reviewOpen, setReviewOpen] = useState(true);
   const [noShowTarget, setNoShowTarget] = useState<Booking | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  useDemoUnresolved();
 
   const selectedISO = toISO(selectedDate);
   useEffect(() => { setReviewOpen(true); }, [selectedISO]);
@@ -244,7 +237,7 @@ function IndividualCalendar() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const bookings = mergeDemoBookings(bookingsData?.bookings ?? [], { date: selectedISO })
+  const bookings = (bookingsData?.bookings ?? [])
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
   const isPastDay = selectedISO < todayISO;
   const reviewBookings = isPastDay
@@ -252,7 +245,7 @@ function IndividualCalendar() {
     : [];
   const reviewIds = new Set(reviewBookings.map((b) => b.id));
   const listedBookings = bookings.filter((b) => !reviewIds.has(b.id));
-  const pastUnresolved = mergeDemoBookings(overdueData?.bookings ?? [], { mode: "overdue" })
+  const pastUnresolved = (overdueData?.bookings ?? [])
     .filter((b) => isOpenBooking(b.status) && b.date < todayISO)
     .sort((a, b) => b.date.localeCompare(a.date) || a.startTime.localeCompare(b.startTime));
   const unresolvedDates = new Set(pastUnresolved.map((b) => b.date));
@@ -263,14 +256,10 @@ function IndividualCalendar() {
     if (busyKey) return;
     setBusyKey(row.id);
     try {
-      if (isDemoBookingId(row.id)) {
-        setDemoBookingStatus(row.id, status);
-      } else {
-        await updateBooking.mutateAsync({
-          bookingId: row.id,
-          data: { status: status as "completed" },
-        });
-      }
+      await updateBooking.mutateAsync({
+        bookingId: row.id,
+        data: { status: status as "completed" },
+      });
       await Promise.all([
         refetch(),
         refetchOverdue(),

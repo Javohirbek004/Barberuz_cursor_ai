@@ -13,7 +13,6 @@ import {
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { isElapsedBooking } from "@/lib/booking-feed";
-import { isDemoBookingId, isDemoClientId, setDemoBookingStatus } from "@/lib/demo-unresolved";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 
 const UZ_SHORT_MONTHS = [
@@ -247,7 +246,7 @@ export function BookingDetailModal({
 
   const { data: clientData } = useGetClient(
     booking.clientId ?? "",
-    { query: { enabled: !!booking.clientId && !isDemoClientId(booking.clientId) } },
+    { query: { enabled: !!booking.clientId } },
   );
 
   const queryClient = useQueryClient();
@@ -383,11 +382,6 @@ export function BookingDetailModal({
   };
 
   const handleComplete = () => {
-    if (isDemoBookingId(booking.id)) {
-      setDemoBookingStatus(booking.id, "completed");
-      finishLocalStatus("completed");
-      return;
-    }
     updateBookingMut.mutate(
       { bookingId: booking.id, data: { status: "completed", price: bookingPrice } },
       {
@@ -397,11 +391,6 @@ export function BookingDetailModal({
   };
 
   const handleNoShow = () => {
-    if (isDemoBookingId(booking.id)) {
-      setDemoBookingStatus(booking.id, "no_show");
-      finishLocalStatus("no_show");
-      return;
-    }
     updateBookingMut.mutate(
       { bookingId: booking.id, data: { status: "no_show" as "cancelled" } },
       {

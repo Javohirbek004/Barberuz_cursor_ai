@@ -13,13 +13,6 @@ import {
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { isElapsedBooking, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
-import {
-  demoCompletedRevenue,
-  isDemoBookingId,
-  mergeDemoBookings,
-  setDemoBookingStatus,
-  useDemoUnresolved,
-} from "@/lib/demo-unresolved";
 import { Layout } from "@/components/Layout";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 import { Card } from "@/components/ui/card";
@@ -392,7 +385,6 @@ function IndividualDashboard() {
   const { data: bookingsData, isLoading: bookingsLoading, refetch } = useListBookings({ date: today });
   // Separate query for the "Yaqin bronlar" list — shows today + future bookings
   const { data: upcomingData, isLoading: upcomingLoading, refetch: refetchUpcoming } = useListBookings({ date: "upcoming" as any });
-  useDemoUnresolved();
 
   // Refresh often and when the app comes back to the screen, so Telegram changes
   // (new, confirmed or cancelled bookings) show up without a reload.
@@ -432,11 +424,11 @@ function IndividualDashboard() {
   const bookingItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Today's bookings — for stats, free-slot calc, and TodayStatsModal
-  const bookings = mergeDemoBookings(bookingsData?.bookings ?? [], { date: today }, now);
+  const bookings = bookingsData?.bookings ?? [];
   const activeStats = stats;
-  const todayRevenue = (activeStats?.todayRevenue ?? 0) + demoCompletedRevenue(today, now);
+  const todayRevenue = activeStats?.todayRevenue ?? 0;
 
-  const openBookings = mergeDemoBookings(upcomingData?.bookings ?? [], { mode: "upcoming" }, now)
+  const openBookings = (upcomingData?.bookings ?? [])
     .filter((b) => isOpenBooking(b.status))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
   // After midnight, earlier days leave this home list. Only today's elapsed visits wait here.
@@ -503,16 +495,10 @@ function IndividualDashboard() {
     const key = rows.length === 1 ? rows[0].id : "all";
     setBusyKey(key);
     try {
-      await Promise.all(rows.map((row) => {
-        if (isDemoBookingId(row.id)) {
-          setDemoBookingStatus(row.id, status);
-          return Promise.resolve();
-        }
-        return updateBooking.mutateAsync({
-          bookingId: row.id,
-          data: { status: status as "completed" },
-        });
-      }));
+      await Promise.all(rows.map((row) => updateBooking.mutateAsync({
+        bookingId: row.id,
+        data: { status: status as "completed" },
+      })));
       await Promise.all([
         refetch(),
         refetchUpcoming(),

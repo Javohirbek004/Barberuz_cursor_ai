@@ -18,12 +18,6 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SEGMENT_META } from "@/data/mockClients";
-import {
-  getDemoClient,
-  getDemoClientBookings,
-  isDemoClientId,
-  useDemoUnresolved,
-} from "@/lib/demo-unresolved";
 
 type Segment = "regular" | "new" | "lost";
 
@@ -205,8 +199,6 @@ function NotesField({
 
 function BookingHistorySection({ clientId }: { clientId: string }) {
   const { t } = useTranslation();
-  useDemoUnresolved();
-  const demoHistory = isDemoClientId(clientId);
 
   const { data, isLoading } = useQuery({
     queryKey: ["client-bookings", clientId],
@@ -214,18 +206,10 @@ function BookingHistorySection({ clientId }: { clientId: string }) {
       customFetch<{ bookings: ClientBooking[] }>(
         `/api/clients/${clientId}/bookings`
       ),
-    enabled: !!clientId && !demoHistory,
+    enabled: !!clientId,
   });
 
-  const bookings: ClientBooking[] = demoHistory
-    ? getDemoClientBookings(clientId).map((b) => ({
-        id: b.id,
-        date: b.date,
-        serviceName: b.serviceName ?? "Soch oldirish",
-        price: b.price,
-        status: b.status,
-      }))
-    : (data?.bookings ?? []);
+  const bookings = data?.bookings ?? [];
 
   if (isLoading) {
     return (
@@ -385,13 +369,9 @@ function ClientDetailInner({ id }: { id: string }) {
   const [showEdit, setShowEdit] = useState(false);
   const [localName, setLocalName] = useState<string | null>(null);
   const [localPhone, setLocalPhone] = useState<string | null>(null);
-  useDemoUnresolved();
-  const demoClient = isDemoClientId(id) ? getDemoClient(id) : null;
-
-  const { data: apiClient, isLoading } = useGetClient(id, {
-    query: { enabled: !!id && !demoClient },
+  const { data: client, isLoading } = useGetClient(id, {
+    query: { enabled: !!id },
   });
-  const client = demoClient ?? apiClient;
 
   if (isLoading) {
     return (
