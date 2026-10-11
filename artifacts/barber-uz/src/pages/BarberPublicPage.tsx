@@ -22,6 +22,8 @@ import {
   type SlotPeriod,
 } from "@/lib/schedule";
 import { toast } from "@/hooks/use-toast";
+import { SpecialtyTags } from "@/components/SpecialtyTags";
+import { parseSpecializations } from "@/lib/specializations";
 import {
   extractPhoneNumber,
   getTelegramWebApp,
@@ -921,9 +923,7 @@ function PublicView({ barber }: { barber: BarberData }) {
   }, [barber]);
 
   const displayName = barber.brandName || barber.name;
-  const specs = barber.specializations
-    ? barber.specializations.split(",").map(s => s.trim()).filter(Boolean)
-    : [];
+  const specs = parseSpecializations(barber.specializations);
   const telegramHandle = barber.telegramUsername?.replace("@", "") || null;
   const instagramHandle = barber.instagram?.replace("@", "") || null;
 
@@ -1022,13 +1022,7 @@ function PublicView({ barber }: { barber: BarberData }) {
                 </div>
               )}
 
-              {specs.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {specs.map((s, i) => (
-                    <span key={i} className="px-2.5 py-1 rounded-full bg-primary/12 border border-primary/20 text-xs text-primary font-medium">{s}</span>
-                  ))}
-                </div>
-              )}
+              <SpecialtyTags value={specs} />
 
               {/* 🕐 Ish vaqti */}
               {(barber.workingHoursStart || workDaysLabel) && (

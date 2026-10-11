@@ -13,6 +13,7 @@ import {
   summarizeHours,
   writeScheduleJson,
 } from "@/lib/schedule";
+import { parseSpecializations } from "@/lib/specializations";
 
 type Section = "info" | "specializations" | "bio" | "schedule";
 
@@ -100,17 +101,6 @@ function parseSchedule(profile: ProfileData): WeekSchedule {
     workingHoursStart: profile.workingHoursStart,
     workingHoursEnd: profile.workingHoursEnd,
   });
-}
-
-function parseSpecializations(raw: string | null | undefined): string[] {
-  if (!raw) return [];
-  try {
-    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((x): x is string => typeof x === "string");
-  } catch {
-    return [];
-  }
 }
 
 function schedulePreview(sched: WeekSchedule, t: (k: string) => string): string {
@@ -437,13 +427,13 @@ function SpecializationsForm({
             <button
               key={item}
               onClick={() => toggle(item)}
-              className={`px-4 py-2.5 rounded-2xl text-sm font-semibold border transition-all ${
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
                 active
-                  ? "bg-primary text-primary-foreground border-primary shadow-md shadow-primary/20"
-                  : "bg-card border-white/8 text-muted-foreground hover:bg-white/5"
+                  ? "bg-neutral-700 text-neutral-100"
+                  : "bg-neutral-800/60 text-neutral-400 hover:text-neutral-200"
               }`}
             >
-              {active && "✓ "}{item}
+              {item}
             </button>
           );
         })}

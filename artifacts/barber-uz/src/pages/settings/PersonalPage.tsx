@@ -2,6 +2,8 @@ import "leaflet/dist/leaflet.css";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { APP_ORIGIN } from "@/lib/config";
 import { PageLinkPanel } from "@/components/PageLinkPanel";
+import { SpecialtyTags } from "@/components/SpecialtyTags";
+import { parseSpecializations } from "@/lib/specializations";
 import { BufferTimeField } from "@/components/BufferTimeField";
 import { mergeScheduleFromDayChips, normalizeBuffer, readOpenDaysShort } from "@/lib/schedule";
 import { ServiceForm } from "@/components/ServiceForm";
@@ -228,8 +230,7 @@ async function apiDelete(path: string) {
 function apiToProfile(api: Record<string, unknown>): ProfileData {
   let galleryImages: string[] = [];
   try { galleryImages = JSON.parse((api.galleryImages as string) || "[]"); } catch {}
-  let speciality: string[] = [];
-  try { speciality = ((api.specializations as string) || "").split(",").map((s: string) => s.trim()).filter(Boolean); } catch {}
+  const speciality = parseSpecializations(api.specializations as string | null | undefined);
   const workDays: string[] = readOpenDaysShort((api.scheduleJson as string) || "");
   const workStart = (api.workingHoursStart as string) || "09:00";
   const workEnd = (api.workingHoursEnd as string) || "20:00";
@@ -738,7 +739,7 @@ function AsosiyTab({
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mutaxassislik teglari</label>
         <div className="flex flex-wrap gap-2">
           {profile.speciality.map((s, i) => (
-            <span key={i} className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-xs text-primary font-medium">
+            <span key={i} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-neutral-800/60 text-xs font-medium text-neutral-300">
               {s}
               <button onClick={() => removeTag(i)} className="hover:text-destructive transition-colors"><X className="w-3 h-3" /></button>
             </span>
@@ -1635,11 +1636,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
           <motion.div key="asosiy" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.18 }}>
             <div className="px-4 pt-4 space-y-5">
               {/* Speciality chips */}
-              {profile.speciality.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {profile.speciality.map((s, i) => <span key={i} className="px-2.5 py-1 rounded-full bg-primary/12 border border-primary/20 text-xs text-primary font-medium">{s}</span>)}
-                </div>
-              )}
+              <SpecialtyTags value={profile.speciality} />
 
               {/* 🕐 Ish vaqti */}
               {(workDaysLabel || profile.workStart) && (
