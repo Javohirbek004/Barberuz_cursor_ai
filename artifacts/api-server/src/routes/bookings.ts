@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { db, bookingsTable, bookingSessionsTable, servicesTable } from "@workspace/db";
+import { db, bookingsTable, bookingSessionsTable, servicesTable, clientsTable } from "@workspace/db";
 import { eq, and, gte, lt, lte, inArray, isNull } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 import { sendDirectBookingNotification } from "../lib/telegram-bot";
@@ -25,7 +25,14 @@ const BOOKING_STATUSES = new Set([
   "pending", "confirmed", "completed", "cancelled", "auto_cancelled", "no_show",
 ]);
 
-function formatBooking(b: typeof bookingsTable.$inferSelect) {
+function extractUserNotes(raw: string | null | undefined): string {
+  if (!raw?.trim()) return "";
+  const lines = raw.split("\n");
+  if (lines[0]?.startsWith("Tel: ")) return lines.slice(1).join("\n").trim();
+  return raw.trim();
+}
+
+function formatBooking(b: typeof bookingsTable.$inferSelect, clientNotes?: string | null) {
   return {
     id: b.id,
     barberId: b.barberId,
@@ -39,8 +46,29 @@ function formatBooking(b: typeof bookingsTable.$inferSelect) {
     price: Number(b.price),
     status: b.status,
     notes: b.notes,
+    clientNotes: clientNotes ?? null,
     createdAt: b.createdAt,
   };
+}
+
+async function readClientNotes(clientId: string | null | undefined): Promise<string | null> {
+  if (!clientId) return null;
+  const [row] = await db
+    .select({ notes: clientsTable.notes })
+    .from(clientsTable)
+    .where(eq(clientsTable.id, clientId))
+    .limit(1);
+  return row?.notes ?? null;
+}
+
+async function writeClientNotes(clientId: string | null | undefined, raw: string | null | undefined, { allowEmpty }: { allowEmpty: boolean }) {
+  if (!clientId) return;
+  const text = extractUserNotes(raw);
+  if (!text && !allowEmpty) return;
+  await db
+    .update(clientsTable)
+    .set({ notes: text || null, updatedAt: new Date() })
+    .where(eq(clientsTable.id, clientId));
 }
 
 router.get("/", authenticate, async (req, res) => {
@@ -77,11 +105,20 @@ router.get("/", authenticate, async (req, res) => {
     if (status) conditions.push(eq(bookingsTable.status, status as any));
     if (clientId) conditions.push(eq(bookingsTable.clientId, clientId));
 
-    const bookings = await db.select().from(bookingsTable)
+    const rows = await db
+      .select({
+        booking: bookingsTable,
+        clientNotes: clientsTable.notes,
+      })
+      .from(bookingsTable)
+      .leftJoin(clientsTable, eq(bookingsTable.clientId, clientsTable.id))
       .where(and(...conditions))
       .orderBy(bookingsTable.date, bookingsTable.startTime);
 
-    res.json({ bookings: bookings.map(formatBooking), total: bookings.length });
+    res.json({
+      bookings: rows.map((row) => formatBooking(row.booking, row.clientNotes)),
+      total: rows.length,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "server_error" });
@@ -138,6 +175,10 @@ router.post("/", authenticate, async (req, res) => {
       }
     }
 
+    if (resolvedClientId) {
+      await writeClientNotes(resolvedClientId, notes, { allowEmpty: false }).catch(() => {});
+    }
+
     let [booking] = await db.insert(bookingsTable).values({
       barberId: user.id,
       clientId: resolvedClientId,
@@ -171,7 +212,7 @@ router.post("/", authenticate, async (req, res) => {
       price: numericPrice,
     }).catch(() => {});
 
-    res.status(201).json(formatBooking(booking));
+    res.status(201).json(formatBooking(booking, await readClientNotes(booking.clientId)));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "server_error" });
@@ -188,7 +229,7 @@ router.get("/:bookingId", authenticate, async (req, res) => {
       res.status(404).json({ error: "not_found" });
       return;
     }
-    res.json(formatBooking(booking));
+    res.json(formatBooking(booking, await readClientNotes(booking.clientId)));
   } catch (err) {
     res.status(500).json({ error: "server_error" });
   }
@@ -295,6 +336,10 @@ async function updateBooking(req: Request, res: Response) {
       }
     }
 
+    if (notes !== undefined) {
+      await writeClientNotes(before.clientId, notes, { allowEmpty: true }).catch(() => {});
+    }
+
     const [booking] = await db.update(bookingsTable)
       .set({
         ...(clientName !== undefined && { clientName }),
@@ -332,7 +377,7 @@ async function updateBooking(req: Request, res: Response) {
       }).catch((err) => console.warn("[Bookings] reschedule notice failed:", (err as Error).message));
     }
 
-    res.json(formatBooking(booking));
+    res.json(formatBooking(booking, await readClientNotes(booking.clientId)));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "server_error" });

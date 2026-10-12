@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { Layout } from "@/components/Layout";
 import { useParams, Link } from "wouter";
-import { useGetClient, useUpdateClient } from "@workspace/api-client-react";
+import { useGetClient, useUpdateClient, getListBookingsQueryKey } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import {
@@ -76,6 +76,7 @@ function NotesField({
   const [base, setBase] = useState(initial);
   const [flash, setFlash] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const queryClient = useQueryClient();
 
   const { mutateAsync: updateClient, isPending: saving } = useUpdateClient();
 
@@ -87,6 +88,7 @@ function NotesField({
   async function save() {
     try {
       await updateClient({ clientId, data: { notes: value } });
+      queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey() });
       setBase(value);
       onSaved(value);
       setEditing(false);

@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BookingDetailModal } from "@/components/BookingDetailModal";
+import { BookingNoteBadge } from "@/components/BookingNoteBadge";
+import { noteFromBooking } from "@/lib/booking-note";
 import { IncomeAnalyticsSheet } from "@/pages/settings/IncomeAnalyticsSheet";
 import { resolveDaySchedule, type ScheduleSource } from "@/lib/schedule";
 
@@ -103,13 +105,6 @@ function calcNextBookingInfo(
 function serviceNames(raw: string | null | undefined): string[] {
   if (!raw) return [];
   return raw.split(/[,·+]/).map((part) => part.trim()).filter(Boolean);
-}
-
-function parseDashNotes(raw: string | null | undefined): string {
-  if (!raw) return "";
-  const lines = raw.split("\n");
-  if (lines[0]?.startsWith("Tel: ")) return lines.slice(1).join("\n").trim();
-  return raw.trim();
 }
 
 // ── Static team barbers ───────────────────────────────────────────────────────
@@ -613,9 +608,7 @@ function IndividualDashboard() {
                         <div className="text-xs text-muted-foreground truncate">
                           {serviceNames(b.serviceName).join(", ") || t("dash.service_fallback")}
                         </div>
-                        {parseDashNotes(b.notes) ? (
-                          <div className="text-[11px] text-amber-200/80 truncate mt-0.5">📝 {parseDashNotes(b.notes)}</div>
-                        ) : null}
+                        <BookingNoteBadge note={noteFromBooking(b)} />
                       </div>
                       <div className="text-right flex-shrink-0">
                         <div className="text-sm font-semibold text-primary">{b.price.toLocaleString()} so'm</div>
@@ -648,6 +641,7 @@ function IndividualDashboard() {
                         <div className="text-xs text-muted-foreground truncate">
                           {serviceNames(b.serviceName).join(", ") || t("dash.service_fallback")}
                         </div>
+                        <BookingNoteBadge note={noteFromBooking(b)} />
                       </div>
                       <div className="text-right flex-shrink-0">
                         <div className="text-sm font-semibold text-primary">{b.price.toLocaleString()} so'm</div>

@@ -10,6 +10,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { isOpenBooking } from "@/lib/booking-feed";
 import { BookingDetailModal } from "@/components/BookingDetailModal";
+import { BookingNoteBadge } from "@/components/BookingNoteBadge";
+import { noteFromBooking } from "@/lib/booking-note";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
@@ -341,6 +343,7 @@ function IndividualCalendar() {
                           <span className="text-sm truncate text-muted-foreground">{b.serviceName ?? "—"}</span>
                           <span className="text-sm font-semibold ml-2 shrink-0 text-primary">{b.price.toLocaleString()} so'm</span>
                         </div>
+                        <BookingNoteBadge note={noteFromBooking(b)} />
                       </div>
                     </button>
                     <p className="px-4 pb-2 text-xs text-muted-foreground leading-snug">
@@ -416,6 +419,7 @@ function IndividualCalendar() {
                     {b.price.toLocaleString()} so'm
                   </span>
                 </div>
+                <BookingNoteBadge note={noteFromBooking(b)} />
               </div>
             </motion.button>
           ))

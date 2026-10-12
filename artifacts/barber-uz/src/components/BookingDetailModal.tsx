@@ -13,23 +13,12 @@ import {
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { isElapsedBooking } from "@/lib/booking-feed";
+import { noteFromBooking, parseBookingNotes } from "@/lib/booking-note";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 
 const UZ_SHORT_MONTHS = [
   "Yan","Fev","Mar","Apr","May","Iyn","Iyl","Avg","Sen","Okt","Noy","Dek",
 ];
-
-function parseBookingNotes(raw: string | null): { phone: string | null; userNotes: string } {
-  if (!raw) return { phone: null, userNotes: "" };
-  const lines = raw.split("\n");
-  if (lines[0].startsWith("Tel: ")) {
-    return {
-      phone: lines[0].slice(5).trim(),
-      userNotes: lines.slice(1).join("\n").trim(),
-    };
-  }
-  return { phone: null, userNotes: raw.trim() };
-}
 
 function formatBookingDate(dateStr: string): string {
   const today = new Date().toISOString().split("T")[0];
@@ -274,8 +263,8 @@ export function BookingDetailModal({
       const val = clientData.notes ?? "";
       clientNoteBase.current = val;
       if (!clientNoteInitialized.current) {
-        // First load: seed the textarea value
-        setClientNote(val);
+        // First load: seed the textarea from the client record (fallback: booking text)
+        setClientNote(val || noteFromBooking(booking));
         clientNoteInitialized.current = true;
       }
       // Subsequent refetches (e.g. after onRefetch()): only update base snapshot so
@@ -319,6 +308,7 @@ export function BookingDetailModal({
           // ClientDetail all reflect the updated note immediately.
           queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetClientQueryKey(booking.clientId!) });
+          queryClient.invalidateQueries({ queryKey: getListClientsQueryKey() });
           onRefetch();
         },
       },
