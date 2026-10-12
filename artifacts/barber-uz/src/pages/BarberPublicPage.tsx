@@ -1001,7 +1001,16 @@ function PublicView({ barber }: { barber: BarberData }) {
         </div>
       )}
 
-      <PageTabs value={tab} onChange={setTab} serviceCount={barber.services.length} />
+      <div className="px-4 pb-1">
+        <PageTabs
+          value={tab}
+          onChange={setTab}
+          items={[
+            { key: "asosiy", label: "🏠 Asosiy" },
+            { key: "xizmatlar", label: "📋 Xizmatlar" },
+          ]}
+        />
+      </div>
 
       {/* Tab content */}
       <AnimatePresence mode="wait">
