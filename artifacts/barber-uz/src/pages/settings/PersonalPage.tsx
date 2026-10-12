@@ -693,10 +693,15 @@ function AsosiyTab({
       return;
     }
     const emoji = leadingEmoji(value);
-    if (!emoji) return;
-    setSelectedEmoji(emoji);
-    const rest = stripLeadingEmoji(value);
-    if (rest) setNewTag((prev) => prev || rest);
+    if (emoji) {
+      setSelectedEmoji(emoji);
+      const rest = stripLeadingEmoji(value);
+      if (rest) setNewTag((prev) => prev || rest);
+      window.setTimeout(() => tagInputRef.current?.focus(), 0);
+      return;
+    }
+    setSelectedEmoji(selectedEmoji || DEFAULT_SPECIALTY_EMOJI);
+    setNewTag((prev) => prev || value.trim());
     window.setTimeout(() => tagInputRef.current?.focus(), 0);
   }
 
@@ -725,6 +730,12 @@ function AsosiyTab({
     void persistTags([...profile.speciality, tag]);
     setNewTag("");
     setSelectedEmoji(DEFAULT_SPECIALTY_EMOJI);
+    tagInputRef.current?.blur();
+  }
+
+  function submitTag(e?: { preventDefault?: () => void }) {
+    e?.preventDefault?.();
+    addTag();
   }
 
   function removeTag(i: number) {
@@ -852,16 +863,16 @@ function AsosiyTab({
             type="button"
             onClick={pickCustomEmoji}
             className={`h-9 min-w-9 shrink-0 rounded-full border text-lg font-medium leading-none transition-colors ${
-              !selectedEmoji || !(SPECIALTY_QUICK_EMOJIS as readonly string[]).includes(selectedEmoji)
-                ? "border-amber-400/80 bg-amber-500/20 text-amber-200"
-                : "border-amber-400/50 bg-amber-500/10 text-amber-300 hover:border-amber-300/80"
+              !selectedEmoji
+                ? "border-zinc-600 bg-zinc-800 text-zinc-300"
+                : "border-zinc-800 bg-zinc-900/50 text-zinc-400 hover:border-zinc-700 hover:text-zinc-300"
             }`}
             aria-label="O'zingizning emojingizni tanlang"
           >
             +
           </button>
         </div>
-        <div className="flex gap-2">
+        <form className="flex gap-2" onSubmit={submitTag}>
           <div className="flex-1 h-10 flex items-center rounded-xl bg-white/5 border border-white/8 focus-within:border-primary/50">
             <input
               ref={emojiSlotRef}
@@ -870,29 +881,39 @@ function AsosiyTab({
               onKeyDown={e => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  tagInputRef.current?.focus();
+                  if (stripLeadingEmoji(newTag)) addTag();
+                  else tagInputRef.current?.focus();
                 }
               }}
               aria-label="Teg emojisi"
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
-              className="w-10 min-w-10 max-w-12 h-full bg-transparent border-0 pl-2.5 text-base text-center caret-primary focus:outline-none"
+              enterKeyHint="next"
+              className="w-9 min-w-9 h-full bg-transparent border-0 pl-2 text-base text-center caret-primary focus:outline-none"
             />
             <input
               ref={tagInputRef}
               value={newTag}
               onChange={e => onTagInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && addTag()}
               placeholder="Mutaxassisligingizni yozing..."
+              enterKeyHint="done"
               className="flex-1 min-w-0 h-full bg-transparent border-0 pr-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none"
             />
           </div>
-          <button onClick={addTag} disabled={!stripLeadingEmoji(newTag) || profile.speciality.length >= 6}
-            className="h-10 px-3 rounded-xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors disabled:opacity-40">
-            <Plus className="w-4 h-4" />
+          <button
+            type="submit"
+            disabled={!newTag.trim() || profile.speciality.length >= 6}
+            aria-label="Teg qo'shish"
+            className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center transition-colors ${
+              newTag.trim() && profile.speciality.length < 6
+                ? "bg-amber-400 text-black border border-amber-300 shadow-sm shadow-amber-400/30"
+                : "bg-zinc-900 text-zinc-600 border border-zinc-800"
+            }`}
+          >
+            <Plus className="w-5 h-5" />
           </button>
-        </div>
+        </form>
         <p className="text-[11px] text-muted-foreground/55 leading-snug">
           💡 Klaviaturangizdagi emojilardan ham foydalanishingiz mumkin
         </p>
