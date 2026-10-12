@@ -117,16 +117,29 @@ function MonthNav({
   const pillRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const isCurrentMonth = viewYear === today.getFullYear() && viewMonth === today.getMonth();
+  const selectedIso = toISO(selected);
 
   useEffect(() => {
-    const iso = toISO(selected);
-    const el = pillRefs.current[iso];
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-    } else if (scrollRef.current && isCurrentMonth) {
-      scrollRef.current.scrollLeft = 0;
+    const year = selected.getFullYear();
+    const month = selected.getMonth();
+    if (year !== viewYear || month !== viewMonth) {
+      setViewYear(year);
+      setViewMonth(month);
     }
-  }, [viewMonth, viewYear, isCurrentMonth, selected]);
+    // View month is only synced when the selected day itself changes (e.g. Bugun).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIso]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    const el = pillRefs.current[selectedIso];
+    if (container && el) {
+      const left = el.getBoundingClientRect().left - container.getBoundingClientRect().left + container.scrollLeft;
+      container.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+    } else if (container && isCurrentMonth) {
+      container.scrollTo({ left: 0, behavior: "smooth" });
+    }
+  }, [viewMonth, viewYear, isCurrentMonth, selectedIso]);
 
   const goToPrev = () => {
     if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
