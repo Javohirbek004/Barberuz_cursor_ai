@@ -1,4 +1,7 @@
-import { parseSpecializations, specialtyIcon } from "@/lib/specializations";
+import { parseSpecializations, specialtyDisplayIcon } from "@/lib/specializations";
+
+export const SPECIALTY_PILL_CLASS =
+  "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-neutral-700/40 bg-neutral-800/70 px-3 py-1.5 text-xs font-medium text-neutral-300";
 
 export function SpecialtyTags({ value }: { value: string | string[] | null | undefined }) {
   const tags = parseSpecializations(value);
@@ -13,12 +16,9 @@ export function SpecialtyTags({ value }: { value: string | string[] | null | und
       </div>
       <div className="flex flex-nowrap gap-2 overflow-x-auto scrollbar-none">
         {tags.map((tag, index) => {
-          const icon = specialtyIcon(tag);
+          const icon = specialtyDisplayIcon(tag);
           return (
-            <span
-              key={`${tag}-${index}`}
-              className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-neutral-700/40 bg-neutral-800/70 px-3 py-1.5 text-xs font-medium text-neutral-300"
-            >
+            <span key={`${tag}-${index}`} className={SPECIALTY_PILL_CLASS}>
               {icon && <span aria-hidden="true">{icon}</span>}
               {tag}
             </span>

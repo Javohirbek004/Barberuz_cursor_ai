@@ -13,7 +13,7 @@ import {
   summarizeHours,
   writeScheduleJson,
 } from "@/lib/schedule";
-import { parseSpecializations } from "@/lib/specializations";
+import { formatSpecialtyTag, parseSpecializations, stripLeadingEmoji } from "@/lib/specializations";
 
 type Section = "info" | "specializations" | "bio" | "schedule";
 
@@ -391,7 +391,12 @@ function SpecializationsForm({
   const { msg, show } = useInlineToast();
 
   function toggle(item: string) {
-    setSelected(prev => prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]);
+    const key = item.toLowerCase();
+    setSelected(prev => {
+      const exists = prev.some((tag) => stripLeadingEmoji(tag).toLowerCase() === key);
+      if (exists) return prev.filter((tag) => stripLeadingEmoji(tag).toLowerCase() !== key);
+      return [...prev, formatSpecialtyTag(item)];
+    });
     setDirty(true);
   }
 
@@ -402,7 +407,7 @@ function SpecializationsForm({
 
   async function handleSave(): Promise<boolean> {
     setSaving(true);
-    const serialized = JSON.stringify(selected);
+    const serialized = JSON.stringify(selected.map((tag) => formatSpecialtyTag(tag)));
     const ok = await saveProfile({ specializations: serialized });
     setSaving(false);
     if (ok) {
@@ -422,7 +427,7 @@ function SpecializationsForm({
 
       <div className="flex flex-wrap gap-2">
         {SPECIALIZATION_OPTIONS.map(item => {
-          const active = selected.includes(item);
+          const active = selected.some((tag) => stripLeadingEmoji(tag).toLowerCase() === item.toLowerCase());
           return (
             <button
               key={item}

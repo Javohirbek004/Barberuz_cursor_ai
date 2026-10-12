@@ -3,8 +3,14 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { APP_ORIGIN } from "@/lib/config";
 import { PageLinkPanel } from "@/components/PageLinkPanel";
 import { PageTabs } from "@/components/PageTabs";
-import { SpecialtyTags } from "@/components/SpecialtyTags";
-import { parseSpecializations } from "@/lib/specializations";
+import { SpecialtyTags, SPECIALTY_PILL_CLASS } from "@/components/SpecialtyTags";
+import {
+  parseSpecializations,
+  formatSpecialtyTag,
+  stripLeadingEmoji,
+  specialtyDisplayIcon,
+  SPECIALTY_QUICK_EMOJIS,
+} from "@/lib/specializations";
 import { getCategoryIcon } from "@/lib/category-icon";
 import { BufferTimeField } from "@/components/BufferTimeField";
 import { mergeScheduleFromDayChips, normalizeBuffer, readOpenDaysShort } from "@/lib/schedule";
@@ -273,7 +279,7 @@ function profileToApi(p: ProfileData) {
     name: p.name,
     brandName: p.brandName || null,
     bio: p.bio,
-    specializations: p.speciality.join(", "),
+    specializations: JSON.stringify(p.speciality.map((tag) => formatSpecialtyTag(tag))),
     workingHoursStart: p.workStart,
     workingHoursEnd: p.workEnd,
     lunchBreakEnabled: p.lunchEnabled,
@@ -599,6 +605,8 @@ function AsosiyTab({
 }) {
   const imgRef = useRef<HTMLInputElement>(null);
   const [newTag, setNewTag] = useState("");
+  const [selectedEmoji, setSelectedEmoji] = useState<string | null>(null);
+  const [tagSaving, setTagSaving] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
@@ -646,15 +654,45 @@ function AsosiyTab({
     set("workDays", next);
   }
 
+  async function persistTags(next: string[]) {
+    onChange({ ...profile, speciality: next });
+    setTagSaving(true);
+    try {
+      await apiPut("/api/settings/profile", { specializations: JSON.stringify(next) });
+    } catch {
+      /* local list still updates; full Saqlash will retry */
+    } finally {
+      setTagSaving(false);
+    }
+  }
+
+  function pickQuickEmoji(emoji: string) {
+    const next = selectedEmoji === emoji ? null : emoji;
+    setSelectedEmoji(next);
+    const rest = stripLeadingEmoji(newTag);
+    if (next) setNewTag(rest ? `${next} ${rest}` : `${next} `);
+    else setNewTag(rest);
+  }
+
   function addTag() {
-    const tag = newTag.trim();
-    if (!tag || profile.speciality.length >= 6) return;
-    onChange({ ...profile, speciality: [...profile.speciality, tag] });
+    const tag = formatSpecialtyTag(newTag, selectedEmoji);
+    const name = stripLeadingEmoji(tag);
+    if (!name || profile.speciality.length >= 6) return;
+    const exists = profile.speciality.some(
+      (s) => stripLeadingEmoji(s).toLowerCase() === name.toLowerCase(),
+    );
+    if (exists) {
+      setNewTag("");
+      setSelectedEmoji(null);
+      return;
+    }
+    void persistTags([...profile.speciality, tag]);
     setNewTag("");
+    setSelectedEmoji(null);
   }
 
   function removeTag(i: number) {
-    onChange({ ...profile, speciality: profile.speciality.filter((_, idx) => idx !== i) });
+    void persistTags(profile.speciality.filter((_, idx) => idx !== i));
   }
 
   const warn = (label: string) => (
@@ -739,25 +777,56 @@ function AsosiyTab({
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mutaxassislik teglari</label>
         <div className="flex flex-wrap gap-2">
           {profile.speciality.map((s, i) => (
-            <span key={i} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-neutral-800/60 text-xs font-medium text-neutral-300">
+            <span key={`${s}-${i}`} className={SPECIALTY_PILL_CLASS}>
+              {specialtyDisplayIcon(s) && <span aria-hidden="true">{specialtyDisplayIcon(s)}</span>}
               {s}
-              <button onClick={() => removeTag(i)} className="hover:text-destructive transition-colors"><X className="w-3 h-3" /></button>
+              <button
+                type="button"
+                onClick={() => removeTag(i)}
+                disabled={tagSaving}
+                className="ml-0.5 hover:text-destructive transition-colors disabled:opacity-40"
+                aria-label="Tegni o'chirish"
+              >
+                <X className="w-3 h-3" />
+              </button>
             </span>
           ))}
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
+          {SPECIALTY_QUICK_EMOJIS.map((emoji) => {
+            const active = selectedEmoji === emoji;
+            return (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => pickQuickEmoji(emoji)}
+                className={`h-9 min-w-9 shrink-0 rounded-full border text-base transition-colors ${
+                  active
+                    ? "border-primary/50 bg-primary/15"
+                    : "border-white/8 bg-white/5 hover:border-white/20"
+                }`}
+                aria-pressed={active}
+                aria-label={`Emoji ${emoji}`}
+              >
+                {emoji}
+              </button>
+            );
+          })}
         </div>
         <div className="flex gap-2">
           <input
             value={newTag}
             onChange={e => setNewTag(e.target.value)}
             onKeyDown={e => e.key === "Enter" && addTag()}
-            placeholder="+ Yangi teg (Fade, Soqol...)"
+            placeholder="+ Teg yoki emoji yozing (☕ Kofe va Chay)"
             className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50"
           />
-          <button onClick={addTag} disabled={!newTag.trim() || profile.speciality.length >= 6}
+          <button onClick={addTag} disabled={!stripLeadingEmoji(newTag) || profile.speciality.length >= 6}
             className="h-10 px-3 rounded-xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors disabled:opacity-40">
             <Plus className="w-4 h-4" />
           </button>
         </div>
+        <p className="text-[11px] text-muted-foreground/50">Emoji tanlamasangiz, avtomatik 🏷️ qo‘yiladi. O‘chirish darhol saqlanadi.</p>
         {profile.speciality.length === 0 && warn("Hech bo'lmaganda bitta teg qo'shing")}
       </div>
 
