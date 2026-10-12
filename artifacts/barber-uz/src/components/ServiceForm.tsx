@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Plus, Check, X } from "lucide-react";
 import {
   useListCategories,
@@ -19,6 +19,15 @@ function formatPriceDigits(raw: string): string {
   const digits = raw.replace(/\D/g, "");
   if (!digits) return "";
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+function pickDefaultCategoryId(
+  preferred: string | null | undefined,
+  categories: ServiceCategory[],
+): string | null {
+  if (preferred && categories.some((c) => c.id === preferred)) return preferred;
+  const soch = categories.find((c) => c.name.toLowerCase().includes("soch"));
+  return soch?.id ?? categories[0]?.id ?? null;
 }
 
 export function ServiceForm({
@@ -45,6 +54,14 @@ export function ServiceForm({
 
   const { data: categories = [] } = useListCategories();
   const createCatMut = useCreateCategory();
+
+  useEffect(() => {
+    if (initial?.id) return;
+    setCategoryId((current) => {
+      if (current && categories.some((c) => c.id === current)) return current;
+      return pickDefaultCategoryId(initial?.categoryId ?? null, categories);
+    });
+  }, [categories, initial?.id, initial?.categoryId]);
 
   function handleSave() {
     if (!name.trim() || !price) return;

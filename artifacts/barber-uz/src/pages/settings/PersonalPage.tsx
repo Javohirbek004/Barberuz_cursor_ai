@@ -1272,7 +1272,7 @@ function XizmatlarTab({
     const editing = addingOrEditing !== "new" ? services.find(s => s.id === addingOrEditing) : undefined;
     const initial: Partial<ServiceFormData> | undefined = editing
       ? { id: editing.id, name: editing.name, categoryId: editing.categoryId, duration: editing.duration, price: editing.price, description: editing.description }
-      : undefined;
+      : { categoryId: activeCat };
     return (
       <>
         {error && <p className="text-xs text-destructive bg-destructive/10 rounded-xl px-3 py-2 mb-3">{error}</p>}
