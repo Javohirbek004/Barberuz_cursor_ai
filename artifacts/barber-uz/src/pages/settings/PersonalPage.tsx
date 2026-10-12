@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { APP_ORIGIN } from "@/lib/config";
 import { PageLinkPanel } from "@/components/PageLinkPanel";
 import { PageTabs } from "@/components/PageTabs";
-import { SpecialtyTags, SPECIALTY_PILL_CLASS, SPECIALTY_TAG_ROW_CLASS } from "@/components/SpecialtyTags";
+import { SpecialtyTags, SPECIALTY_PILL_CLASS, SpecialtyTagScroller } from "@/components/SpecialtyTags";
 import {
   parseSpecializations,
   formatSpecialtyTag,
@@ -607,6 +607,7 @@ function AsosiyTab({
   saving: boolean;
 }) {
   const imgRef = useRef<HTMLInputElement>(null);
+  const emojiSlotRef = useRef<HTMLInputElement>(null);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const [newTag, setNewTag] = useState("");
   const [selectedEmoji, setSelectedEmoji] = useState(DEFAULT_SPECIALTY_EMOJI);
@@ -673,10 +674,30 @@ function AsosiyTab({
   function pickQuickEmoji(emoji: string) {
     setSelectedEmoji(emoji);
     setNewTag(stripLeadingEmoji(newTag));
+    tagInputRef.current?.focus();
   }
 
   function pickCustomEmoji() {
-    tagInputRef.current?.focus();
+    setSelectedEmoji("");
+    window.setTimeout(() => {
+      const el = emojiSlotRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(0, el.value.length);
+    }, 0);
+  }
+
+  function onEmojiSlot(value: string) {
+    if (!value) {
+      setSelectedEmoji("");
+      return;
+    }
+    const emoji = leadingEmoji(value);
+    if (!emoji) return;
+    setSelectedEmoji(emoji);
+    const rest = stripLeadingEmoji(value);
+    if (rest) setNewTag((prev) => prev || rest);
+    window.setTimeout(() => tagInputRef.current?.focus(), 0);
   }
 
   function onTagInput(value: string) {
@@ -790,7 +811,7 @@ function AsosiyTab({
       {/* Speciality tags */}
       <div className="space-y-2">
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mutaxassislik teglari</label>
-        <div className={SPECIALTY_TAG_ROW_CLASS}>
+        <SpecialtyTagScroller>
           {profile.speciality.map((s, i) => (
             <span key={`${s}-${i}`} className={SPECIALTY_PILL_CLASS}>
               {specialtyDisplayIcon(s) && <span aria-hidden="true">{specialtyDisplayIcon(s)}</span>}
@@ -806,7 +827,7 @@ function AsosiyTab({
               </button>
             </span>
           ))}
-        </div>
+        </SpecialtyTagScroller>
         <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
           {SPECIALTY_QUICK_EMOJIS.map((emoji) => {
             const active = selectedEmoji === emoji;
@@ -830,21 +851,34 @@ function AsosiyTab({
           <button
             type="button"
             onClick={pickCustomEmoji}
-            className={`h-9 min-w-9 shrink-0 rounded-full border text-base transition-colors ${
-              !(SPECIALTY_QUICK_EMOJIS as readonly string[]).includes(selectedEmoji)
-                ? "border-primary/50 bg-primary/15"
-                : "border-white/8 bg-white/5 hover:border-white/20"
+            className={`h-9 shrink-0 rounded-full border px-2 text-sm font-semibold transition-colors ${
+              !selectedEmoji || !(SPECIALTY_QUICK_EMOJIS as readonly string[]).includes(selectedEmoji)
+                ? "border-amber-400/80 bg-amber-500/20 text-amber-200"
+                : "border-amber-400/50 bg-amber-500/10 text-amber-300 hover:border-amber-300/80"
             }`}
             aria-label="O'zingizning emojingizni tanlang"
           >
-            ➕
+            😀+
           </button>
         </div>
         <div className="flex gap-2">
           <div className="flex-1 h-10 flex items-center rounded-xl bg-white/5 border border-white/8 focus-within:border-primary/50">
-            <span className="pl-3 pr-1.5 shrink-0 text-base whitespace-nowrap" aria-hidden="true">
-              {selectedEmoji || DEFAULT_SPECIALTY_EMOJI}
-            </span>
+            <input
+              ref={emojiSlotRef}
+              value={selectedEmoji}
+              onChange={e => onEmojiSlot(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  tagInputRef.current?.focus();
+                }
+              }}
+              aria-label="Teg emojisi"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              className="w-10 min-w-10 max-w-12 h-full bg-transparent border-0 pl-2.5 text-base text-center caret-primary focus:outline-none"
+            />
             <input
               ref={tagInputRef}
               value={newTag}
