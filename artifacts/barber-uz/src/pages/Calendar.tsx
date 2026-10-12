@@ -419,7 +419,10 @@ function IndividualCalendar() {
                     {b.price.toLocaleString()} so'm
                   </span>
                 </div>
-                <BookingNoteBadge note={noteFromBooking(b)} />
+                <BookingNoteBadge
+                  note={noteFromBooking(b)}
+                  muted={b.status === "completed" || b.status === "cancelled" || b.status === "auto_cancelled"}
+                />
               </div>
             </motion.button>
           ))

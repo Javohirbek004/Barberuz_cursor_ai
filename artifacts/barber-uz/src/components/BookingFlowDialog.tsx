@@ -75,9 +75,9 @@ function applyPhoneMask(raw: string): string {
   result += " (" + d.slice(0, Math.min(2, d.length));
   if (d.length < 2) return result;
   result += ") " + d.slice(2, Math.min(5, d.length));
-  if (d.length < 5) return result;
+  if (d.length <= 5) return result;
   result += "-" + d.slice(5, Math.min(7, d.length));
-  if (d.length < 7) return result;
+  if (d.length <= 7) return result;
   result += "-" + d.slice(7, 9);
   return result;
 }
@@ -893,6 +893,15 @@ function BookingFormContent({
         <input
           value={form.phone}
           onChange={(e) => onChange({ phone: applyPhoneMask(e.target.value) })}
+          onKeyDown={(e) => {
+            if (e.key !== "Backspace") return;
+            const current = form.phone;
+            if (!/[)\s-]$/.test(current)) return;
+            e.preventDefault();
+            const digits = current.replace(/\D/g, "");
+            const local = (digits.startsWith("998") ? digits.slice(3) : digits).slice(0, -1);
+            onChange({ phone: applyPhoneMask(local) });
+          }}
           placeholder="+998 (90) 123-45-67"
           type="tel"
           inputMode="numeric"
