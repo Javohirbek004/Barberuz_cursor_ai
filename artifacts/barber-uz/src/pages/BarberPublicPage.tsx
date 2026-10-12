@@ -1190,7 +1190,7 @@ function PublicView({ barber }: { barber: BarberData }) {
 
       {/* Fixed bottom CTA */}
       <div className="fixed bottom-0 left-0 right-0 z-40">
-        <div className="max-w-md mx-auto px-4 py-3 bg-card/95 backdrop-blur-xl border-t border-white/8">
+        <div className="max-w-md mx-auto px-4 py-3 bg-zinc-900/90 backdrop-blur-md border-t border-zinc-700">
           <AnimatePresence mode="wait">
             {selectedIds.length > 0 ? (
               <motion.div key="selected" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className="flex items-center gap-3">
@@ -1207,8 +1207,8 @@ function PublicView({ barber }: { barber: BarberData }) {
               <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <button
                   onClick={() => setTab("xizmatlar")}
-                  className="w-full h-12 rounded-2xl bg-white/6 border border-white/8 text-muted-foreground font-semibold text-sm hover:bg-white/10 hover:text-foreground transition-all">
-                  💈 Xizmat tanlash
+                  className="w-full h-12 rounded-2xl border border-amber-500/30 bg-zinc-800 text-white font-medium text-sm">
+                  📅 Xizmat tanlash
                 </button>
               </motion.div>
             )}

@@ -7,7 +7,7 @@ export function SpecialtyTags({ value }: { value: string | string[] | null | und
   return (
     <div>
       <div className="mb-2.5 flex items-center gap-2">
-        <span className="text-sm" aria-hidden="true">✂️</span>
+        <span className="text-sm" aria-hidden="true">⭐</span>
         <span className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Mutaxassislik</span>
         <div className="h-px flex-1 bg-white/6" />
       </div>
