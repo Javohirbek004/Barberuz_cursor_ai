@@ -13,7 +13,7 @@ export function BookingNoteBadge({
         muted ? "text-zinc-500" : "text-amber-200/90"
       }`}
     >
-      <span aria-hidden="true">📝</span>
+      <span aria-hidden="true" className={muted ? "opacity-40 grayscale" : undefined}>📝</span>
       <span className="truncate max-w-[180px]">{text}</span>
     </div>
   );
