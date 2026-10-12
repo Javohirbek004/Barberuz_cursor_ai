@@ -12,7 +12,13 @@ export interface ServiceFormData {
   categoryId: string | null;
   duration: number;
   price: number;
-  description: string;
+  description?: string;
+}
+
+function formatPriceDigits(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
 export function ServiceForm({
@@ -29,8 +35,9 @@ export function ServiceForm({
   const [name, setName] = useState(initial?.name ?? "");
   const [categoryId, setCategoryId] = useState<string | null>(initial?.categoryId ?? null);
   const [duration, setDuration] = useState(String(initial?.duration ?? 30));
-  const [price, setPrice] = useState(String(initial?.price ?? ""));
-  const [description, setDescription] = useState(initial?.description ?? "");
+  const [price, setPrice] = useState(
+    initial?.price != null && initial.price !== 0 ? formatPriceDigits(String(initial.price)) : "",
+  );
 
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState("");
@@ -46,8 +53,7 @@ export function ServiceForm({
       name: name.trim(),
       categoryId,
       duration: parseInt(duration) || 30,
-      price: parseInt(price) || 0,
-      description,
+      price: parseInt(price.replace(/\D/g, ""), 10) || 0,
     });
   }
 
@@ -68,7 +74,7 @@ export function ServiceForm({
   const selectedCat = categories.find((c: ServiceCategory) => c.id === categoryId);
 
   return (
-    <div className="space-y-4 pb-8">
+    <div className="space-y-4 pb-2">
       <div className="flex items-center gap-3 mb-2">
         <button
           onClick={onCancel}
@@ -87,7 +93,7 @@ export function ServiceForm({
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Fade, Klassik, Soqol..."
+          placeholder="Masalan: Soch olish, Soqol tekislash..."
           className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50"
         />
       </div>
@@ -171,25 +177,14 @@ export function ServiceForm({
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-muted-foreground">Narxi (so'm) *</label>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            placeholder="80000"
-            className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50"
+            onChange={(e) => setPrice(formatPriceDigits(e.target.value))}
+            placeholder="Masalan: 80 000"
+            className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm tabular-nums focus:outline-none focus:border-primary/50"
           />
         </div>
-      </div>
-
-      {/* Description */}
-      <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-muted-foreground">Tavsif (ixtiyoriy)</label>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={2}
-          placeholder="Qisqa tavsif..."
-          className="w-full px-4 py-3 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50 resize-none"
-        />
       </div>
 
       <button
