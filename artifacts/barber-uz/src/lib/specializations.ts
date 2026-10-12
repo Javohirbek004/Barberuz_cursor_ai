@@ -11,6 +11,8 @@ const ICONS: Record<string, string> = {
 
 export const DEFAULT_SPECIALTY_EMOJI = "💈";
 
+export const MAX_SPECIALTY_TAGS = 15;
+
 export const SPECIALTY_QUICK_EMOJIS = ["💈", "✂️", "🪒", "🔥", "👶", "🎨", "⭐"] as const;
 
 /** Leading emoji (including ZWJ sequences and variation selectors). */

@@ -12,6 +12,7 @@ import {
   leadingEmoji,
   specialtyDisplayIcon,
   DEFAULT_SPECIALTY_EMOJI,
+  MAX_SPECIALTY_TAGS,
   SPECIALTY_QUICK_EMOJIS,
 } from "@/lib/specializations";
 import { getCategoryIcon } from "@/lib/category-icon";
@@ -611,7 +612,8 @@ function AsosiyTab({
   const tagInputRef = useRef<HTMLInputElement>(null);
   const [newTag, setNewTag] = useState("");
   const [selectedEmoji, setSelectedEmoji] = useState(DEFAULT_SPECIALTY_EMOJI);
-  const [tagSaving, setTagSaving] = useState(false);
+  const tagsRef = useRef(profile.speciality);
+  tagsRef.current = profile.speciality;
   const [showMapModal, setShowMapModal] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
@@ -660,14 +662,12 @@ function AsosiyTab({
   }
 
   async function persistTags(next: string[]) {
+    tagsRef.current = next;
     onChange({ ...profile, speciality: next });
-    setTagSaving(true);
     try {
       await apiPut("/api/settings/profile", { specializations: JSON.stringify(next) });
     } catch {
       /* local list still updates; full Saqlash will retry */
-    } finally {
-      setTagSaving(false);
     }
   }
 
@@ -718,8 +718,9 @@ function AsosiyTab({
   function addTag() {
     const tag = formatSpecialtyTag(newTag, selectedEmoji || DEFAULT_SPECIALTY_EMOJI);
     const name = stripLeadingEmoji(tag);
-    if (!name || profile.speciality.length >= 6) return;
-    const exists = profile.speciality.some(
+    const current = tagsRef.current;
+    if (!name || current.length >= MAX_SPECIALTY_TAGS) return;
+    const exists = current.some(
       (s) => stripLeadingEmoji(s).toLowerCase() === name.toLowerCase(),
     );
     if (exists) {
@@ -727,7 +728,7 @@ function AsosiyTab({
       setSelectedEmoji(DEFAULT_SPECIALTY_EMOJI);
       return;
     }
-    void persistTags([...profile.speciality, tag]);
+    void persistTags([...current, tag]);
     setNewTag("");
     setSelectedEmoji(DEFAULT_SPECIALTY_EMOJI);
     tagInputRef.current?.blur();
@@ -739,7 +740,7 @@ function AsosiyTab({
   }
 
   function removeTag(i: number) {
-    void persistTags(profile.speciality.filter((_, idx) => idx !== i));
+    void persistTags(tagsRef.current.filter((_, idx) => idx !== i));
   }
 
   const warn = (label: string) => (
@@ -830,8 +831,7 @@ function AsosiyTab({
               <button
                 type="button"
                 onClick={() => removeTag(i)}
-                disabled={tagSaving}
-                className="ml-0.5 hover:text-destructive transition-colors disabled:opacity-40"
+                className="ml-0.5 hover:text-destructive transition-colors"
                 aria-label="Tegni o'chirish"
               >
                 <X className="w-3 h-3" />
@@ -903,10 +903,10 @@ function AsosiyTab({
           </div>
           <button
             type="submit"
-            disabled={!newTag.trim() || profile.speciality.length >= 6}
+            disabled={!newTag.trim() || profile.speciality.length >= MAX_SPECIALTY_TAGS}
             aria-label="Teg qo'shish"
             className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center transition-colors ${
-              newTag.trim() && profile.speciality.length < 6
+              newTag.trim() && profile.speciality.length < MAX_SPECIALTY_TAGS
                 ? "bg-amber-400 text-black border border-amber-300 shadow-sm shadow-amber-400/30"
                 : "bg-zinc-900 text-zinc-600 border border-zinc-800"
             }`}
