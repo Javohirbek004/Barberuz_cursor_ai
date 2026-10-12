@@ -835,7 +835,7 @@ function AsosiyTab({
                 ? "border-primary/50 bg-primary/15"
                 : "border-white/8 bg-white/5 hover:border-white/20"
             }`}
-            aria-label="Boshqa emoji tanlash"
+            aria-label="O'zingizning emojingizni tanlang"
           >
             ➕
           </button>
