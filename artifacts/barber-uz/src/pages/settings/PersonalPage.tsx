@@ -607,6 +607,7 @@ function AsosiyTab({
   saving: boolean;
 }) {
   const imgRef = useRef<HTMLInputElement>(null);
+  const tagInputRef = useRef<HTMLInputElement>(null);
   const [newTag, setNewTag] = useState("");
   const [selectedEmoji, setSelectedEmoji] = useState(DEFAULT_SPECIALTY_EMOJI);
   const [tagSaving, setTagSaving] = useState(false);
@@ -672,6 +673,10 @@ function AsosiyTab({
   function pickQuickEmoji(emoji: string) {
     setSelectedEmoji(emoji);
     setNewTag(stripLeadingEmoji(newTag));
+  }
+
+  function pickCustomEmoji() {
+    tagInputRef.current?.focus();
   }
 
   function onTagInput(value: string) {
@@ -822,13 +827,26 @@ function AsosiyTab({
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={pickCustomEmoji}
+            className={`h-9 min-w-9 shrink-0 rounded-full border text-base transition-colors ${
+              !(SPECIALTY_QUICK_EMOJIS as readonly string[]).includes(selectedEmoji)
+                ? "border-primary/50 bg-primary/15"
+                : "border-white/8 bg-white/5 hover:border-white/20"
+            }`}
+            aria-label="Boshqa emoji tanlash"
+          >
+            ➕
+          </button>
         </div>
         <div className="flex gap-2">
           <div className="flex-1 h-10 flex items-center rounded-xl bg-white/5 border border-white/8 focus-within:border-primary/50">
-            <span className="pl-3 pr-1.5 shrink-0 text-sm whitespace-nowrap" aria-hidden="true">
-              + {selectedEmoji || DEFAULT_SPECIALTY_EMOJI}
+            <span className="pl-3 pr-1.5 shrink-0 text-base whitespace-nowrap" aria-hidden="true">
+              {selectedEmoji || DEFAULT_SPECIALTY_EMOJI}
             </span>
             <input
+              ref={tagInputRef}
               value={newTag}
               onChange={e => onTagInput(e.target.value)}
               onKeyDown={e => e.key === "Enter" && addTag()}

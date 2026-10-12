@@ -11,7 +11,7 @@ const ICONS: Record<string, string> = {
 
 export const DEFAULT_SPECIALTY_EMOJI = "💈";
 
-export const SPECIALTY_QUICK_EMOJIS = ["✂️", "🔥", "💈", "🪒", "👶", "🎨", "⭐", "🏷️"] as const;
+export const SPECIALTY_QUICK_EMOJIS = ["💈", "✂️", "🪒", "🔥", "👶", "🎨", "⭐"] as const;
 
 /** Leading emoji (including ZWJ sequences and variation selectors). */
 const LEADING_EMOJI =
