@@ -2,6 +2,7 @@ import "leaflet/dist/leaflet.css";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { APP_ORIGIN } from "@/lib/config";
 import { PageLinkPanel } from "@/components/PageLinkPanel";
+import { PageTabs } from "@/components/PageTabs";
 import { SpecialtyTags } from "@/components/SpecialtyTags";
 import { parseSpecializations } from "@/lib/specializations";
 import { BufferTimeField } from "@/components/BufferTimeField";
@@ -1620,15 +1621,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
         </div>
       )}
 
-      {/* Tab bar */}
-      <div className="flex border-b border-white/8 mb-1">
-        {(["asosiy", "xizmatlar"] as const).map(t => (
-          <motion.button key={t} onClick={() => setPreviewTab(t)} whileTap={{ scale: 0.97 }}
-            className={`flex-1 py-3 text-sm font-semibold transition-all border-b-2 -mb-px ${previewTab === t ? "text-foreground border-primary" : "text-muted-foreground border-transparent"}`}>
-            {t === "asosiy" ? "Asosiy" : "Xizmatlar"}
-          </motion.button>
-        ))}
-      </div>
+      <PageTabs value={previewTab} onChange={setPreviewTab} serviceCount={services.length} />
 
       {/* Tab content */}
       <AnimatePresence mode="wait">

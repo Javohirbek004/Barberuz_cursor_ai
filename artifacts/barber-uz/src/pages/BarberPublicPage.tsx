@@ -23,7 +23,7 @@ import {
 } from "@/lib/schedule";
 import { toast } from "@/hooks/use-toast";
 import { SpecialtyTags } from "@/components/SpecialtyTags";
-import { TabsPreview } from "@/components/TabsPreview";
+import { PageTabs } from "@/components/PageTabs";
 import { parseSpecializations } from "@/lib/specializations";
 import {
   extractPhoneNumber,
@@ -1001,17 +1001,7 @@ function PublicView({ barber }: { barber: BarberData }) {
         </div>
       )}
 
-      <TabsPreview serviceCount={barber.services.length} />
-
-      {/* Tab bar */}
-      <div className="flex border-b border-white/8 mb-1">
-        {(["asosiy", "xizmatlar"] as const).map(t => (
-          <motion.button key={t} onClick={() => setTab(t)} whileTap={{ scale: 0.97 }}
-            className={`flex-1 py-3 text-sm font-semibold transition-all border-b-2 -mb-px ${tab === t ? "text-foreground border-primary" : "text-muted-foreground border-transparent"}`}>
-            {t === "asosiy" ? "Asosiy" : "Xizmatlar"}
-          </motion.button>
-        ))}
-      </div>
+      <PageTabs value={tab} onChange={setTab} serviceCount={barber.services.length} />
 
       {/* Tab content */}
       <AnimatePresence mode="wait">
