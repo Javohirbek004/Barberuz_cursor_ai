@@ -7,7 +7,7 @@
  */
 
 import { Router } from "express";
-import { db, bookingSessionsTable, usersTable, servicesTable, slugRedirectsTable, bookingsTable, clientsTable, qrScansTable } from "@workspace/db";
+import { db, bookingSessionsTable, usersTable, servicesTable, serviceCategoriesTable, slugRedirectsTable, bookingsTable, clientsTable, qrScansTable } from "@workspace/db";
 import { eq, and, isNull, or, desc, gt } from "drizzle-orm";
 import { deliverBookingReceipt } from "../lib/client-notifications";
 import { findClientByPhone } from "../lib/client-lookup";
@@ -526,10 +526,19 @@ router.get("/barber/:slug", async (req, res) => {
       return;
     }
 
-    // Fetch active services
+    // Fetch active services from the barber's catalog
     const services = await db
-      .select()
+      .select({
+        id: servicesTable.id,
+        name: servicesTable.name,
+        nameRu: servicesTable.nameRu,
+        duration: servicesTable.duration,
+        price: servicesTable.price,
+        categoryId: servicesTable.categoryId,
+        categoryName: serviceCategoriesTable.name,
+      })
       .from(servicesTable)
+      .leftJoin(serviceCategoriesTable, eq(servicesTable.categoryId, serviceCategoriesTable.id))
       .where(and(eq(servicesTable.barberId, barber.id), eq(servicesTable.isActive, true), isNull(servicesTable.deletedAt)))
       .orderBy(servicesTable.createdAt);
 
@@ -565,6 +574,8 @@ router.get("/barber/:slug", async (req, res) => {
         nameRu: s.nameRu,
         duration: s.duration,
         price: Number(s.price),
+        categoryId: s.categoryId,
+        category: s.categoryName || s.name,
       })),
     });
   } catch (err) {

@@ -25,6 +25,7 @@ import { toast } from "@/hooks/use-toast";
 import { SpecialtyTags } from "@/components/SpecialtyTags";
 import { PageTabs } from "@/components/PageTabs";
 import { parseSpecializations } from "@/lib/specializations";
+import { getCategoryIcon } from "@/lib/category-icon";
 import {
   extractPhoneNumber,
   getTelegramWebApp,
@@ -65,6 +66,8 @@ interface BarberData {
     nameRu: string | null;
     duration: number;
     price: number;
+    categoryId?: string | null;
+    category?: string | null;
   }>;
 }
 
@@ -1172,7 +1175,7 @@ function PublicView({ barber }: { barber: BarberData }) {
                         onClick={() => toggleService(s.id)}
                         className={`bg-card border rounded-2xl p-4 flex items-center gap-3 cursor-pointer transition-all ${selected ? "border-primary/40 bg-primary/5" : "border-white/6 hover:border-white/12"}`}>
                         <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0 border transition-all ${selected ? "bg-primary/15 border-primary/30" : "bg-white/5 border-white/8"}`}>
-                          ✂️
+                          {getCategoryIcon([s.category, s.name].filter(Boolean).join(" "))}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-sm text-foreground">{s.name}</p>

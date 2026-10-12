@@ -5,6 +5,7 @@ import { PageLinkPanel } from "@/components/PageLinkPanel";
 import { PageTabs } from "@/components/PageTabs";
 import { SpecialtyTags } from "@/components/SpecialtyTags";
 import { parseSpecializations } from "@/lib/specializations";
+import { getCategoryIcon } from "@/lib/category-icon";
 import { BufferTimeField } from "@/components/BufferTimeField";
 import { mergeScheduleFromDayChips, normalizeBuffer, readOpenDaysShort } from "@/lib/schedule";
 import { ServiceForm } from "@/components/ServiceForm";
@@ -65,12 +66,13 @@ export interface ProfileData {
 
 export interface ServiceItem {
   id: string;
-  category: string;      // legacy nameRu slug (kept for CustomerView emoji)
+  category: string;
   categoryId: string | null;
   name: string;
   duration: number;
   price: number;
   description: string;
+  isActive?: boolean;
   imageUrl?: string;
   comboIds?: string[];
   comboPrice?: number;
@@ -186,12 +188,8 @@ function BarbAvatar({ barber, size = "md" }: { barber: BarberSlot; size?: "sm" |
   );
 }
 
-function catEmoji(cat: string) {
-  if (cat === "soch") return "✂️";
-  if (cat === "soqol") return "🪒";
-  if (cat === "bolalar") return "👦";
-  if (cat === "vip") return "💎";
-  return "💈";
+function serviceIcon(s: { category?: string | null; name?: string | null }) {
+  return getCategoryIcon([s.category, s.name].filter(Boolean).join(" "));
 }
 
 function getToken() { return localStorage.getItem("barber_token") || ""; }
@@ -305,8 +303,9 @@ function apiToService(s: Record<string, unknown>): ServiceItem {
   return {
     id: s.id as string,
     name: s.name as string,
-    category: (s.nameRu as string) || "soch",
+    category: (s.category as string) || (s.name as string) || "",
     categoryId: (s.categoryId as string | null) ?? null,
+    isActive: s.isActive !== false,
     duration: s.duration as number,
     price: Number(s.price),
     description: "",
@@ -1186,7 +1185,7 @@ function XizmatlarTab({
           {filtered.map((s, i) => (
             <motion.div key={s.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ delay: i * 0.03 }}>
               <div className="bg-card border border-white/6 rounded-2xl p-4 flex items-center gap-3 hover:border-white/10 transition-colors">
-                <div className="w-11 h-11 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center text-xl shrink-0">{catEmoji(s.category)}</div>
+                <div className="w-11 h-11 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center text-xl shrink-0">{serviceIcon({ ...s, category: categories.find((c: ServiceCategory) => c.id === s.categoryId)?.name || s.category })}</div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm text-foreground truncate">{s.name}</p>
                   <p className="text-xs text-muted-foreground">
@@ -1549,10 +1548,11 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
   const [detailSvc, setDetailSvc] = useState<ServiceItem | null>(null);
   const [previewWarn, setPreviewWarn] = useState(false);
 
-  const visibleCatIds = new Set(services.map(s => s.categoryId).filter(Boolean));
+  const liveServices = services.filter(s => s.isActive !== false);
+  const visibleCatIds = new Set(liveServices.map(s => s.categoryId).filter(Boolean));
   const { data: cvCategories = [] } = useListCategories();
   const catChips = [{ id: "all", label: "Hammasi" }, ...cvCategories.filter((c: ServiceCategory) => visibleCatIds.has(c.id)).map((c: ServiceCategory) => ({ id: c.id, label: c.name }))];
-  const filtered = activeCat === "all" ? services : services.filter(s => s.categoryId === activeCat);
+  const filtered = activeCat === "all" ? liveServices : liveServices.filter(s => s.categoryId === activeCat);
   const selectedServices = services.filter(s => selectedIds.includes(s.id));
 
   function calcTotal() {
@@ -1799,7 +1799,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
                     <motion.div key={s.id} whileTap={{ scale: 0.985 }}>
                       <div className={`bg-card border rounded-2xl p-4 flex items-center gap-3 cursor-pointer transition-all ${isSelected ? "border-primary/40 bg-primary/6" : "border-white/6 hover:border-white/12"}`}
                         onClick={() => setDetailSvc(s)}>
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 border ${isSelected ? "bg-primary/10 border-primary/20" : "bg-white/5 border-white/8"}`}>{catEmoji(s.category)}</div>
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 border ${isSelected ? "bg-primary/10 border-primary/20" : "bg-white/5 border-white/8"}`}>{serviceIcon({ ...s, category: cvCategories.find((c: ServiceCategory) => c.id === s.categoryId)?.name || s.category })}</div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-sm text-foreground">{s.name}</p>
                           <p className="text-xs text-muted-foreground">{formatDur(s.duration)} · <span className="text-foreground/80 font-medium">{formatPriceShort(s.price)} so'm</span></p>
@@ -1884,7 +1884,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
               <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-1" />
               <div className="px-5 pb-10 pt-3">
                 <div className="flex items-start gap-4 mb-4">
-                  <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/8 flex items-center justify-center text-3xl shrink-0">{catEmoji(detailSvc.category)}</div>
+                  <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/8 flex items-center justify-center text-3xl shrink-0">{serviceIcon({ ...detailSvc, category: cvCategories.find((c: ServiceCategory) => c.id === detailSvc.categoryId)?.name || detailSvc.category })}</div>
                   <div className="flex-1">
                     <h3 className="font-bold text-xl text-foreground mb-0.5">{detailSvc.name}</h3>
                     <p className="text-sm text-muted-foreground">{formatDur(detailSvc.duration)} · {formatPrice(detailSvc.price)}</p>

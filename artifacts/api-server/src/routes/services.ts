@@ -1,17 +1,18 @@
 import { Router } from "express";
 import { db, servicesTable, serviceCategoriesTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 
 const router = Router();
 
-function formatService(s: typeof servicesTable.$inferSelect) {
+function formatService(s: typeof servicesTable.$inferSelect, categoryName?: string | null) {
   return {
     id: s.id,
     barberId: s.barberId,
     name: s.name,
     nameRu: s.nameRu,
     categoryId: s.categoryId ?? null,
+    category: categoryName || s.name,
     duration: s.duration,
     price: Number(s.price),
     isActive: s.isActive,
@@ -22,10 +23,16 @@ function formatService(s: typeof servicesTable.$inferSelect) {
 router.get("/", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
-    const services = await db.select().from(servicesTable)
-      .where(eq(servicesTable.barberId, user.id))
+    const services = await db
+      .select({
+        service: servicesTable,
+        categoryName: serviceCategoriesTable.name,
+      })
+      .from(servicesTable)
+      .leftJoin(serviceCategoriesTable, eq(servicesTable.categoryId, serviceCategoriesTable.id))
+      .where(and(eq(servicesTable.barberId, user.id), isNull(servicesTable.deletedAt)))
       .orderBy(servicesTable.createdAt);
-    res.json({ services: services.map(formatService) });
+    res.json({ services: services.map((row) => formatService(row.service, row.categoryName)) });
   } catch (err) {
     res.status(500).json({ error: "server_error" });
   }
