@@ -23,6 +23,7 @@ import {
 } from "@/lib/schedule";
 import { toast } from "@/hooks/use-toast";
 import { SpecialtyTags } from "@/components/SpecialtyTags";
+import { TabsPreview } from "@/components/TabsPreview";
 import { parseSpecializations } from "@/lib/specializations";
 import {
   extractPhoneNumber,
@@ -999,6 +1000,8 @@ function PublicView({ barber }: { barber: BarberData }) {
           </div>
         </div>
       )}
+
+      <TabsPreview serviceCount={barber.services.length} />
 
       {/* Tab bar */}
       <div className="flex border-b border-white/8 mb-1">
