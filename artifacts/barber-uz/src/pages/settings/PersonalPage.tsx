@@ -851,14 +851,14 @@ function AsosiyTab({
           <button
             type="button"
             onClick={pickCustomEmoji}
-            className={`h-9 shrink-0 rounded-full border px-2 text-sm font-semibold transition-colors ${
+            className={`h-9 min-w-9 shrink-0 rounded-full border text-lg font-medium leading-none transition-colors ${
               !selectedEmoji || !(SPECIALTY_QUICK_EMOJIS as readonly string[]).includes(selectedEmoji)
                 ? "border-amber-400/80 bg-amber-500/20 text-amber-200"
                 : "border-amber-400/50 bg-amber-500/10 text-amber-300 hover:border-amber-300/80"
             }`}
             aria-label="O'zingizning emojingizni tanlang"
           >
-            😀+
+            +
           </button>
         </div>
         <div className="flex gap-2">
@@ -893,6 +893,9 @@ function AsosiyTab({
             <Plus className="w-4 h-4" />
           </button>
         </div>
+        <p className="text-[11px] text-muted-foreground/55 leading-snug">
+          💡 Klaviaturangizdagi emojilardan ham foydalanishingiz mumkin
+        </p>
       </div>
 
       {/* Phone — read-only + visibility toggle */}

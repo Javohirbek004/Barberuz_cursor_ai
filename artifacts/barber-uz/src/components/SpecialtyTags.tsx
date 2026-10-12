@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { parseSpecializations, specialtyDisplayIcon } from "@/lib/specializations";
 
 export const SPECIALTY_PILL_CLASS =
@@ -6,39 +6,8 @@ export const SPECIALTY_PILL_CLASS =
 
 export const SPECIALTY_TAG_ROW_CLASS = "flex flex-nowrap overflow-x-auto scrollbar-none gap-2 py-1";
 
-const SCROLL_FADE =
-  "after:pointer-events-none after:absolute after:right-0 after:top-0 after:z-10 after:h-full after:w-6 after:bg-gradient-to-l after:from-zinc-950 after:to-transparent";
-
 export function SpecialtyTagScroller({ children }: { children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [showFade, setShowFade] = useState(false);
-
-  const update = useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    setShowFade(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
-  }, []);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    el.addEventListener("scroll", update, { passive: true });
-    return () => {
-      ro.disconnect();
-      el.removeEventListener("scroll", update);
-    };
-  }, [children, update]);
-
-  return (
-    <div className={`relative min-w-0 ${showFade ? SCROLL_FADE : ""}`}>
-      <div ref={ref} className={SPECIALTY_TAG_ROW_CLASS}>
-        {children}
-      </div>
-    </div>
-  );
+  return <div className={SPECIALTY_TAG_ROW_CLASS}>{children}</div>;
 }
 
 export function SpecialtyTags({ value }: { value: string | string[] | null | undefined }) {
