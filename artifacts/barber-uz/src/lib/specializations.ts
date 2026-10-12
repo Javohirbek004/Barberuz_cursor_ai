@@ -9,7 +9,7 @@ const ICONS: Record<string, string> = {
   kompleks: "💈",
 };
 
-export const DEFAULT_SPECIALTY_EMOJI = "🏷️";
+export const DEFAULT_SPECIALTY_EMOJI = "💈";
 
 export const SPECIALTY_QUICK_EMOJIS = ["✂️", "🔥", "💈", "🪒", "👶", "🎨", "⭐", "🏷️"] as const;
 
@@ -74,6 +74,11 @@ export function parseSpecializations(raw: string | string[] | null | undefined):
 
 export function startsWithEmoji(label: string): boolean {
   return LEADING_EMOJI.test(label.trim());
+}
+
+export function leadingEmoji(label: string): string | null {
+  const match = label.trim().match(LEADING_EMOJI);
+  return match?.[0] ?? null;
 }
 
 export function stripLeadingEmoji(label: string): string {

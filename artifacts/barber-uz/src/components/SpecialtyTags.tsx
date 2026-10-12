@@ -3,6 +3,8 @@ import { parseSpecializations, specialtyDisplayIcon } from "@/lib/specialization
 export const SPECIALTY_PILL_CLASS =
   "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-neutral-700/40 bg-neutral-800/70 px-3 py-1.5 text-xs font-medium text-neutral-300";
 
+export const SPECIALTY_TAG_ROW_CLASS = "flex flex-nowrap overflow-x-auto scrollbar-none gap-2 py-1";
+
 export function SpecialtyTags({ value }: { value: string | string[] | null | undefined }) {
   const tags = parseSpecializations(value);
   if (tags.length === 0) return null;
@@ -14,7 +16,7 @@ export function SpecialtyTags({ value }: { value: string | string[] | null | und
         <span className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Mutaxassislik</span>
         <div className="h-px flex-1 bg-white/6" />
       </div>
-      <div className="flex flex-nowrap gap-2 overflow-x-auto scrollbar-none">
+      <div className={SPECIALTY_TAG_ROW_CLASS}>
         {tags.map((tag, index) => {
           const icon = specialtyDisplayIcon(tag);
           return (
