@@ -180,21 +180,20 @@ router.post("/sessions", async (req, res) => {
 
     const typedPhone = typeof clientPhone === "string" ? clientPhone.trim() : "";
     const safeClientPhone = typedPhone ? (normalizePhone(typedPhone) ?? typedPhone) : null;
+    const chosenName = (typeof req.body.clientName === "string" && req.body.clientName.trim())
+      ? req.body.clientName.trim()
+      : ((typeof tgCustomer?.name === "string" && tgCustomer.name.trim()) ? tgCustomer.name.trim() : "");
+    const tgIdStr = tgCustomer?.tgId ? String(tgCustomer.tgId) : null;
+    const canConfirmNow = !!chosenName && (!!safeClientPhone || !!tgIdStr);
 
-    if (tgCustomer?.tgId) {
-      const chosenName = (typeof req.body.clientName === "string" && req.body.clientName.trim())
-        ? req.body.clientName.trim()
-        : ((tgCustomer.name as string) || "Mijoz");
-      const clientFirstName = chosenName.split(" ")[0] || "Mijoz";
-      const tgIdStr = String(tgCustomer.tgId);
-
+    if (canConfirmNow) {
       await db.insert(bookingSessionsTable).values({
         sessionId,
         barberId,
         bookingData: JSON.stringify(bookingData),
         clientTelegramId: tgIdStr,
         clientName: chosenName,
-        clientTelegramUsername: tgCustomer.username || null,
+        clientTelegramUsername: tgCustomer?.username || null,
         clientPhone: safeClientPhone,
         status: "confirmed",
         expiresAt,
@@ -206,7 +205,7 @@ router.post("/sessions", async (req, res) => {
       try {
         let existing: typeof clientsTable.$inferSelect | null | undefined =
           safeClientPhone ? await findClientByPhone(barberId, safeClientPhone) : null;
-        if (!existing) {
+        if (!existing && tgIdStr) {
           [existing] = await db
             .select()
             .from(clientsTable)
@@ -217,7 +216,7 @@ router.post("/sessions", async (req, res) => {
         if (existing) {
           await db.update(clientsTable).set({
             name: chosenName || existing.name,
-            telegramId: tgIdStr,
+            ...(tgIdStr ? { telegramId: tgIdStr } : {}),
             ...(safeClientPhone && { phone: safeClientPhone }),
             updatedAt: new Date(),
           }).where(eq(clientsTable.id, existing.id));
@@ -255,6 +254,9 @@ router.post("/sessions", async (req, res) => {
           endTime: endTimeStr,
           price: String(catalog.totalPrice),
           status: "confirmed",
+          clientConfirmed: true,
+          ...(tgIdStr ? { clientTelegramId: tgIdStr } : {}),
+          ...(safeClientPhone ? { notes: `Tel: ${safeClientPhone}` } : {}),
         }).returning({ id: bookingsTable.id });
 
         if (inserted?.id) {
@@ -264,10 +266,13 @@ router.post("/sessions", async (req, res) => {
           deliverBookingReceipt(inserted.id, {
             telegramId: tgIdStr,
             phone: safeClientPhone,
+            keepConfirmed: true,
           }).catch((err) => console.error("[PublicAPI] client receipt failed:", err));
         }
       } catch (bookingErr) {
-        console.error("[PublicAPI] booking row insert failed (non-fatal):", bookingErr);
+        console.error("[PublicAPI] booking row insert failed:", bookingErr);
+        res.status(500).json({ error: "server_error", message: "Bron saqlanmadi" });
+        return;
       }
 
       res.json({
@@ -281,7 +286,7 @@ router.post("/sessions", async (req, res) => {
         barberId,
         sessionId,
         bookingData as Parameters<typeof sendBarberBookingNotification>[2],
-        clientFirstName,
+        chosenName,
         safeClientPhone,
       ).catch(err => console.error("[PublicAPI] barber notify failed:", err));
 

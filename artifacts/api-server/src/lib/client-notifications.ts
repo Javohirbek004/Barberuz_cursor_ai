@@ -186,6 +186,25 @@ export function receiptText(barber: BarberCard, service: string, date: string, t
   );
 }
 
+export function publicConfirmedReceiptText(barber: BarberCard, service: string, date: string, time: string): string {
+  return lines(
+    "✅ <b>Broningiz muvaffaqiyatli tasdiqlandi!</b>",
+    "",
+    `💈 Usta: ${esc(salonName(barber))}`,
+    `✂️ Xizmat: ${esc(service)}`,
+    `🗓️ Sana: ${esc(uzDate(date))}`,
+    `⏰ Vaqt: ${esc(time)}`,
+    addressLine(resolveMapUrl(barber), barber.address || ""),
+    "",
+    "⏰ <b>Eslatmalar</b> (Telegram orqali):",
+    "• 1 kun oldin",
+    "• Vaqt yaqinlashganda",
+    "• 1 soat oldin",
+    "",
+    "Kutilgan vaqtda kutamiz! 💈",
+  );
+}
+
 export function reminder24Text(barber: BarberCard, service: string, date: string, time: string): string {
   return lines(
     "🚨 <b>Eslatma! Ertaga navbatingiz bor</b>",
@@ -422,14 +441,14 @@ function rebookMarkup(username: string) {
 
 export async function deliverBookingReceipt(
   bookingId: string,
-  hint?: { telegramId?: string | null; phone?: string | null },
+  hint?: { telegramId?: string | null; phone?: string | null; keepConfirmed?: boolean },
 ): Promise<boolean> {
   const booking = await loadBooking(bookingId);
   if (!booking || booking.deletedAt) return false;
   if (booking.status === "cancelled" || booking.status === "auto_cancelled" || booking.status === "completed") {
     return false;
   }
-  if (booking.clientTelegramId) return true;
+  if (booking.clientTelegramId && !hint?.keepConfirmed) return true;
 
   const barber = await loadBarber(booking.barberId);
   if (!barber) return false;
@@ -439,15 +458,20 @@ export async function deliverBookingReceipt(
   if (!chat) return false;
 
   const service = booking.serviceName?.trim() || "Xizmat";
-  const ok = await send(chat, receiptText(barber, service, booking.date, booking.startTime.slice(0, 5)), {
-    reply_markup: confirmKeyboard(booking.id, "✅ Ha, boraman"),
-  });
+  const time = booking.startTime.slice(0, 5);
+  const text = hint?.keepConfirmed
+    ? publicConfirmedReceiptText(barber, service, booking.date, time)
+    : receiptText(barber, service, booking.date, time);
+  const ok = await send(chat, text, hint?.keepConfirmed
+    ? { reply_markup: rebookMarkup(barber.username) }
+    : { reply_markup: confirmKeyboard(booking.id, "✅ Ha, boraman") });
   if (!ok) return false;
 
   await db.update(bookingsTable).set({
     clientTelegramId: chat,
-    clientConfirmed: false,
-    status: "pending",
+    ...(hint?.keepConfirmed
+      ? { clientConfirmed: true, status: "confirmed" }
+      : { clientConfirmed: false, status: "pending" }),
     updatedAt: new Date(),
   }).where(eq(bookingsTable.id, booking.id));
 
