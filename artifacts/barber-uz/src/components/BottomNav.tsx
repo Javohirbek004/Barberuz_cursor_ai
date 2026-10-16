@@ -11,6 +11,15 @@ export function BottomNav() {
   const { t } = useTranslation();
   const { user } = useAuth(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [guardNav, setGuardNav] = useState(false);
+
+  function handleDialogOpen(open: boolean) {
+    setIsAddOpen(open);
+    if (!open) {
+      setGuardNav(true);
+      window.setTimeout(() => setGuardNav(false), 500);
+    }
+  }
 
   const isTeam = user?.mode === "team";
 
@@ -52,7 +61,7 @@ export function BottomNav() {
   return (
     <>
       <div id="bottom-nav-root" className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-2 pointer-events-none transition-opacity duration-200">
-        <div className="mx-auto max-w-md pointer-events-auto">
+        <div className={`mx-auto max-w-md ${isAddOpen || guardNav ? "pointer-events-none" : "pointer-events-auto"}`}>
           <div className="glass-panel rounded-3xl flex items-stretch px-2 relative" style={{ minHeight: 64 }}>
 
             {/* Left two items — each flex-1 */}
@@ -84,7 +93,7 @@ export function BottomNav() {
 
       <BookingFlowDialog
         open={isAddOpen}
-        onOpenChange={setIsAddOpen}
+        onOpenChange={handleDialogOpen}
         isTeam={isTeam}
       />
     </>

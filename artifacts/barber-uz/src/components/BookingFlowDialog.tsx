@@ -10,7 +10,8 @@
  *  - Real API save + React Query cache invalidation (Calendar + Dashboard)
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import { motion, AnimatePresence, useAnimation } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { useLocation } from "wouter";
 import {
   X,
   CheckCircle2,
@@ -162,6 +163,12 @@ function firstErrorField(errors: FieldErrors): keyof typeof FIELD_ERROR_TEXT | u
   return FIELD_ORDER.find((key) => Boolean(errors[key]));
 }
 
+function scrollToDataField(attr: string, field: string) {
+  document
+    .querySelector(`[${attr}="${field}"]`)
+    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 const INPUT_BASE =
   "w-full h-12 px-4 rounded-2xl bg-background/60 border text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 transition-all text-sm";
 const INPUT_OK = "border-white/10 focus:border-primary/50 focus:ring-primary/30";
@@ -175,18 +182,23 @@ function FieldError({ message }: { message?: string }) {
 function Sheet({
   children,
   onClose,
-  shakeKey = 0,
 }: {
   children: React.ReactNode;
   onClose: () => void;
-  shakeKey?: number;
 }) {
-  // Hide bottom nav while sheet is open
+  // Hide bottom nav while sheet is open so taps cannot fall through to Settings.
   useEffect(() => {
     const nav = document.getElementById("bottom-nav-root");
-    if (nav) nav.style.visibility = "hidden";
+    if (nav) {
+      nav.style.visibility = "hidden";
+      nav.style.pointerEvents = "none";
+    }
     return () => {
-      if (nav) nav.style.visibility = "";
+      window.setTimeout(() => {
+        if (!nav) return;
+        nav.style.visibility = "";
+        nav.style.pointerEvents = "";
+      }, 450);
     };
   }, []);
 
@@ -198,19 +210,9 @@ function Sheet({
     return () => document.removeEventListener("keydown", fn);
   }, [onClose]);
 
-  const shakeControls = useAnimation();
-
-  useEffect(() => {
-    if (!shakeKey) return;
-    shakeControls.start({
-      x: [0, -10, 10, -8, 8, -4, 4, 0],
-      transition: { duration: 0.42, ease: "easeInOut" },
-    });
-  }, [shakeKey, shakeControls]);
-
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className="fixed inset-0 z-[80] flex items-end justify-center"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -224,15 +226,10 @@ function Sheet({
         animate={{ y: 0 }}
         exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 28, stiffness: 260 }}
-        className="relative w-full max-w-md z-10"
+        className="relative w-full max-w-md bg-card rounded-t-3xl z-10 max-h-[92vh] flex flex-col"
       >
-        <motion.div
-          animate={shakeControls}
-          className="bg-card rounded-t-3xl max-h-[92vh] flex flex-col"
-        >
-          <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-1 shrink-0" />
-          <div className="overflow-y-auto flex-1 px-5 pb-10">{children}</div>
-        </motion.div>
+        <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-1 shrink-0" />
+        <div className="overflow-y-auto flex-1 px-5 pb-10">{children}</div>
       </motion.div>
     </motion.div>
   );
@@ -698,10 +695,11 @@ function getToken() {
 
 // onClose kept in signature for future use; X button lives in the shared tab row
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function ExpenseForm({ onClose: _onClose }: { onClose: () => void }) {
+function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void }) {
   const [title, setTitle]           = useState("");
   const [amountRaw, setAmountRaw]   = useState(""); // raw digits only
-  const [category, setCategory]     = useState("✂️ Ish qurollari"); // default to first
+  const [category, setCategory]     = useState("✂️ Ish qurollari");
+  const [notes, setNotes]           = useState("");
   const [customCats, setCustomCats] = useState<string[]>([]);
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState("");
@@ -709,6 +707,8 @@ function ExpenseForm({ onClose: _onClose }: { onClose: () => void }) {
   const [customDate, setCustomDate] = useState("");
   const [saving, setSaving]         = useState(false);
   const [saved, setSaved]           = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{ title?: string; amount?: string }>({});
+  const [scrollKey, setScrollKey]   = useState(0);
   const calRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -752,10 +752,27 @@ function ExpenseForm({ onClose: _onClose }: { onClose: () => void }) {
     } catch {}
   }
 
-  const isValid = title.trim().length > 0 && amountNum > 0;
+  useEffect(() => {
+    if (!scrollKey) return;
+    const first = fieldErrors.title ? "title" : fieldErrors.amount ? "amount" : null;
+    if (!first) return;
+    const frame = window.requestAnimationFrame(() => {
+      scrollToDataField("data-expense-field", first);
+    });
+    return () => window.cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollKey]);
 
   async function handleSave() {
-    if (!isValid || saving || saved) return;
+    if (saving || saved) return;
+    const errors: { title?: string; amount?: string } = {};
+    if (!title.trim()) errors.title = "Nomini kiriting";
+    if (amountNum <= 0) errors.amount = "Miqdorni kiriting";
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setScrollKey((n) => n + 1);
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/expenses", {
@@ -766,10 +783,7 @@ function ExpenseForm({ onClose: _onClose }: { onClose: () => void }) {
       if (!res.ok) throw new Error("save_error");
       setSaved(true);
       toast({ title: "Xarajat saqlandi ✓", description: `${title.trim()} — ${amountNum.toLocaleString()} so'm` });
-      setTimeout(() => {
-        setTitle(""); setAmountRaw(""); setCategory("✂️ Ish qurollari");
-        setUseCustomDate(false); setCustomDate(""); setSaved(false); setSaving(false);
-      }, 1200);
+      setTimeout(() => onSaved(), 700);
     } catch {
       setSaving(false);
       toast({ title: "Xatolik", description: "Xarajat saqlanmadi", variant: "destructive" });
@@ -790,22 +804,37 @@ function ExpenseForm({ onClose: _onClose }: { onClose: () => void }) {
       </AnimatePresence>
 
       {/* Title */}
-      <div>
+      <div data-expense-field="title">
         <FieldLabel required>Nomi</FieldLabel>
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder={getExpensePlaceholder(category)}
-          className="w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm" />
+        <input
+          value={title}
+          onChange={e => {
+            setTitle(e.target.value);
+            if (e.target.value.trim()) setFieldErrors((prev) => ({ ...prev, title: undefined }));
+          }}
+          placeholder={getExpensePlaceholder(category)}
+          className={`${INPUT_BASE} ${fieldErrors.title ? INPUT_ERR : INPUT_OK}`}
+        />
+        <FieldError message={fieldErrors.title} />
       </div>
 
       {/* Amount — formatted display with thousands separator */}
-      <div>
+      <div data-expense-field="amount">
         <FieldLabel required>Miqdor (so'm)</FieldLabel>
         <input
           inputMode="numeric"
           value={amountDisplay}
-          onChange={handleAmountChange}
+          onChange={(e) => {
+            handleAmountChange(e);
+            const digits = e.target.value.replace(/\D/g, "");
+            if (digits && parseInt(digits, 10) > 0) {
+              setFieldErrors((prev) => ({ ...prev, amount: undefined }));
+            }
+          }}
           placeholder="50 000"
-          className="w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm tabular-nums"
+          className={`${INPUT_BASE} ${fieldErrors.amount ? INPUT_ERR : INPUT_OK} tabular-nums`}
         />
+        <FieldError message={fieldErrors.amount} />
       </div>
 
       {/* Category chips — 2-row flex wrap, max 2 columns feel */}
@@ -875,13 +904,29 @@ function ExpenseForm({ onClose: _onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {/* Save */}
-      <button type="button" onClick={handleSave} disabled={!isValid || saving || saved}
+      <div>
+        <FieldLabel optional>Izoh</FieldLabel>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Qo'shimcha ma'lumotlar..."
+          rows={2}
+          className="w-full px-4 py-3 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm resize-none"
+        />
+      </div>
+
+      <p className="text-xs text-muted-foreground/80 text-center leading-relaxed px-1">
+        ⚠️ Iltimos, barcha majburiy maydonlarni to'ldiring.
+      </p>
+      <button
+        type="button"
+        onClick={handleSave}
         className={`w-full h-14 rounded-2xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
-          isValid && !saving && !saved
-            ? "bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/20 hover:-translate-y-0.5"
-            : "bg-amber-500/20 text-amber-500/50 cursor-not-allowed"
-        }`}>
+          saving || saved
+            ? "bg-amber-500/80 text-black"
+            : "bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/20 hover:-translate-y-0.5"
+        }`}
+      >
         {saving ? <><Loader2 className="w-5 h-5 animate-spin" /> Saqlanmoqda...</>
           : saved ? <><CheckCircle2 className="w-5 h-5" /> Saqlandi!</>
           : "Xarajatni saqlash"}
@@ -904,7 +949,7 @@ function BookingFormContent({
   todayPassed,
   workEndStr,
   fieldErrors,
-  shakeKey,
+  scrollKey,
   saving,
   saved,
   onSave,
@@ -923,7 +968,7 @@ function BookingFormContent({
   todayPassed: boolean;
   workEndStr: string;
   fieldErrors: FieldErrors;
-  shakeKey: number;
+  scrollKey: number;
   saving: boolean;
   saved: boolean;
   onSave: () => void;
@@ -933,18 +978,16 @@ function BookingFormContent({
   const readyForSlots = Boolean(form.serviceId && form.date);
 
   useEffect(() => {
-    if (!shakeKey) return;
+    if (!scrollKey) return;
     const first = firstErrorField(fieldErrors);
     if (!first) return;
     const frame = window.requestAnimationFrame(() => {
-      document
-        .querySelector(`[data-booking-field="${first}"]`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      scrollToDataField("data-booking-field", first);
     });
     return () => window.cancelAnimationFrame(frame);
-    // Only on a failed save (shake), not when individual errors clear.
+    // Only on a failed save, not when individual errors clear.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shakeKey]);
+  }, [scrollKey]);
 
   return (
     <div className="space-y-4 pt-2">
@@ -1113,6 +1156,7 @@ type ActiveTab = "bron" | "xarajat";
 // ── Main dialog export ────────────────────────────────────────────────────────
 export function BookingFlowDialog({ open, onOpenChange }: Props) {
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState<ActiveTab>("bron");
 
   const { toast } = useToast();
@@ -1141,7 +1185,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [shakeKey, setShakeKey] = useState(0);
+  const [scrollKey, setScrollKey] = useState(0);
 
   // ── Existing bookings (conflict detection) ────────────────────────────────
   const { data: bookingsData } = useListBookings({ date: form.date });
@@ -1173,7 +1217,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
       setSaving(false);
       setSaved(false);
       setFieldErrors({});
-      setShakeKey(0);
+      setScrollKey(0);
       setActiveTab("bron");
     }
   }, [open]);
@@ -1242,7 +1286,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
     const errors = collectFieldErrors(form);
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
-      setShakeKey((n) => n + 1);
+      setScrollKey((n) => n + 1);
       return;
     }
     if (isAfterHoursTime) {
@@ -1296,7 +1340,10 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
           queryClient.invalidateQueries({
             queryKey: getListClientsQueryKey(),
           });
-          setTimeout(() => close(), 1200);
+          setTimeout(() => {
+            onOpenChange(false);
+            setLocation("/dashboard");
+          }, 700);
         },
         onError: (err) => {
           setSaving(false);
@@ -1343,7 +1390,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
     <>
       <AnimatePresence>
         {open && (
-          <Sheet onClose={close} shakeKey={shakeKey}>
+          <Sheet onClose={close}>
             {/* Tab row with X close — only shown when not in add-service flow */}
             {!showAddService && (
               <div className="flex items-center gap-2 pt-2 mb-1">
@@ -1397,7 +1444,14 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
                   exit={{ opacity: 0, x: -24 }}
                   transition={{ duration: 0.18 }}
                 >
-                  <ExpenseForm onClose={close} />
+                  <ExpenseForm
+                    onClose={close}
+                    onSaved={() => {
+                      queryClient.invalidateQueries({ queryKey: getGetDashboardStatsQueryKey() });
+                      onOpenChange(false);
+                      setLocation("/dashboard");
+                    }}
+                  />
                 </motion.div>
               ) : (
                 <motion.div
@@ -1420,7 +1474,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
                     todayPassed={todayPassed}
                     workEndStr={workEndStr}
                     fieldErrors={fieldErrors}
-                    shakeKey={shakeKey}
+                    scrollKey={scrollKey}
                     saving={saving}
                     saved={saved}
                     onSave={handleSave}
