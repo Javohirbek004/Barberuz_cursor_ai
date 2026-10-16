@@ -139,6 +139,14 @@ const FIELD_ERROR_TEXT: Record<"name" | "phone" | "service" | "date" | "time", s
   time: "Vaqtni tanlang",
 };
 
+const FIELD_ORDER: (keyof typeof FIELD_ERROR_TEXT)[] = [
+  "name",
+  "phone",
+  "service",
+  "date",
+  "time",
+];
+
 function collectFieldErrors(form: FormState): FieldErrors {
   const errors: FieldErrors = {};
   if (!form.name.trim()) errors.name = FIELD_ERROR_TEXT.name;
@@ -148,6 +156,10 @@ function collectFieldErrors(form: FormState): FieldErrors {
   if (!form.date) errors.date = FIELD_ERROR_TEXT.date;
   if (!form.time) errors.time = FIELD_ERROR_TEXT.time;
   return errors;
+}
+
+function firstErrorField(errors: FieldErrors): keyof typeof FIELD_ERROR_TEXT | undefined {
+  return FIELD_ORDER.find((key) => Boolean(errors[key]));
 }
 
 const INPUT_BASE =
@@ -892,6 +904,7 @@ function BookingFormContent({
   todayPassed,
   workEndStr,
   fieldErrors,
+  shakeKey,
   saving,
   saved,
   onSave,
@@ -910,6 +923,7 @@ function BookingFormContent({
   todayPassed: boolean;
   workEndStr: string;
   fieldErrors: FieldErrors;
+  shakeKey: number;
   saving: boolean;
   saved: boolean;
   onSave: () => void;
@@ -917,6 +931,21 @@ function BookingFormContent({
   onAddService: () => void;
 }) {
   const readyForSlots = Boolean(form.serviceId && form.date);
+
+  useEffect(() => {
+    if (!shakeKey) return;
+    const first = firstErrorField(fieldErrors);
+    if (!first) return;
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-booking-field="${first}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+    // Only on a failed save (shake), not when individual errors clear.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shakeKey]);
+
   return (
     <div className="space-y-4 pt-2">
       {/* Saved banner */}
@@ -935,7 +964,7 @@ function BookingFormContent({
       </AnimatePresence>
 
       {/* 1. Ism */}
-      <div>
+      <div data-booking-field="name">
         <FieldLabel required>Ism</FieldLabel>
         <input
           value={form.name}
@@ -947,7 +976,7 @@ function BookingFormContent({
       </div>
 
       {/* 2. Telefon */}
-      <div>
+      <div data-booking-field="phone">
         <FieldLabel required>Telefon raqam</FieldLabel>
         <input
           value={form.phone}
@@ -970,7 +999,7 @@ function BookingFormContent({
       </div>
 
       {/* 3. Xizmat turi */}
-      <div>
+      <div data-booking-field="service">
         <FieldLabel required>Xizmat turi</FieldLabel>
         <div className={fieldErrors.service ? "rounded-2xl ring-1 ring-red-500/70 p-1" : ""}>
           <ServicePicker
@@ -985,14 +1014,14 @@ function BookingFormContent({
       </div>
 
       {/* 4. Sana */}
-      <div>
+      <div data-booking-field="date">
         <FieldLabel required>Sana</FieldLabel>
         <DatePicker form={form} onChange={onChange} hasError={Boolean(fieldErrors.date)} />
         <FieldError message={fieldErrors.date} />
       </div>
 
       {/* 5. Vaqt */}
-      <div>
+      <div data-booking-field="time">
         <FieldLabel required>
           <span className="flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5" />
@@ -1005,7 +1034,11 @@ function BookingFormContent({
           </span>
         </FieldLabel>
         {!readyForSlots ? (
-          <p className="text-sm text-muted-foreground py-3 text-center rounded-2xl border border-dashed border-white/10">
+          <p
+            className={`text-sm text-muted-foreground py-3 text-center rounded-2xl border border-dashed ${
+              fieldErrors.time ? "border-red-500/70" : "border-white/10"
+            }`}
+          >
             Oldin xizmat va sanani tanlang
           </p>
         ) : (
@@ -1191,14 +1224,15 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
     form.time !== "" && (isOffDay || toMins(form.time) >= workEnd);
 
   function patchForm(patch: Partial<FormState>) {
-    setForm((f) => ({ ...f, ...patch }));
+    const nextForm = { ...form, ...patch };
+    setForm(nextForm);
     setFieldErrors((prev) => {
-      const next = { ...prev };
-      if ("name" in patch) delete next.name;
-      if ("phone" in patch) delete next.phone;
-      if ("serviceId" in patch) delete next.service;
-      if ("date" in patch) delete next.date;
-      if ("time" in patch) delete next.time;
+      if (Object.keys(prev).length === 0) return prev;
+      const stillInvalid = collectFieldErrors(nextForm);
+      const next: FieldErrors = {};
+      for (const key of FIELD_ORDER) {
+        if (prev[key] && stillInvalid[key]) next[key] = prev[key];
+      }
       return next;
     });
   }
@@ -1386,6 +1420,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
                     todayPassed={todayPassed}
                     workEndStr={workEndStr}
                     fieldErrors={fieldErrors}
+                    shakeKey={shakeKey}
                     saving={saving}
                     saved={saved}
                     onSave={handleSave}
