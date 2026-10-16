@@ -10,12 +10,11 @@
  *  - Real API save + React Query cache invalidation (Calendar + Dashboard)
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import {
   X,
   CheckCircle2,
   Loader2,
-  Calendar,
   Clock,
   Plus,
   AlertTriangle,
@@ -130,12 +129,45 @@ const EMPTY_FORM: FormState = {
 };
 
 // ── Bottom-sheet wrapper ──────────────────────────────────────────────────────
+type FieldErrors = Partial<Record<"name" | "phone" | "service" | "date" | "time", string>>;
+
+const FIELD_ERROR_TEXT: Record<"name" | "phone" | "service" | "date" | "time", string> = {
+  name: "Ismni kiriting",
+  phone: "To'liq telefon raqamini kiriting",
+  service: "Xizmat turini tanlang",
+  date: "Sanani tanlang",
+  time: "Vaqtni tanlang",
+};
+
+function collectFieldErrors(form: FormState): FieldErrors {
+  const errors: FieldErrors = {};
+  if (!form.name.trim()) errors.name = FIELD_ERROR_TEXT.name;
+  const digits = form.phone.replace(/\D/g, "");
+  if (digits.length < 12) errors.phone = FIELD_ERROR_TEXT.phone;
+  if (!form.serviceId) errors.service = FIELD_ERROR_TEXT.service;
+  if (!form.date) errors.date = FIELD_ERROR_TEXT.date;
+  if (!form.time) errors.time = FIELD_ERROR_TEXT.time;
+  return errors;
+}
+
+const INPUT_BASE =
+  "w-full h-12 px-4 rounded-2xl bg-background/60 border text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 transition-all text-sm";
+const INPUT_OK = "border-white/10 focus:border-primary/50 focus:ring-primary/30";
+const INPUT_ERR = "border-red-500/70 focus:border-red-500 focus:ring-red-500/30";
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="text-xs text-red-400 mt-1.5">{message}</p>;
+}
+
 function Sheet({
   children,
   onClose,
+  shakeKey = 0,
 }: {
   children: React.ReactNode;
   onClose: () => void;
+  shakeKey?: number;
 }) {
   // Hide bottom nav while sheet is open
   useEffect(() => {
@@ -154,6 +186,16 @@ function Sheet({
     return () => document.removeEventListener("keydown", fn);
   }, [onClose]);
 
+  const shakeControls = useAnimation();
+
+  useEffect(() => {
+    if (!shakeKey) return;
+    shakeControls.start({
+      x: [0, -10, 10, -8, 8, -4, 4, 0],
+      transition: { duration: 0.42, ease: "easeInOut" },
+    });
+  }, [shakeKey, shakeControls]);
+
   return (
     <motion.div
       className="fixed inset-0 z-50 flex items-end justify-center"
@@ -170,10 +212,15 @@ function Sheet({
         animate={{ y: 0 }}
         exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 28, stiffness: 260 }}
-        className="relative w-full max-w-md bg-card rounded-t-3xl z-10 max-h-[92vh] flex flex-col"
+        className="relative w-full max-w-md z-10"
       >
-        <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-1 shrink-0" />
-        <div className="overflow-y-auto flex-1 px-5 pb-10">{children}</div>
+        <motion.div
+          animate={shakeControls}
+          className="bg-card rounded-t-3xl max-h-[92vh] flex flex-col"
+        >
+          <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-1 shrink-0" />
+          <div className="overflow-y-auto flex-1 px-5 pb-10">{children}</div>
+        </motion.div>
       </motion.div>
     </motion.div>
   );
@@ -240,14 +287,21 @@ function AfterHoursWarning({
 function FieldLabel({
   children,
   required,
+  optional,
 }: {
   children: React.ReactNode;
   required?: boolean;
+  optional?: boolean;
 }) {
   return (
     <label className="block text-sm font-medium text-muted-foreground mb-1.5">
       {children}
-      {required && <span className="text-xs font-normal text-muted-foreground/55 ml-1">(majburiy)</span>}
+      {required && (
+        <span className="text-xs font-normal text-primary ml-1">(majburiy)</span>
+      )}
+      {optional && (
+        <span className="text-xs font-normal text-muted-foreground/55 ml-1">(ixtiyoriy)</span>
+      )}
     </label>
   );
 }
@@ -565,16 +619,17 @@ function TimePicker({
         />
         {showAfterHours
           ? "Ish vaqtidan tashqarini yashirish"
-          : "+ Ish vaqtidan tashqari xizmat"}
+          : "Ish vaqtidan tashqari xizmat"}
       </button>
     </div>
   );
 }
 
 // ── Date Picker (tabs + calendar trigger) ────────────────────────────────────
-function DatePicker({ form, onChange }: {
+function DatePicker({ form, onChange, hasError }: {
   form: FormState;
   onChange: (patch: Partial<FormState>) => void;
+  hasError?: boolean;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const todayVal    = todayStr();
@@ -590,7 +645,9 @@ function DatePicker({ form, onChange }: {
             className={`flex-1 py-3 rounded-2xl text-sm font-bold border transition-all ${
               form.date === d
                 ? "bg-primary/15 border-primary/30 text-primary"
-                : "bg-background/60 border-white/10 text-muted-foreground hover:bg-white/5"
+                : hasError
+                  ? "bg-background/60 border-red-500/70 text-muted-foreground hover:bg-white/5"
+                  : "bg-background/60 border-white/10 text-muted-foreground hover:bg-white/5"
             }`}>
             {i === 0 ? "Bugun" : "Ertaga"}
           </button>
@@ -834,7 +891,7 @@ function BookingFormContent({
   onToggleAfterHours,
   todayPassed,
   workEndStr,
-  isValid,
+  fieldErrors,
   saving,
   saved,
   onSave,
@@ -852,13 +909,14 @@ function BookingFormContent({
   onToggleAfterHours: () => void;
   todayPassed: boolean;
   workEndStr: string;
-  isValid: boolean;
+  fieldErrors: FieldErrors;
   saving: boolean;
   saved: boolean;
   onSave: () => void;
   onClose: () => void;
   onAddService: () => void;
 }) {
+  const readyForSlots = Boolean(form.serviceId && form.date);
   return (
     <div className="space-y-4 pt-2">
       {/* Saved banner */}
@@ -883,8 +941,9 @@ function BookingFormContent({
           value={form.name}
           onChange={(e) => onChange({ name: e.target.value })}
           placeholder="Aziz"
-          className="w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm"
+          className={`${INPUT_BASE} ${fieldErrors.name ? INPUT_ERR : INPUT_OK}`}
         />
+        <FieldError message={fieldErrors.name} />
       </div>
 
       {/* 2. Telefon */}
@@ -902,59 +961,73 @@ function BookingFormContent({
             const local = (digits.startsWith("998") ? digits.slice(3) : digits).slice(0, -1);
             onChange({ phone: applyPhoneMask(local) });
           }}
-          placeholder="+998 (90) 123-45-67"
+          placeholder="+998 (__) ___-__-__"
           type="tel"
           inputMode="numeric"
-          className="w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm"
+          className={`${INPUT_BASE} ${fieldErrors.phone ? INPUT_ERR : INPUT_OK}`}
         />
+        <FieldError message={fieldErrors.phone} />
       </div>
 
       {/* 3. Xizmat turi */}
       <div>
         <FieldLabel required>Xizmat turi</FieldLabel>
-        <ServicePicker
-          services={services}
-          loading={svcLoading}
-          value={form.serviceId}
-          onChange={(id) => onChange({ serviceId: id, time: "" })}
-          onAddNew={onAddService}
-        />
+        <div className={fieldErrors.service ? "rounded-2xl ring-1 ring-red-500/70 p-1" : ""}>
+          <ServicePicker
+            services={services}
+            loading={svcLoading}
+            value={form.serviceId}
+            onChange={(id) => onChange({ serviceId: id, time: "" })}
+            onAddNew={onAddService}
+          />
+        </div>
+        <FieldError message={fieldErrors.service} />
       </div>
 
       {/* 4. Sana */}
       <div>
-        <FieldLabel>Sana</FieldLabel>
-        <DatePicker form={form} onChange={onChange} />
+        <FieldLabel required>Sana</FieldLabel>
+        <DatePicker form={form} onChange={onChange} hasError={Boolean(fieldErrors.date)} />
+        <FieldError message={fieldErrors.date} />
       </div>
 
-      {/* 5. Vaqt (only shown after service selected) */}
-      {selectedSvc && (
-        <div>
-          <FieldLabel required>
-            <span className="flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5" />
-              Vaqt
+      {/* 5. Vaqt */}
+      <div>
+        <FieldLabel required>
+          <span className="flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5" />
+            Vaqt
+            {selectedSvc && (
               <span className="text-xs text-primary ml-1">
                 ({selectedSvc.duration} daqiqa)
               </span>
-            </span>
-          </FieldLabel>
-          <TimePicker
-            standardSlots={standardSlots}
-            afterSlots={afterSlots}
-            showAfterHours={showAfterHours}
-            onToggleAfterHours={onToggleAfterHours}
-            todayPassed={todayPassed}
-            value={form.time}
-            onChange={(t) => onChange({ time: t })}
-            workEndStr={workEndStr}
-          />
-        </div>
-      )}
+            )}
+          </span>
+        </FieldLabel>
+        {!readyForSlots ? (
+          <p className="text-sm text-muted-foreground py-3 text-center rounded-2xl border border-dashed border-white/10">
+            Oldin xizmat va sanani tanlang
+          </p>
+        ) : (
+          <div className={fieldErrors.time ? "rounded-2xl ring-1 ring-red-500/70 p-2" : ""}>
+            <TimePicker
+              standardSlots={standardSlots}
+              afterSlots={afterSlots}
+              showAfterHours={showAfterHours}
+              onToggleAfterHours={onToggleAfterHours}
+              todayPassed={todayPassed}
+              value={form.time}
+              onChange={(t) => onChange({ time: t })}
+              workEndStr={workEndStr}
+            />
+          </div>
+        )}
+        <FieldError message={fieldErrors.time} />
+      </div>
 
       {/* 6. Izoh */}
       <div>
-        <FieldLabel>Izoh (ixtiyoriy)</FieldLabel>
+        <FieldLabel optional>Izoh</FieldLabel>
         <textarea
           value={form.notes}
           onChange={(e) => onChange({ notes: e.target.value })}
@@ -964,15 +1037,17 @@ function BookingFormContent({
         />
       </div>
 
-      {/* Save button */}
+      {/* Save */}
+      <p className="text-xs text-muted-foreground/80 text-center leading-relaxed px-1">
+        ⚠️ Iltimos, barcha majburiy maydonlarni to'ldiring.
+      </p>
       <button
         type="button"
         onClick={onSave}
-        disabled={!isValid || saving || saved}
         className={`w-full h-14 rounded-2xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
-          isValid && !saving && !saved
-            ? "bg-green-500 hover:bg-green-400 text-white shadow-lg shadow-green-500/25 hover:-translate-y-0.5"
-            : "bg-green-500/20 text-green-500/50 cursor-not-allowed"
+          saving || saved
+            ? "bg-green-500/80 text-white"
+            : "bg-green-500 hover:bg-green-400 text-white shadow-lg shadow-green-500/25 hover:-translate-y-0.5"
         }`}
       >
         {saving ? (
@@ -1032,6 +1107,8 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
   const [pendingAfterHours, setPendingAfterHours] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [shakeKey, setShakeKey] = useState(0);
 
   // ── Existing bookings (conflict detection) ────────────────────────────────
   const { data: bookingsData } = useListBookings({ date: form.date });
@@ -1062,6 +1139,8 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
       setPendingAfterHours(false);
       setSaving(false);
       setSaved(false);
+      setFieldErrors({});
+      setShakeKey(0);
       setActiveTab("bron");
     }
   }, [open]);
@@ -1111,15 +1190,27 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
   const isAfterHoursTime =
     form.time !== "" && (isOffDay || toMins(form.time) >= workEnd);
 
-  const phoneDigits = form.phone.replace(/\D/g, "");
-  const isValid =
-    form.name.trim().length > 0 &&
-    phoneDigits.length >= 12 &&
-    form.serviceId !== "" &&
-    form.time !== "";
+  function patchForm(patch: Partial<FormState>) {
+    setForm((f) => ({ ...f, ...patch }));
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      if ("name" in patch) delete next.name;
+      if ("phone" in patch) delete next.phone;
+      if ("serviceId" in patch) delete next.service;
+      if ("date" in patch) delete next.date;
+      if ("time" in patch) delete next.time;
+      return next;
+    });
+  }
 
   function handleSave() {
-    if (!isValid || saving || saved) return;
+    if (saving || saved) return;
+    const errors = collectFieldErrors(form);
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setShakeKey((n) => n + 1);
+      return;
+    }
     if (isAfterHoursTime) {
       setPendingAfterHours(true);
       return;
@@ -1218,7 +1309,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
     <>
       <AnimatePresence>
         {open && (
-          <Sheet onClose={close}>
+          <Sheet onClose={close} shakeKey={shakeKey}>
             {/* Tab row with X close — only shown when not in add-service flow */}
             {!showAddService && (
               <div className="flex items-center gap-2 pt-2 mb-1">
@@ -1284,7 +1375,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
                 >
                   <BookingFormContent
                     form={form}
-                    onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+                    onChange={patchForm}
                     services={services}
                     svcLoading={svcLoading}
                     selectedSvc={selectedSvc}
@@ -1294,7 +1385,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
                     onToggleAfterHours={() => setShowAfterHours((v) => !v)}
                     todayPassed={todayPassed}
                     workEndStr={workEndStr}
-                    isValid={isValid}
+                    fieldErrors={fieldErrors}
                     saving={saving}
                     saved={saved}
                     onSave={handleSave}
