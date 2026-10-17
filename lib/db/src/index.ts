@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "fs";
+import dns from "node:dns";
 import path from "path";
 import { fileURLToPath } from "url";
 import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
@@ -7,6 +8,9 @@ import { PGlite } from "@electric-sql/pglite";
 import pg from "pg";
 import * as schema from "./schema";
 import { BOOTSTRAP_SCHEMA_SQL } from "./bootstrap-sql";
+import { candidateDatabaseUrls, describeDbHost } from "./connection-url";
+
+dns.setDefaultResultOrder("ipv4first");
 
 const { Pool } = pg;
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -27,7 +31,30 @@ function postgresPoolConfig(rawUrl: string) {
   return {
     connectionString: parsed.toString(),
     ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+    max: 8,
+    connectionTimeoutMillis: 8000,
   };
+}
+
+async function openPostgresPool(rawUrl: string) {
+  const candidates = candidateDatabaseUrls(rawUrl);
+  let lastErr: unknown;
+  for (const url of candidates) {
+    const pool = new Pool(postgresPoolConfig(url));
+    try {
+      await pool.query("select 1");
+      console.log("[db] Connected via", describeDbHost(url));
+      return pool;
+    } catch (err) {
+      lastErr = err;
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[db] Connect failed:", describeDbHost(url), detail);
+      await pool.end().catch(() => undefined);
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("Could not reach Postgres. Use the Session pooler URL from Supabase.");
 }
 
 function splitSqlStatements(sql: string): string[] {
@@ -124,7 +151,7 @@ const ENSURE_SCHEMA_SQL = [
 
 async function createDb() {
   if (!useLocalDb) {
-    const pool = new Pool(postgresPoolConfig(process.env.DATABASE_URL!));
+    const pool = await openPostgresPool(process.env.DATABASE_URL!);
     await applyBootstrapSchema((sql) => pool.query(sql), "Postgres");
     for (const statement of ENSURE_SCHEMA_SQL) {
       try {

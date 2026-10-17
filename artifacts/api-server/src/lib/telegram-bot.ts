@@ -41,9 +41,10 @@ import {
   receiptText,
   sendReminderPreview,
 } from "./client-notifications";
+import { getTelegramBotToken } from "./telegram-token";
 
 function getToken(): string {
-  return process.env.TELEGRAM_BOT_TOKEN || "";
+  return getTelegramBotToken();
 }
 
 /**

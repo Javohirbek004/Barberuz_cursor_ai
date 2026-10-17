@@ -6,6 +6,7 @@
 
 import { db, bookingsTable, bookingSessionsTable, clientsTable, usersTable } from "@workspace/db";
 import { syncClientMetrics } from "./client-metrics";
+import { getTelegramBotToken } from "./telegram-token";
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -55,7 +56,7 @@ interface BookingCard {
 }
 
 function token(): string {
-  return process.env.TELEGRAM_BOT_TOKEN || "";
+  return getTelegramBotToken();
 }
 
 const PUBLIC_SITE = "https://barberuz-lovat.vercel.app";

@@ -1,6 +1,7 @@
 import "./load-env";
 import app from "./app";
 import { registerWebhook, isBotConfigured, startDevPolling } from "./lib/telegram-bot";
+import { shouldPollTelegram, shouldRegisterTelegramWebhook } from "./lib/telegram-token";
 import { startReminderJob } from "./lib/reminders";
 import { normalizeStoredClientPhones } from "./lib/phone-migration";
 import { moveSlugToProfileName } from "./lib/public-slug";
@@ -61,24 +62,25 @@ app.listen(port, async () => {
     .catch((err) => console.error("[PublicSlug] rename failed:", err));
 
   if (!isBotConfigured()) {
-    console.warn(
-      "[TelegramBot] ⚠️  TELEGRAM_BOT_TOKEN is not set. " +
-      "Bot will not respond until the secret is added and the server is restarted. " +
-      "After adding the token, call GET /api/telegram/setup to register the webhook.",
-    );
+    if (shouldRegisterTelegramWebhook()) {
+      console.warn("[TelegramBot] TELEGRAM_BOT_TOKEN is not set on this server.");
+    } else {
+      console.warn(
+        "[TelegramBot] Local test bot is off. Production bot stays on Render. " +
+        "Set TELEGRAM_BOT_TOKEN_TEST to use a separate test bot locally.",
+      );
+    }
     return;
   }
 
-  // In development: never auto-register the webhook.
-  // Doing so would overwrite the production webhook URL and break bot flows
-  // for real users (their pending state lives in the prod server's memory).
-  if (process.env.NODE_ENV === "development") {
+  // Local: poll only a TEST bot. Never getUpdates on the live token.
+  if (shouldPollTelegram()) {
     startDevPolling();
     return;
   }
 
-  // In production: register using the clean domain (prefer barberuz.replit.app
-  // over any sisko.replit.dev entry that Replit may include in REPLIT_DOMAINS).
+  if (!shouldRegisterTelegramWebhook()) return;
+
   setTimeout(async () => {
     const domain = pickProdDomain();
     const webhookUrl = `https://${domain}/api/telegram/webhook`;

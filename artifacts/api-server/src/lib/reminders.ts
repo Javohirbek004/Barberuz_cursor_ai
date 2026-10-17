@@ -18,12 +18,13 @@ import { db, bookingSessionsTable, bookingsTable, usersTable } from "@workspace/
 import { eq, and, inArray, isNull } from "drizzle-orm";
 import { expirePendingHolds } from "./booking-conflicts";
 import { runClientNotificationCycle } from "./client-notifications";
+import { getTelegramBotToken } from "./telegram-token";
 
 const TELEGRAM_API = "https://api.telegram.org";
 const TASHKENT_UTC_OFFSET_MS = 5 * 60 * 60 * 1000; // UTC+5
 
 function getToken(): string {
-  return process.env.TELEGRAM_BOT_TOKEN || "";
+  return getTelegramBotToken();
 }
 
 async function sendTelegramMessage(
