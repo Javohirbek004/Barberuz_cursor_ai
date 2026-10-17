@@ -21,27 +21,27 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 /**
- * Pick the best production domain from REPLIT_DOMAINS.
- * Prefers the clean domain (e.g. barberuz.replit.app) over sisko.replit.dev.
- * Falls back to APP_URL or the hardcoded production domain.
+ * Telegram webhook must hit the live API (Render), not the old Replit host.
+ * Prefer APP_URL / Render hostname; skip dead Replit domains.
  */
 function pickProdDomain(): string {
+  if (process.env.APP_URL) {
+    try {
+      const host = new URL(process.env.APP_URL).hostname;
+      if (host && !host.includes("replit")) return host;
+    } catch { /* ignore */ }
+  }
+
+  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
+  if (renderHost) return renderHost;
+
   const domains = (process.env.REPLIT_DOMAINS || "")
     .split(",")
     .map(d => d.trim())
-    .filter(Boolean);
+    .filter(d => d && !d.includes("sisko.replit.dev") && !d.includes("replit."));
+  if (domains[0]) return domains[0];
 
-  // 1. Prefer a clean domain (not sisko.replit.dev) from REPLIT_DOMAINS
-  const preferred = domains.find(d => !d.includes("sisko.replit.dev"));
-  if (preferred) return preferred;
-
-  // 2. Use APP_URL hostname (manual override, e.g. custom domain)
-  if (process.env.APP_URL) {
-    try { return new URL(process.env.APP_URL).hostname; } catch { /* ignore */ }
-  }
-
-  // 3. Hardcoded known-good production domain
-  return "barberuz.replit.app";
+  return "barber-uz-clq6.onrender.com";
 }
 
 app.listen(port, async () => {

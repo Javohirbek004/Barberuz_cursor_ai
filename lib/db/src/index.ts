@@ -29,6 +29,45 @@ function postgresPoolConfig(rawUrl: string) {
   };
 }
 
+function splitSqlStatements(sql: string): string[] {
+  return sql
+    .split(";")
+    .map((chunk) =>
+      chunk
+        .split("\n")
+        .map((line) => line.replace(/--.*$/, "").trimEnd())
+        .join("\n")
+        .trim(),
+    )
+    .filter((statement) => statement.length > 0);
+}
+
+function bootstrapSchemaPath(): string {
+  return path.join(here, "local-schema.sql");
+}
+
+async function applyBootstrapSchema(
+  exec: (sql: string) => Promise<unknown>,
+  label: string,
+) {
+  const sqlPath = bootstrapSchemaPath();
+  if (!existsSync(sqlPath)) {
+    console.error(`[db] ${label}: missing ${sqlPath}`);
+    return;
+  }
+  const statements = [
+    `CREATE EXTENSION IF NOT EXISTS pgcrypto`,
+    ...splitSqlStatements(readFileSync(sqlPath, "utf8")),
+  ];
+  for (const statement of statements) {
+    try {
+      await exec(statement);
+    } catch (err) {
+      console.error("[db] Schema bootstrap failed:", statement, err);
+    }
+  }
+}
+
 /**
  * Additive, idempotent schema upgrades that must exist before the app serves requests.
  * Each statement uses IF NOT EXISTS, so running it on every start is safe.
@@ -81,6 +120,7 @@ const ENSURE_SCHEMA_SQL = [
 async function createDb() {
   if (!useLocalDb) {
     const pool = new Pool(postgresPoolConfig(process.env.DATABASE_URL!));
+    await applyBootstrapSchema((sql) => pool.query(sql), "Postgres");
     for (const statement of ENSURE_SCHEMA_SQL) {
       try {
         await pool.query(statement);
@@ -94,10 +134,7 @@ async function createDb() {
   const dataDir = path.resolve(here, "../.pglite-data");
   const client = new PGlite(dataDir);
   await client.waitReady;
-  const sqlPath = path.join(here, "local-schema.sql");
-  if (existsSync(sqlPath)) {
-    await client.exec(readFileSync(sqlPath, "utf8"));
-  }
+  await applyBootstrapSchema((sql) => client.exec(sql), "PGlite");
   for (const statement of ENSURE_SCHEMA_SQL) {
     try {
       await client.exec(statement);

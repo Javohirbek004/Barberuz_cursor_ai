@@ -51,7 +51,7 @@ function getToken(): string {
  * Priority: REPLIT_DEV_DOMAIN (dev only, when NODE_ENV=development)
  *           → REPLIT_DOMAINS preferred entry (non-sisko first, e.g. barberuz.replit.app)
  *           → APP_URL (manual override / custom domain fallback)
- *           → barberuz.replit.app (hardcoded last resort)
+ *           → barberuz-lovat.vercel.app (hardcoded last resort)
  *
  * IMPORTANT: REPLIT_DOMAINS may contain both a sisko.replit.dev entry AND the
  * clean domain. We always prefer the clean domain so that bot links sent to
@@ -62,17 +62,17 @@ function getAppUrl(): string {
   if (process.env.NODE_ENV === "development") {
     if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
-  // In production, prefer the clean domain over sisko.replit.dev entries.
+  if (process.env.APP_URL) {
+    const appUrl = process.env.APP_URL.replace(/\/$/, "");
+    if (!/replit\./i.test(appUrl)) return appUrl;
+  }
   const domains = (process.env.REPLIT_DOMAINS || "")
     .split(",")
     .map(d => d.trim())
-    .filter(Boolean);
-  const preferred = domains.find(d => !d.includes("sisko.replit.dev"));
+    .filter(d => d && !d.includes("sisko.replit.dev") && !d.includes("replit."));
+  const preferred = domains[0];
   if (preferred) return `https://${preferred}`;
-  if (domains[0]) return `https://${domains[0]}`;
-  // APP_URL as a manual override fallback (e.g. custom domain).
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
-  return "https://barberuz.replit.app";
+  return "https://barberuz-lovat.vercel.app";
 }
 
 function publicSiteUrl(): string {
