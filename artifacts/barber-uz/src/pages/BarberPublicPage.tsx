@@ -184,7 +184,7 @@ function readPendingSession(): { id: string; name: string } | null {
 }
 
 function saveClientProfile(profile: SavedClient) {
-  if (!profile.name.trim() && !profile.phone.trim()) return;
+  if (!profile.name.trim() && !profile.phone.trim() && !profile.tgId) return;
   localStorage.setItem(CLIENT_PROFILE_KEY, JSON.stringify({
     tgId: profile.tgId || "",
     name: profile.name.trim(),
@@ -193,6 +193,19 @@ function saveClientProfile(profile: SavedClient) {
   }));
   localStorage.removeItem(PENDING_SESSION_KEY);
   window.dispatchEvent(new Event("barber-client-saved"));
+}
+
+function phoneUpdateLink(username: string): string {
+  const slug = username.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48);
+  const payload = slug ? `update_phone_${slug}` : "update_phone";
+  return `https://t.me/${BOT_USERNAME}?start=${payload}`;
+}
+
+function captureTelegramIdFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const tg = new URLSearchParams(window.location.search).get("tg");
+  if (!tg || !/^\d{5,20}$/.test(tg)) return null;
+  return tg;
 }
 
 function readBookingDraft(): BookingDraft | null {
@@ -211,7 +224,25 @@ function clearBookingDraft() {
 }
 
 async function refreshSavedClientPhone() {
-  // Phone numbers are not fetched from a public URL. This device already stored it.
+  const profile = loadClientProfile();
+  const tgId = profile?.tgId || (telegramWebAppUser()?.id ? String(telegramWebAppUser()?.id) : "") || captureTelegramIdFromUrl() || "";
+  if (!tgId) return;
+  try {
+    const res = await fetch(`/api/public/client-phone?telegramId=${encodeURIComponent(tgId)}`);
+    if (!res.ok) return;
+    const data = (await res.json()) as { phone?: string | null };
+    const phone = (data.phone || "").trim();
+    if (!phoneReady(phone)) return;
+    const next: SavedClient = {
+      tgId,
+      name: (profile?.name || "").trim(),
+      phone,
+      username: profile?.username || null,
+    };
+    saveClientProfile(next);
+  } catch {
+    // Keep the locally stored number.
+  }
 }
 
 function PublicBookingModal({
@@ -251,6 +282,8 @@ function PublicBookingModal({
   const [nameError, setNameError] = useState("");
   const [phoneError, setPhoneError] = useState("");
   const [bookedDirect, setBookedDirect] = useState(false);
+  const [phoneChanging, setPhoneChanging] = useState(false);
+  const [phoneLocked, setPhoneLocked] = useState(() => phoneReady(savedClient.current?.phone || ""));
 
   useEffect(() => {
     const refresh = () => {
@@ -258,11 +291,26 @@ function PublicBookingModal({
       if (!profile) return;
       savedClient.current = profile;
       setClientName((current) => current.trim() ? current : profile.name);
-      setClientPhone((current) => phoneReady(current) ? current : profile.phone);
+      setClientPhone((current) => (phoneReady(profile.phone) ? profile.phone : current));
+      if (phoneReady(profile.phone)) setPhoneLocked(true);
       setPhoneError("");
     };
     window.addEventListener("barber-client-saved", refresh);
     return () => window.removeEventListener("barber-client-saved", refresh);
+  }, []);
+
+  useEffect(() => {
+    const tick = () => { void refreshSavedClientPhone(); };
+    tick();
+    const id = window.setInterval(tick, 3000);
+    const onShow = () => { if (document.visibilityState === "visible") tick(); };
+    window.addEventListener("pageshow", tick);
+    document.addEventListener("visibilitychange", onShow);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("pageshow", tick);
+      document.removeEventListener("visibilitychange", onShow);
+    };
   }, []);
 
   useEffect(() => {
@@ -281,6 +329,7 @@ function PublicBookingModal({
     savedClient.current = next;
     if (!clientName.trim() && next.name) setClientName(next.name);
     if (tgPhone && !phoneReady(clientPhone)) setClientPhone(tgPhone);
+    if (phoneReady(next.phone)) setPhoneLocked(true);
     saveClientProfile(next);
     // Hydrate once when the Telegram Mini App opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -381,6 +430,24 @@ function PublicBookingModal({
         } : {}),
       }),
     });
+  }
+
+  function leaveForPhoneChange() {
+    if (phoneChanging) return;
+    setPhoneChanging(true);
+    setPhoneError("");
+    setFormError("");
+    if (selectedTime) {
+      localStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify({
+        slug: barber.username,
+        serviceIds: selectedServices.map(s => s.id),
+        date: dateOpt,
+        time: selectedTime,
+        name: clientName.trim(),
+        at: Date.now(),
+      } satisfies BookingDraft));
+    }
+    window.location.assign(phoneUpdateLink(barber.username));
   }
 
   async function handleDirectConfirm() {
@@ -644,7 +711,12 @@ function PublicBookingModal({
                     <label className="text-xs font-semibold text-muted-foreground">Telefon *</label>
                     <input
                       value={clientPhone}
-                      onChange={e => { setClientPhone(e.target.value); setPhoneError(""); }}
+                      onChange={e => {
+                        if (phoneLocked) return;
+                        setClientPhone(e.target.value);
+                        setPhoneError("");
+                      }}
+                      readOnly={phoneLocked}
                       inputMode="tel"
                       placeholder="+998 90 123 45 67"
                       required
@@ -652,10 +724,21 @@ function PublicBookingModal({
                       data-testid="client-phone"
                       aria-invalid={!!phoneError}
                       className={`w-full h-11 px-3 rounded-xl bg-white/5 text-sm focus:outline-none ${
+                        phoneLocked ? "opacity-80 cursor-not-allowed" : ""
+                      } ${
                         phoneError ? "border border-red-500/70 focus:border-red-400" : "border border-white/10 focus:border-primary/50"
                       }`}
                     />
                     {phoneError && <p className="text-xs text-red-400">{phoneError}</p>}
+                    <button
+                      type="button"
+                      onClick={leaveForPhoneChange}
+                      disabled={phoneChanging}
+                      data-testid="phone-update"
+                      className="text-sm font-bold text-primary disabled:opacity-50"
+                    >
+                      {phoneChanging ? "Telegram ochilmoqda..." : "📱 Raqamni o'zgartirish"}
+                    </button>
                   </div>
                 </div>
                 {formError && <p className="text-sm text-red-400 mb-3" data-testid="booking-form-error">{formError}</p>}
@@ -1117,6 +1200,16 @@ export default function BarberPublicPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const tgFromUrl = captureTelegramIdFromUrl();
+    if (tgFromUrl) {
+      const profile = loadClientProfile();
+      saveClientProfile({
+        tgId: tgFromUrl,
+        name: profile?.name || "",
+        phone: profile?.phone || "",
+        username: profile?.username || null,
+      });
+    }
     const recover = () => {
       const pending = readPendingSession();
       if (!pending || loadClientProfile()) return;
