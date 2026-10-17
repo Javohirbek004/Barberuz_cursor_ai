@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -101,3 +101,8 @@ await esbuild.build({
   },
   external: ["pg-native"],
 });
+
+const schemaSql = path.join(repoRoot, "lib/db/src/local-schema.sql");
+if (existsSync(schemaSql)) {
+  copyFileSync(schemaSql, path.join(dir, "local-schema.sql"));
+}

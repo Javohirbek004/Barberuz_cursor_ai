@@ -6,6 +6,7 @@ import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { PGlite } from "@electric-sql/pglite";
 import pg from "pg";
 import * as schema from "./schema";
+import { BOOTSTRAP_SCHEMA_SQL } from "./bootstrap-sql";
 
 const { Pool } = pg;
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -42,22 +43,25 @@ function splitSqlStatements(sql: string): string[] {
     .filter((statement) => statement.length > 0);
 }
 
-function bootstrapSchemaPath(): string {
-  return path.join(here, "local-schema.sql");
+function loadBootstrapSql(): string {
+  const candidates = [
+    path.join(here, "local-schema.sql"),
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "local-schema.sql"),
+    path.resolve(process.cwd(), "lib/db/src/local-schema.sql"),
+  ];
+  for (const sqlPath of candidates) {
+    if (existsSync(sqlPath)) return readFileSync(sqlPath, "utf8");
+  }
+  return BOOTSTRAP_SCHEMA_SQL;
 }
 
 async function applyBootstrapSchema(
   exec: (sql: string) => Promise<unknown>,
-  label: string,
+  _label: string,
 ) {
-  const sqlPath = bootstrapSchemaPath();
-  if (!existsSync(sqlPath)) {
-    console.error(`[db] ${label}: missing ${sqlPath}`);
-    return;
-  }
   const statements = [
     `CREATE EXTENSION IF NOT EXISTS pgcrypto`,
-    ...splitSqlStatements(readFileSync(sqlPath, "utf8")),
+    ...splitSqlStatements(loadBootstrapSql()),
   ];
   for (const statement of statements) {
     try {
@@ -66,6 +70,7 @@ async function applyBootstrapSchema(
       console.error("[db] Schema bootstrap failed:", statement, err);
     }
   }
+  console.log("[db] Schema bootstrap applied");
 }
 
 /**
