@@ -1090,7 +1090,9 @@ async function completePhoneUpdate(
 
   pendingPhoneUpdates.delete(telegramId);
   log("phone_update_done", { chatId, telegramUserId: telegramId });
-  const backUrl = rebookUrl(barberSlug);
+  const baseBack = rebookUrl(barberSlug);
+  const joiner = baseBack.includes("?") ? "&" : "?";
+  const backUrl = `${baseBack}${joiner}tg=${encodeURIComponent(telegramId)}`;
   await callTelegram("sendMessage", {
     chat_id: chatId,
     parse_mode: "HTML",
