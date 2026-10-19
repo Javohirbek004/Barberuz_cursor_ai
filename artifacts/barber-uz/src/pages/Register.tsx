@@ -39,7 +39,6 @@ export default function Register() {
   });
 
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [attempted, setAttempted] = useState(false);
 
   const fieldRefs = {
@@ -78,12 +77,17 @@ export default function Register() {
   const update = (field: keyof typeof formData, value: string) =>
     setFormData((prev) => ({ ...prev, [field]: value }));
 
+  const passwordsDiffer =
+    formData.password.length >= 6 &&
+    formData.confirmPassword.length >= formData.password.length &&
+    formData.password !== formData.confirmPassword;
+
   const errors: Record<FieldKey, string> = {
     name: formData.name.trim() ? "" : t("register.error.name"),
     password: formData.password.length >= 6 ? "" : t("register.error.pwd_short"),
     confirmPassword: !formData.confirmPassword
       ? t("register.error.confirm_required")
-      : formData.password !== formData.confirmPassword
+      : passwordsDiffer
         ? t("register.error.pwd_mismatch")
         : "",
   };
@@ -100,6 +104,14 @@ export default function Register() {
         block: "center",
       });
       inputRefs[firstInvalid].current?.focus({ preventScroll: true });
+      return;
+    }
+    if (formData.password !== formData.confirmPassword) {
+      fieldRefs.confirmPassword.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      inputRefs.confirmPassword.current?.focus({ preventScroll: true });
       return;
     }
 
@@ -155,6 +167,7 @@ export default function Register() {
               blockRef={fieldRefs.brandName}
               inputRef={inputRefs.brandName}
               label={t("register.brandName")}
+              optionalLabel={t("register.optional")}
               value={formData.brandName}
               placeholder={t("register.brandName_placeholder")}
               error=""
@@ -170,6 +183,7 @@ export default function Register() {
               value={formData.password}
               placeholder="••••••"
               error={attempted ? errors.password : ""}
+              invalid={passwordsDiffer}
               hint={attempted && errors.password ? "" : t("register.password_hint")}
               type={showPassword ? "text" : "password"}
               autoComplete="new-password"
@@ -189,20 +203,29 @@ export default function Register() {
               requiredLabel={t("register.required")}
               value={formData.confirmPassword}
               placeholder="••••••"
-              error={attempted ? errors.confirmPassword : ""}
-              type={showConfirm ? "text" : "password"}
+              error={
+                passwordsDiffer
+                  ? t("register.error.pwd_mismatch")
+                  : attempted
+                    ? errors.confirmPassword
+                    : ""
+              }
+              type={showPassword ? "text" : "password"}
               autoComplete="new-password"
               onChange={(value) => {
                 update("confirmPassword", value);
-                if (value !== formData.password) {
+                if (
+                  formData.password.length >= 6 &&
+                  value.length >= formData.password.length &&
+                  value !== formData.password
+                ) {
                   setShowPassword(true);
-                  setShowConfirm(true);
                 }
               }}
               trailing={
                 <RevealButton
-                  shown={showConfirm}
-                  onToggle={() => setShowConfirm((value) => !value)}
+                  shown={showPassword}
+                  onToggle={() => setShowPassword((value) => !value)}
                 />
               }
             />
@@ -233,9 +256,11 @@ function Field({
   inputRef,
   label,
   requiredLabel,
+  optionalLabel,
   value,
   placeholder,
   error,
+  invalid = false,
   hint,
   type = "text",
   autoComplete,
@@ -246,9 +271,11 @@ function Field({
   inputRef: React.RefObject<HTMLInputElement | null>;
   label: string;
   requiredLabel?: string;
+  optionalLabel?: string;
   value: string;
   placeholder: string;
   error: string;
+  invalid?: boolean;
   hint?: string;
   type?: string;
   autoComplete?: string;
@@ -265,6 +292,12 @@ function Field({
             <span className="text-primary font-medium">{requiredLabel}</span>
           </>
         ) : null}
+        {optionalLabel ? (
+          <>
+            {" "}
+            <span className="text-white/45 font-normal">{optionalLabel}</span>
+          </>
+        ) : null}
       </Label>
       <div className="relative">
         <Input
@@ -274,11 +307,11 @@ function Field({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           autoComplete={autoComplete}
-          aria-invalid={error ? true : undefined}
+          aria-invalid={error || invalid ? true : undefined}
           className={cn(
             "bg-black/20 h-12 rounded-xl",
             trailing && "pr-12",
-            error
+            error || invalid
               ? "border-red-500 focus-visible:ring-red-500"
               : "border-white/10 focus-visible:ring-primary",
           )}
@@ -300,7 +333,7 @@ function RevealButton({ shown, onToggle }: { shown: boolean; onToggle: () => voi
       onClick={onToggle}
       className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors"
     >
-      {shown ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+      {shown ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
     </button>
   );
 }
