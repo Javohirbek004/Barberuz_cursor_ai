@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { useRegisterUser } from "@workspace/api-client-react";
@@ -9,6 +9,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { motion } from "framer-motion";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 function generateUsername(name: string): string {
   const base = name
@@ -21,6 +22,8 @@ function generateUsername(name: string): string {
     .replace(/^-|-$/g, "");
   return (base || "usta").slice(0, 24);
 }
+
+type FieldKey = "name" | "brandName" | "password" | "confirmPassword";
 
 export default function Register() {
   const { t } = useTranslation();
@@ -37,12 +40,24 @@ export default function Register() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [touched, setTouched] = useState({ name: false, password: false, confirmPassword: false });
+  const [attempted, setAttempted] = useState(false);
+
+  const fieldRefs = {
+    name: useRef<HTMLDivElement>(null),
+    brandName: useRef<HTMLDivElement>(null),
+    password: useRef<HTMLDivElement>(null),
+    confirmPassword: useRef<HTMLDivElement>(null),
+  };
+  const inputRefs = {
+    name: useRef<HTMLInputElement>(null),
+    brandName: useRef<HTMLInputElement>(null),
+    password: useRef<HTMLInputElement>(null),
+    confirmPassword: useRef<HTMLInputElement>(null),
+  };
 
   const registerMutation = useRegisterUser({
     mutation: {
       onSuccess: (data) => {
-        // Clear any stale Telegram auth code from previous sessions
         localStorage.removeItem("telegram_auth_code");
         localStorage.removeItem("telegram_auth_code_ts");
         localStorage.setItem("barber_token", data.token);
@@ -63,26 +78,37 @@ export default function Register() {
   const update = (field: keyof typeof formData, value: string) =>
     setFormData((prev) => ({ ...prev, [field]: value }));
 
-  const touch = (field: keyof typeof touched) =>
-    setTouched((prev) => ({ ...prev, [field]: true }));
-
-  const pwdTooShort = formData.password.length > 0 && formData.password.length < 6;
-  const pwdMismatch =
-    formData.confirmPassword.length > 0 && formData.password !== formData.confirmPassword;
-
-  const isFormValid =
-    formData.name.trim().length > 0 &&
-    formData.password.length >= 6 &&
-    formData.password === formData.confirmPassword;
+  const errors: Record<FieldKey, string> = {
+    name: formData.name.trim() ? "" : t("register.error.name"),
+    brandName: formData.brandName.trim() ? "" : t("register.error.brand"),
+    password: formData.password.length >= 6 ? "" : t("register.error.pwd_short"),
+    confirmPassword: !formData.confirmPassword
+      ? t("register.error.confirm_required")
+      : formData.password !== formData.confirmPassword
+        ? t("register.error.pwd_mismatch")
+        : "",
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isFormValid) return;
+    if (registerMutation.isPending) return;
+
+    setAttempted(true);
+    const firstInvalid = (Object.keys(errors) as FieldKey[]).find((key) => errors[key]);
+    if (firstInvalid) {
+      fieldRefs[firstInvalid].current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      inputRefs[firstInvalid].current?.focus({ preventScroll: true });
+      return;
+    }
+
     registerMutation.mutate({
       data: {
-        name: formData.name,
+        name: formData.name.trim(),
         username: generateUsername(formData.name),
-        brandName: formData.brandName || undefined,
+        brandName: formData.brandName.trim(),
         password: formData.password,
         mode: formData.mode,
         lang: (localStorage.getItem("barber_lang") as "uz" | "ru") || "uz",
@@ -112,91 +138,75 @@ export default function Register() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" noValidate>
           <div className="glass-panel p-6 sm:p-8 rounded-3xl space-y-5">
-            {/* Name */}
-            <div className="space-y-2">
-              <Label className="text-white/80">{t("register.name_required")}</Label>
-              <Input
-                value={formData.name}
-                onChange={(e) => update("name", e.target.value)}
-                onBlur={() => touch("name")}
-                placeholder={t("register.name_placeholder")}
-                className="bg-black/20 border-white/10 focus-visible:ring-primary h-12 rounded-xl"
-              />
-            </div>
+            <Field
+              blockRef={fieldRefs.name}
+              inputRef={inputRefs.name}
+              label={t("register.name_required")}
+              requiredLabel={t("register.required")}
+              value={formData.name}
+              placeholder={t("register.name_placeholder")}
+              error={attempted ? errors.name : ""}
+              autoComplete="name"
+              onChange={(value) => update("name", value)}
+            />
 
-            {/* Brand name (optional) */}
-            <div className="space-y-2">
-              <Label className="text-white/80">{t("register.brandName")}</Label>
-              <Input
-                value={formData.brandName}
-                onChange={(e) => update("brandName", e.target.value)}
-                placeholder={t("register.brandName_placeholder")}
-                className="bg-black/20 border-white/10 focus-visible:ring-primary h-12 rounded-xl"
-              />
-            </div>
+            <Field
+              blockRef={fieldRefs.brandName}
+              inputRef={inputRefs.brandName}
+              label={t("register.brandName")}
+              requiredLabel={t("register.required")}
+              value={formData.brandName}
+              placeholder={t("register.brandName_placeholder")}
+              error={attempted ? errors.brandName : ""}
+              autoComplete="organization"
+              onChange={(value) => update("brandName", value)}
+            />
 
-            {/* Password */}
-            <div className="space-y-2">
-              <Label className="text-white/80">{t("register.password_label")}</Label>
-              <div className="relative">
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  value={formData.password}
-                  onChange={(e) => update("password", e.target.value)}
-                  onBlur={() => touch("password")}
-                  placeholder="••••••"
-                  className="bg-black/20 border-white/10 focus-visible:ring-primary h-12 rounded-xl pr-12"
+            <Field
+              blockRef={fieldRefs.password}
+              inputRef={inputRefs.password}
+              label={t("register.password_label")}
+              requiredLabel={t("register.required")}
+              value={formData.password}
+              placeholder="••••••"
+              error={attempted ? errors.password : ""}
+              hint={attempted && errors.password ? "" : t("register.password_hint")}
+              type={showPassword ? "text" : "password"}
+              autoComplete="new-password"
+              onChange={(value) => update("password", value)}
+              trailing={
+                <RevealButton
+                  shown={showPassword}
+                  onToggle={() => setShowPassword((value) => !value)}
                 />
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors"
-                >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
-              </div>
-              <p className="text-white/40 text-xs">{t("register.password_hint")}</p>
-              {touched.password && pwdTooShort && (
-                <p className="text-red-400 text-xs">{t("register.error.pwd_short")}</p>
-              )}
-            </div>
+              }
+            />
 
-            {/* Confirm password */}
-            <div className="space-y-2">
-              <Label className="text-white/80">{t("register.confirm_password_label")}</Label>
-              <div className="relative">
-                <Input
-                  type={showConfirm ? "text" : "password"}
-                  value={formData.confirmPassword}
-                  onChange={(e) => update("confirmPassword", e.target.value)}
-                  onBlur={() => touch("confirmPassword")}
-                  placeholder="••••••"
-                  className="bg-black/20 border-white/10 focus-visible:ring-primary h-12 rounded-xl pr-12"
+            <Field
+              blockRef={fieldRefs.confirmPassword}
+              inputRef={inputRefs.confirmPassword}
+              label={t("register.confirm_password_label")}
+              requiredLabel={t("register.required")}
+              value={formData.confirmPassword}
+              placeholder="••••••"
+              error={attempted ? errors.confirmPassword : ""}
+              type={showConfirm ? "text" : "password"}
+              autoComplete="new-password"
+              onChange={(value) => update("confirmPassword", value)}
+              trailing={
+                <RevealButton
+                  shown={showConfirm}
+                  onToggle={() => setShowConfirm((value) => !value)}
                 />
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setShowConfirm((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors"
-                >
-                  {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
-              </div>
-              {pwdMismatch && (
-                <p className="text-red-400 text-xs">{t("register.error.pwd_mismatch")}</p>
-              )}
-            </div>
+              }
+            />
           </div>
 
           <Button
             type="submit"
-            disabled={registerMutation.isPending || !isFormValid}
-            className="w-full h-14 text-lg font-bold rounded-xl bg-gradient-to-r from-primary to-amber-600 hover:shadow-xl hover:shadow-primary/30 text-black border-0 mt-4 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full h-14 text-lg font-bold rounded-xl bg-gradient-to-r from-primary to-amber-600 hover:shadow-xl hover:shadow-primary/30 text-black border-0 mt-4 transition-all"
           >
             {registerMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
             {t("register.submit")}
@@ -211,5 +221,77 @@ export default function Register() {
         </form>
       </motion.div>
     </div>
+  );
+}
+
+function Field({
+  blockRef,
+  inputRef,
+  label,
+  requiredLabel,
+  value,
+  placeholder,
+  error,
+  hint,
+  type = "text",
+  autoComplete,
+  onChange,
+  trailing,
+}: {
+  blockRef: React.RefObject<HTMLDivElement | null>;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  label: string;
+  requiredLabel: string;
+  value: string;
+  placeholder: string;
+  error: string;
+  hint?: string;
+  type?: string;
+  autoComplete?: string;
+  onChange: (value: string) => void;
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <div ref={blockRef} className="space-y-2 scroll-mt-24">
+      <Label className="text-white/80">
+        {label}{" "}
+        <span className="text-primary font-medium">{requiredLabel}</span>
+      </Label>
+      <div className="relative">
+        <Input
+          ref={inputRef}
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          aria-invalid={error ? true : undefined}
+          className={cn(
+            "bg-black/20 h-12 rounded-xl",
+            trailing && "pr-12",
+            error
+              ? "border-red-500 focus-visible:ring-red-500"
+              : "border-white/10 focus-visible:ring-primary",
+          )}
+        />
+        {trailing}
+      </div>
+      {hint ? <p className="text-white/40 text-xs">{hint}</p> : null}
+      {error ? <p className="text-red-400 text-sm">{error}</p> : null}
+    </div>
+  );
+}
+
+function RevealButton({ shown, onToggle }: { shown: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onToggle}
+      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors"
+    >
+      {shown ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+    </button>
   );
 }
