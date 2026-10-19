@@ -23,7 +23,7 @@ function generateUsername(name: string): string {
   return (base || "usta").slice(0, 24);
 }
 
-type FieldKey = "name" | "brandName" | "password" | "confirmPassword";
+type FieldKey = "name" | "password" | "confirmPassword";
 
 export default function Register() {
   const { t } = useTranslation();
@@ -80,7 +80,6 @@ export default function Register() {
 
   const errors: Record<FieldKey, string> = {
     name: formData.name.trim() ? "" : t("register.error.name"),
-    brandName: formData.brandName.trim() ? "" : t("register.error.brand"),
     password: formData.password.length >= 6 ? "" : t("register.error.pwd_short"),
     confirmPassword: !formData.confirmPassword
       ? t("register.error.confirm_required")
@@ -108,7 +107,7 @@ export default function Register() {
       data: {
         name: formData.name.trim(),
         username: generateUsername(formData.name),
-        brandName: formData.brandName.trim(),
+        brandName: formData.brandName.trim() || undefined,
         password: formData.password,
         mode: formData.mode,
         lang: (localStorage.getItem("barber_lang") as "uz" | "ru") || "uz",
@@ -156,10 +155,9 @@ export default function Register() {
               blockRef={fieldRefs.brandName}
               inputRef={inputRefs.brandName}
               label={t("register.brandName")}
-              requiredLabel={t("register.required")}
               value={formData.brandName}
               placeholder={t("register.brandName_placeholder")}
-              error={attempted ? errors.brandName : ""}
+              error=""
               autoComplete="organization"
               onChange={(value) => update("brandName", value)}
             />
@@ -194,7 +192,13 @@ export default function Register() {
               error={attempted ? errors.confirmPassword : ""}
               type={showConfirm ? "text" : "password"}
               autoComplete="new-password"
-              onChange={(value) => update("confirmPassword", value)}
+              onChange={(value) => {
+                update("confirmPassword", value);
+                if (value !== formData.password) {
+                  setShowPassword(true);
+                  setShowConfirm(true);
+                }
+              }}
               trailing={
                 <RevealButton
                   shown={showConfirm}
@@ -241,7 +245,7 @@ function Field({
   blockRef: React.RefObject<HTMLDivElement | null>;
   inputRef: React.RefObject<HTMLInputElement | null>;
   label: string;
-  requiredLabel: string;
+  requiredLabel?: string;
   value: string;
   placeholder: string;
   error: string;
@@ -254,8 +258,13 @@ function Field({
   return (
     <div ref={blockRef} className="space-y-2 scroll-mt-24">
       <Label className="text-white/80">
-        {label}{" "}
-        <span className="text-primary font-medium">{requiredLabel}</span>
+        {label}
+        {requiredLabel ? (
+          <>
+            {" "}
+            <span className="text-primary font-medium">{requiredLabel}</span>
+          </>
+        ) : null}
       </Label>
       <div className="relative">
         <Input
