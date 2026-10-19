@@ -7,7 +7,7 @@
  */
 
 import { Router } from "express";
-import { db, bookingSessionsTable, usersTable, servicesTable, serviceCategoriesTable, slugRedirectsTable, bookingsTable, clientsTable, qrScansTable } from "@workspace/db";
+import { db, bookingSessionsTable, usersTable, servicesTable, serviceCategoriesTable, slugRedirectsTable, bookingsTable, clientsTable, qrScansTable, phoneUpdateIntentsTable } from "@workspace/db";
 import { eq, and, isNull, or, desc, gt } from "drizzle-orm";
 import { deliverBookingReceipt } from "../lib/client-notifications";
 import { findClientByPhone } from "../lib/client-lookup";
@@ -365,12 +365,47 @@ router.get("/sessions/:sessionId", async (req, res) => {
 });
 
 /**
- * GET /api/public/client-phone
- * Phone numbers are not handed out by Telegram id. The booking form keeps
- * the number on this device after the owner shares their contact.
+ * GET /api/public/client-phone?telegramId=
+ * Returns a recently Telegram-verified phone for this Telegram user so the
+ * public booking form can refresh after "Raqamni o'zgartirish".
  */
-router.get("/client-phone", async (_req, res) => {
-  res.json({ phone: null });
+router.get("/client-phone", async (req, res) => {
+  try {
+    const tgId = typeof req.query.telegramId === "string" ? req.query.telegramId.trim() : "";
+    if (!tgId || !/^\d{5,20}$/.test(tgId)) {
+      res.json({ phone: null });
+      return;
+    }
+
+    const [intent] = await db
+      .select({
+        phone: phoneUpdateIntentsTable.phone,
+        pending: phoneUpdateIntentsTable.pending,
+        updatedAt: phoneUpdateIntentsTable.updatedAt,
+      })
+      .from(phoneUpdateIntentsTable)
+      .where(eq(phoneUpdateIntentsTable.telegramId, tgId))
+      .limit(1);
+
+    if (intent?.phone && intent.pending === false) {
+      const age = Date.now() - new Date(intent.updatedAt).getTime();
+      if (Number.isFinite(age) && age < 30 * 60 * 1000) {
+        res.json({ phone: intent.phone });
+        return;
+      }
+    }
+
+    const [client] = await db
+      .select({ phone: clientsTable.phone })
+      .from(clientsTable)
+      .where(eq(clientsTable.telegramId, tgId))
+      .limit(1);
+
+    res.json({ phone: client?.phone ?? null });
+  } catch (err) {
+    console.error("[PublicAPI] GET /client-phone error:", err);
+    res.json({ phone: null });
+  }
 });
 
 /**
