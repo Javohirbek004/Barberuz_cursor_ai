@@ -5,7 +5,7 @@ import { eq, ilike, or, sql } from "drizzle-orm";
 import { hashPassword, legacyHash, generateToken, authenticate, getUser, secretsEqual } from "../lib/auth";
 import { clearRateLimit, clientIp, consumeRateLimit } from "../lib/rate-limit";
 import { getTelegramLoginResult, storeLoginToken } from "../lib/telegram-bot";
-import { allocatePublicSlug } from "../lib/public-slug";
+import { getLivePendingRegistration, savePendingRegistration } from "../lib/pending-registration";
 
 const router = Router();
 
@@ -61,24 +61,28 @@ router.post("/register", async (req, res) => {
     }
     // The public address comes from the shop name, then the barber's name.
     // A name the client sends is ignored so the first link stays readable.
+    // The account row is created only after the phone is shared in Telegram.
     void providedUsername;
-    const username = await allocatePublicSlug({
-      brandName,
+    const pending = await savePendingRegistration({
       name,
-      phone: typeof req.body?.phone === "string" ? req.body.phone : null,
-    });
-    const passwordHash = hashPassword(password);
-    const [user] = await db.insert(usersTable).values({
-      name,
-      username,
       brandName: brandName || null,
-      passwordHash,
-      mode: mode || "solo",
-      lang: lang || "uz",
-    }).returning();
-    const token = generateToken(user.id, 7 * 24 * 60 * 60, user.sessionEpoch ?? 0);
+      passwordHash: hashPassword(password),
+      mode: mode === "team" ? "team" : "solo",
+      lang: lang === "ru" ? "ru" : "uz",
+    });
+    const token = generateToken(pending.id, 7 * 24 * 60 * 60, 0);
     res.status(201).json({
-      user: formatUser(user),
+      user: {
+        id: pending.id,
+        name: pending.name,
+        username: pending.username,
+        brandName: pending.brandName,
+        mode: pending.mode,
+        lang: pending.lang,
+        telegramVerified: false,
+        telegramId: null,
+        createdAt: pending.createdAt,
+      },
       token,
       telegramVerified: false,
     });
@@ -147,11 +151,16 @@ router.get("/telegram-status/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    if (!user) {
-      res.status(404).json({ error: "not_found", message: "User not found" });
+    if (user) {
+      res.json({ verified: user.telegramVerified });
       return;
     }
-    res.json({ verified: user.telegramVerified });
+    const pending = await getLivePendingRegistration(userId);
+    if (pending) {
+      res.json({ verified: false });
+      return;
+    }
+    res.status(404).json({ error: "not_found", message: "User not found" });
   } catch (err) {
     res.status(500).json({ error: "server_error" });
   }

@@ -139,6 +139,18 @@ const ENSURE_SCHEMA_SQL = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "login_devices_user_key_idx" ON "login_devices" ("user_id", "device_key")`,
   `CREATE INDEX IF NOT EXISTS "login_devices_user_id_idx" ON "login_devices" ("user_id")`,
+  `CREATE TABLE IF NOT EXISTS "pending_registrations" (
+    "id" uuid PRIMARY KEY,
+    "name" text NOT NULL,
+    "brand_name" text,
+    "username" text NOT NULL,
+    "password_hash" text NOT NULL,
+    "mode" text NOT NULL DEFAULT 'solo',
+    "lang" text NOT NULL DEFAULT 'uz',
+    "created_at" timestamptz NOT NULL DEFAULT now(),
+    "expires_at" timestamptz NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "pending_registrations_username_key" ON "pending_registrations" ("username")`,
   `CREATE TABLE IF NOT EXISTS "phone_update_intents" (
     "telegram_id" text PRIMARY KEY,
     "barber_slug" text,

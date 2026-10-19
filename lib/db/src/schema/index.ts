@@ -1,4 +1,5 @@
 export * from "./users";
+export * from "./pending-registrations";
 export * from "./login-devices";
 export * from "./clients";
 export * from "./phone-update-intents";
