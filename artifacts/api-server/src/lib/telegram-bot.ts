@@ -9,8 +9,8 @@
  *                 or start=update_phone_<barberSlug> to return to that page
  *
  * Registration flow:
- *  1. /start reg_{uuid}_{lang}  → look up user by uuid → ask phone
- *  2. User shares contact       → set telegramVerified=true, save phone+telegramId
+ *  1. /start reg_{uuid}_{lang}  → look up the waiting signup (or an existing user) → ask phone
+ *  2. User shares contact       → create the account if it is still waiting, else mark it verified
  *  3. Send success + "Ilovaga kirish" button
  *  4. Frontend polls /api/auth/telegram-status/:userId → redirects
  *
@@ -42,6 +42,11 @@ import {
   sendReminderPreview,
 } from "./client-notifications";
 import { getTelegramBotToken } from "./telegram-token";
+import {
+  createUserFromPending,
+  getLivePendingRegistration,
+  latestLivePendingRegistration,
+} from "./pending-registration";
 
 function getToken(): string {
   return getTelegramBotToken();
@@ -943,7 +948,8 @@ export async function handleTelegramUpdate(update: unknown) {
     if (pendingVerifications.has(chatId)) {
       const userId = pendingVerifications.get(chatId)!;
       const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-      const name = user?.name || "Barber";
+      const pending = user ? null : await getLivePendingRegistration(userId);
+      const name = user?.name || pending?.name || "Barber";
       await sendContactRequest(chatId, name);
       return;
     }
@@ -1169,7 +1175,8 @@ async function handleNoPayloadStart(
 
 async function handleRegStart(chatId: number, userId: string, _lang: string, from?: Record<string, unknown>) {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) {
+  const pending = user ? null : await getLivePendingRegistration(userId);
+  if (!user && !pending) {
     console.warn(`[TelegramBot] Reg: user not found userId=${userId}, falling back to no-payload flow`);
     await handleNoPayloadStart(chatId, from);
     return;
@@ -1181,7 +1188,7 @@ async function handleRegStart(chatId: number, userId: string, _lang: string, fro
 
   pendingVerifications.set(chatId, userId);
   console.log(`[TelegramBot] Reg: pending chatId=${chatId} → userId=${userId}`);
-  await sendContactRequest(chatId, user.name);
+  await sendContactRequest(chatId, user?.name || pending!.name);
 }
 
 async function handleBarberStart(chatId: number, userId: string) {
@@ -1637,13 +1644,28 @@ async function handleRegContact(
   }
 
   try {
-    await db.update(usersTable).set({
-      telegramVerified: true,
-      telegramId: tgUserId,
-      telegramUsername: tgUsername,
-      phone: phone || undefined,
-      updatedAt: new Date(),
-    }).where(eq(usersTable.id, userId));
+    const [already] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (already) {
+      await db.update(usersTable).set({
+        telegramVerified: true,
+        telegramId: tgUserId,
+        telegramUsername: tgUsername,
+        phone: phone || undefined,
+        updatedAt: new Date(),
+      }).where(eq(usersTable.id, userId));
+    } else {
+      const pending = await getLivePendingRegistration(userId);
+      if (!pending) {
+        pendingVerifications.delete(chatId);
+        await handleNoPayloadContact(chatId, phone, tgUserId, tgUsername);
+        return;
+      }
+      await createUserFromPending(pending, {
+        phone,
+        telegramId: tgUserId,
+        telegramUsername: tgUsername,
+      });
+    }
 
     pendingVerifications.delete(chatId);
     console.log(`[TelegramBot] Reg verified: userId=${userId} ✅`);
@@ -1727,6 +1749,26 @@ async function handleNoPayloadContact(
 
     console.log(`[TelegramBot] NoPayload reg verified: userId=${unverifiedUser.id} \u2705`);
     await sendVerificationSuccess(chatId, unverifiedUser.id);
+    return;
+  }
+
+  const pending = await latestLivePendingRegistration();
+  if (pending) {
+    try {
+      const created = await createUserFromPending(pending, {
+        phone,
+        telegramId: tgUserId,
+        telegramUsername: tgUsername,
+      });
+      console.log(`[TelegramBot] NoPayload pending verified: userId=${created.id} ✅`);
+      await sendVerificationSuccess(chatId, created.id);
+    } catch (err) {
+      console.error("[TelegramBot] Pending signup save failed:", err);
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "Xatolik yuz berdi. Iltimos, qayta harakat qiling.",
+      });
+    }
     return;
   }
 

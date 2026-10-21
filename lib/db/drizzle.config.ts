@@ -36,12 +36,16 @@ if (
 export default defineConfig({
   schema: [
     "./src/schema/users.ts",
+    "./src/schema/pending-registrations.ts",
+    "./src/schema/login-devices.ts",
     "./src/schema/clients.ts",
+    "./src/schema/phone-update-intents.ts",
     "./src/schema/service-categories.ts",
     "./src/schema/services.ts",
     "./src/schema/bookings.ts",
     "./src/schema/booking-sessions.ts",
     "./src/schema/slug-redirects.ts",
+    "./src/schema/qr-scans.ts",
     "./src/schema/expenses.ts",
     "./src/schema/expense-categories.ts",
   ],

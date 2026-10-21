@@ -4,7 +4,7 @@ import { useTranslation } from "@/i18n/LanguageContext";
 import { useGetTelegramStatus } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 
 function getStoredUserId(): string {
   try {
@@ -164,24 +164,25 @@ export default function TelegramVerify() {
           <Step n={3} text={t("verify.step3")} />
         </div>
 
-        <a
+        <motion.a
           href={userId ? botLink : "#"}
           target="_blank"
           rel="noopener noreferrer"
           className="block w-full"
+          animate={userId ? { scale: [1, 1.035, 1] } : { scale: 1 }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
         >
           <Button
             disabled={!userId}
-            className="w-full h-14 text-lg font-bold rounded-xl bg-[#2AABEE] hover:bg-[#229ED9] text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-50"
+            className="w-full h-14 text-lg font-bold rounded-xl bg-[#2AABEE] hover:bg-[#229ED9] text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 transition-colors disabled:opacity-50"
           >
             {t("verify.btn")}
           </Button>
-        </a>
+        </motion.a>
 
-        <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm">
-          <Loader2 className="w-4 h-4 animate-spin text-primary" />
-          <span>{t("verify.checking")}</span>
-        </div>
+        <p className="text-primary text-base font-semibold leading-relaxed px-2">
+          {t("verify.checking")}
+        </p>
       </motion.div>
     </div>
   );
