@@ -2571,10 +2571,13 @@ async function sendUnifiedBookingReceipt(
   const service = data.services.map((s) => s.name).join(", ") || "Xizmat";
   const address = (barber?.address || data.barberAddress || "").trim();
   const map = (barber?.mapLink || data.mapLink || "").trim();
-  const addressLine = address
-    ? (map ? `${escapeHtml(address)} (<a href="${escapeHtml(map)}">Xaritada ko'rish</a>)` : escapeHtml(address))
-    : (map ? `<a href="${escapeHtml(map)}">Xaritada ko'rish</a>` : "—");
-  const text = [
+  let addressLine = "";
+  if (address) {
+    addressLine = map
+      ? `📍 Manzil: ${escapeHtml(address)} (<a href="${escapeHtml(map)}">Xaritada koʻrish 🧭</a>)`
+      : `📍 Manzil: ${escapeHtml(address)}`;
+  }
+  const lines = [
     `🎉 <b>Broningiz qabul qilindi, ${escapeHtml(clientName)}!</b>`,
     "",
     `👤 Usta: ${escapeHtml(master)}`,
@@ -2583,7 +2586,9 @@ async function sendUnifiedBookingReceipt(
     `📅 Sana: ${escapeHtml(formatDateLabel(data.date))}`,
     `⏰ Vaqt: ${escapeHtml(data.time)}`,
     `📞 Raqam: ${escapeHtml(phone || "—")}`,
-    `📍 Manzil: ${addressLine}`,
+  ];
+  if (addressLine) lines.push(addressLine);
+  lines.push(
     "",
     "💡 Iltimos, belgilangan vaqtdan 5-10 daqiqa ertaroq keling.",
     "",
@@ -2594,7 +2599,8 @@ async function sendUnifiedBookingReceipt(
     "• Istalgan vaqtda qayta bron qilishga yordam beradi",
     "",
     "Chatni o'chirmang, qulaylikdan foydalaning!",
-  ].join("\n");
+  );
+  const text = lines.join("\n");
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text,
