@@ -24,7 +24,7 @@
 
 import { randomBytes } from "crypto";
 import { db, usersTable, bookingSessionsTable, bookingsTable, clientsTable, phoneUpdateIntentsTable } from "@workspace/db";
-import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import { eq, and, isNull, desc, sql, gte, inArray } from "drizzle-orm";
 import { syncClientMetrics } from "./client-metrics";
 import { findClientByPhone } from "./client-lookup";
 import { normalizePhone } from "./phone";
@@ -100,6 +100,37 @@ const pendingNoPayloadLogins = new Map<number, Date>();
 
 /** Customer booking phone verification: chatId → sessionId */
 const pendingBookingVerifications = new Map<number, string>();
+const bookingPromptMessageIds = new Map<number, number[]>();
+
+const CLIENT_MENU_BOOKINGS = "📅 Mening bronlarim";
+const CLIENT_MENU_REBOOK = "✂️ Qayta bron";
+const CLIENT_MENU_CONTACT = "📞 Aloqa";
+
+function clientReplyKeyboard() {
+  return {
+    keyboard: [
+      [{ text: CLIENT_MENU_BOOKINGS }, { text: CLIENT_MENU_REBOOK }],
+      [{ text: CLIENT_MENU_CONTACT }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+function rememberBookingPrompt(chatId: number, messageId: number | undefined) {
+  if (!messageId) return;
+  const ids = bookingPromptMessageIds.get(chatId) ?? [];
+  ids.push(messageId);
+  bookingPromptMessageIds.set(chatId, ids);
+}
+
+async function deleteBookingPrompts(chatId: number) {
+  const ids = bookingPromptMessageIds.get(chatId) ?? [];
+  bookingPromptMessageIds.delete(chatId);
+  for (const messageId of ids) {
+    await callTelegram("deleteMessage", { chat_id: chatId, message_id: messageId });
+  }
+}
 
 /** Client phone refresh: telegram user id → barber page to reopen */
 const pendingPhoneUpdates = new Map<string, { slug: string | null; at: number }>();
@@ -768,7 +799,7 @@ export async function handleTelegramUpdate(update: unknown) {
     // Customer booking deep-link
     const bookingParsed = parseBookingPayload(payload);
     if (bookingParsed) {
-      await handleBookingStart(chatId, bookingParsed, from);
+      await handleBookingStart(chatId, bookingParsed, from, message.message_id as number | undefined);
       return;
     }
 
@@ -781,6 +812,15 @@ export async function handleTelegramUpdate(update: unknown) {
   const command = text.trim().split(/\s+/)[0]?.split("@")[0]?.toLowerCase() ?? "";
   if (command === "/eslatma") {
     await sendReminderPreview(chatId);
+    return;
+  }
+
+  if (
+    text === CLIENT_MENU_BOOKINGS ||
+    text === CLIENT_MENU_REBOOK ||
+    text === CLIENT_MENU_CONTACT
+  ) {
+    await handleClientMenu(chatId, text);
     return;
   }
 
@@ -836,7 +876,7 @@ export async function handleTelegramUpdate(update: unknown) {
     // Primary: in-memory map. Fallback: DB lookup by clientTelegramId (handles
     // server restarts that clear the in-memory map).
     if (pendingBookingVerifications.has(chatId)) {
-      await handleBookingContact(chatId, phone, tgUserId, tgUsername, from);
+      await handleBookingContact(chatId, phone, tgUserId, tgUsername, from, message.message_id as number | undefined);
       return;
     }
     try {
@@ -855,7 +895,7 @@ export async function handleTelegramUpdate(update: unknown) {
       if (recovered && recovered.expiresAt > now) {
         log("booking_contact_recovered", { chatId, sessionId: recovered.sessionId });
         pendingBookingVerifications.set(chatId, recovered.sessionId);
-        await handleBookingContact(chatId, phone, tgUserId, tgUsername, from);
+        await handleBookingContact(chatId, phone, tgUserId, tgUsername, from, message.message_id as number | undefined);
         return;
       }
     } catch {
@@ -2149,6 +2189,7 @@ async function confirmBookingSession(
   firstName: string,
   tgUsername: string | null,
   phone?: string,
+  presentation: "legacy" | "web" = "legacy",
 ) {
   const [session] = await db
     .select()
@@ -2266,6 +2307,25 @@ async function confirmBookingSession(
 
   log("booking_confirmed", { sessionId, telegramUserId: tgUserId, barberId: session.barberId });
 
+  if (presentation === "web") {
+    if (bookingRowId) {
+      await db.update(bookingsTable).set({
+        status: "pending",
+        clientConfirmed: false,
+        clientTelegramId: tgUserId,
+        clientName: shownName,
+        ...(effectivePhone ? { notes: `Tel: ${effectivePhone}` } : {}),
+        updatedAt: new Date(),
+      }).where(eq(bookingsTable.id, bookingRowId));
+    }
+    await deleteBookingPrompts(chatId);
+    await sendUnifiedBookingReceipt(chatId, data, shownName, effectivePhone, session.barberId);
+    sendBarberBookingNotification(
+      session.barberId, sessionId, data, shownName, effectivePhone,
+    ).catch(err => console.error("[Bot] barber notification failed:", err));
+    return;
+  }
+
   const receiptSent = bookingRowId
     ? await deliverBookingReceipt(bookingRowId, { telegramId: tgUserId, phone: effectivePhone }).catch(() => false)
     : false;
@@ -2347,6 +2407,7 @@ async function handleBookingStart(
   chatId: number,
   ref: { sessionId?: string; bookingId?: string },
   _from: Record<string, unknown> | undefined,
+  startMessageId?: number,
 ) {
   const [session] = ref.bookingId
     ? await db.select().from(bookingSessionsTable).where(eq(bookingSessionsTable.bookingId, ref.bookingId)).limit(1)
@@ -2367,6 +2428,8 @@ async function handleBookingStart(
 
   pendingBookingVerifications.delete(chatId);
   pendingBookingVerifications.set(chatId, sessionId);
+  bookingPromptMessageIds.set(chatId, []);
+  rememberBookingPrompt(chatId, startMessageId);
 
   // Persist the chatId→sessionId mapping in the DB so we can recover after a
   // server restart. clientTelegramId will be overwritten with the verified
@@ -2381,15 +2444,17 @@ async function handleBookingStart(
     console.warn("[Bot] handleBookingStart: could not persist chatId:", err);
   }
 
-  await callTelegram("sendMessage", {
+  const greetName = session.clientName?.trim() || "mijoz";
+  const greet = await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Assalomu alaykum! \uD83D\uDC4B\nBroningizni tasdiqlash uchun pastdagi \u00AB\uD83D\uDCF1 Raqamimni yuborish\u00BB tugmasini bosing.",
+    text: `Salom, ${greetName}!\nBroningizni yakunlash uchun pastdagi tugmani bosib telefon raqamingizni yuboring:`,
     reply_markup: {
-      keyboard: [[{ text: "\uD83D\uDCF1 Raqamimni yuborish", request_contact: true }]],
+      keyboard: [[{ text: "📞 Telefon raqamni yuborish", request_contact: true }]],
       resize_keyboard: true,
       one_time_keyboard: true,
     },
-  });
+  }) as { result?: { message_id?: number } } | null;
+  rememberBookingPrompt(chatId, greet?.result?.message_id);
 }
 
 async function handleBookingContact(
@@ -2398,6 +2463,7 @@ async function handleBookingContact(
   tgUserId: string,
   tgUsername: string | null,
   from: Record<string, unknown> | undefined,
+  contactMessageId?: number,
 ) {
   const sessionId = pendingBookingVerifications.get(chatId);
   pendingBookingVerifications.delete(chatId);
@@ -2443,7 +2509,144 @@ async function handleBookingContact(
   }
 
   const firstName = session.clientName || (from?.first_name as string) || "Mijoz";
-  await confirmBookingSession(chatId, sessionId, tgUserId, firstName, tgUsername, phone);
+  rememberBookingPrompt(chatId, contactMessageId);
+  await confirmBookingSession(chatId, sessionId, tgUserId, firstName, tgUsername, phone, "web");
+}
+
+function moneyLabel(value: number): string {
+  return `${Number(value || 0).toLocaleString("uz-UZ")} so'm`;
+}
+
+async function sendUnifiedBookingReceipt(
+  chatId: number,
+  data: BookingData,
+  clientName: string,
+  phone: string | null,
+  barberId: string,
+) {
+  const [barber] = await db.select().from(usersTable).where(eq(usersTable.id, barberId)).limit(1);
+  const master = barber?.brandName || barber?.name || data.barberName || "Usta";
+  const service = data.services.map((s) => s.name).join(", ") || "Xizmat";
+  const address = (barber?.address || data.barberAddress || "").trim();
+  const map = (barber?.mapLink || data.mapLink || "").trim();
+  const addressLine = address
+    ? (map ? `${escapeHtml(address)} (<a href="${escapeHtml(map)}">Xaritada ko'rish</a>)` : escapeHtml(address))
+    : (map ? `<a href="${escapeHtml(map)}">Xaritada ko'rish</a>` : "—");
+  const text = [
+    `🎉 <b>Broningiz qabul qilindi, ${escapeHtml(clientName)}!</b>`,
+    "",
+    `👤 Usta: ${escapeHtml(master)}`,
+    `✂️ Xizmat: ${escapeHtml(service)}`,
+    `💰 Narx: ${escapeHtml(moneyLabel(data.totalPrice))}`,
+    `📅 Sana: ${escapeHtml(formatDateLabel(data.date))}`,
+    `⏰ Vaqt: ${escapeHtml(data.time)}`,
+    `📞 Raqam: ${escapeHtml(phone || "—")}`,
+    `📍 Manzil: ${addressLine}`,
+    "",
+    "💡 Iltimos, belgilangan vaqtdan 5-10 daqiqa ertaroq keling.",
+    "",
+    "────────────────────────",
+    "🤖 <b>Bot haqida eslatma:</b>",
+    "Ushbu bot sizning shaxsiy yordamchingiz:",
+    "• Navbatingizga oz qolganda eslatma yuboradi",
+    "• Istalgan vaqtda qayta bron qilishga yordam beradi",
+    "",
+    "Chatni o'chirmang, qulaylikdan foydalaning!",
+  ].join("\n");
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+    reply_markup: clientReplyKeyboard(),
+  });
+}
+
+async function latestClientBarber(chatId: number) {
+  const tg = String(chatId);
+  const [booking] = await db.select().from(bookingsTable)
+    .where(eq(bookingsTable.clientTelegramId, tg))
+    .orderBy(desc(bookingsTable.createdAt))
+    .limit(1);
+  if (!booking) return null;
+  const [barber] = await db.select().from(usersTable).where(eq(usersTable.id, booking.barberId)).limit(1);
+  return barber ?? null;
+}
+
+async function handleClientMenu(chatId: number, text: string) {
+  const barber = await latestClientBarber(chatId);
+  if (text === CLIENT_MENU_REBOOK) {
+    const slug = barber?.username?.trim();
+    const url = slug ? `${publicSiteUrl()}/${encodeURIComponent(slug)}?bron=1` : publicSiteUrl();
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: `Qayta bron qilish:\n${url}`,
+      reply_markup: clientReplyKeyboard(),
+    });
+    return;
+  }
+  if (text === CLIENT_MENU_CONTACT) {
+    if (!barber) {
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "Hali bog'laniladigan usta yo'q. Avval bron qiling.",
+        reply_markup: clientReplyKeyboard(),
+      });
+      return;
+    }
+    const name = barber.brandName || barber.name;
+    const hours = barber.workingHoursStart && barber.workingHoursEnd
+      ? `${barber.workingHoursStart}–${barber.workingHoursEnd}`
+      : "sozlanmagan";
+    const phone = barber.phone?.trim() ? plusPhone(barber.phone) : "—";
+    const map = barber.mapLink?.trim();
+    const tg = barber.telegramUsername?.trim();
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: [
+        `📞 <b>${escapeHtml(name)}</b>`,
+        `Telefon: ${escapeHtml(phone)}`,
+        `Manzil: ${escapeHtml(barber.address?.trim() || "—")}`,
+        `Ish vaqti: ${escapeHtml(hours)}`,
+        map ? `Xarita: ${escapeHtml(map)}` : "",
+        tg ? `Telegram: @${escapeHtml(tg.replace(/^@/, ""))}` : "",
+      ].filter(Boolean).join("\n"),
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      reply_markup: clientReplyKeyboard(),
+    });
+    return;
+  }
+
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+  const rows = await db.select().from(bookingsTable).where(and(
+    eq(bookingsTable.clientTelegramId, String(chatId)),
+    gte(bookingsTable.date, today),
+    inArray(bookingsTable.status, ["pending", "confirmed"]),
+    isNull(bookingsTable.deletedAt),
+  )).orderBy(bookingsTable.date, bookingsTable.startTime);
+  if (!rows.length) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Hozircha kelajakdagi bron yo'q.",
+      reply_markup: clientReplyKeyboard(),
+    });
+    return;
+  }
+  const lines = rows.map((row, i) =>
+    `${i + 1}. ${formatDateLabel(row.date)}, ${row.startTime.slice(0, 5)} — ${row.serviceName || "Xizmat"}`,
+  );
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: `📅 <b>Mening bronlarim</b>\n\n${lines.join("\n")}`,
+    parse_mode: "HTML",
+    reply_markup: {
+      inline_keyboard: rows.slice(0, 8).map((row) => [{
+        text: `❌ ${row.date.slice(5)} ${row.startTime.slice(0, 5)} bekor`,
+        callback_data: `cancel_${row.id}`,
+      }]),
+    },
+  });
 }
 
 // ──────────────────────────────────────────────────────────────

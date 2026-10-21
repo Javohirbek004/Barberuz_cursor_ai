@@ -8,7 +8,7 @@
 
 import { Router } from "express";
 import { db, bookingSessionsTable, usersTable, servicesTable, serviceCategoriesTable, slugRedirectsTable, bookingsTable, clientsTable, qrScansTable } from "@workspace/db";
-import { eq, and, isNull, or, desc, gt } from "drizzle-orm";
+import { eq, and, isNull, or, desc, gt, notInArray } from "drizzle-orm";
 import { deliverBookingReceipt } from "../lib/client-notifications";
 import { findClientByPhone } from "../lib/client-lookup";
 import { expirePendingHolds, findBookingConflict, minsToTime, parseClockTime } from "../lib/booking-conflicts";
@@ -412,7 +412,7 @@ router.get("/barber/:slug/slots", async (req, res) => {
         and(
           eq(bookingsTable.barberId, barber.id),
           eq(bookingsTable.date, date),
-          notInArray(bookingsTable.status, ["cancelled", "auto_cancelled"]),
+          notInArray(bookingsTable.status, ["cancelled", "auto_cancelled", "no_show"]),
         ),
       );
 

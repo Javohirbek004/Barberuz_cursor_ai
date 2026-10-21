@@ -288,6 +288,7 @@ function PublicBookingModal({
 
   const [busySlots, setBusySlots] = useState<{ startTime: string; endTime: string }[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
+  const [slotReload, setSlotReload] = useState(0);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -307,7 +308,7 @@ function PublicBookingModal({
         setSlotsLoading(false);
       })
       .catch(() => { setBusySlots([]); setSlotsLoading(false); });
-  }, [dateOpt, barber.username]);
+  }, [dateOpt, barber.username, slotReload]);
 
   const dateInputRef = useRef<HTMLInputElement>(null);
   const displayName = barber.brandName || barber.name;
@@ -375,7 +376,7 @@ function PublicBookingModal({
         barberPageLink: pageLink, isTeam: false, teamBarberName: null,
         services, totalPrice, totalDuration, date: dateOpt, time: selectedTime,
         clientName: clientName.trim(),
-        clientPhone: clientPhone.trim(),
+        clientPhone: direct ? clientPhone.trim() : "",
         ...(direct && tgId ? {
           tgCustomer: { tgId, name: clientName.trim(), username: profile?.username || telegramWebAppUser()?.username || null },
         } : {}),
@@ -398,8 +399,7 @@ function PublicBookingModal({
     try {
       const res = await createSession(true);
       if (res.status === 409) {
-        setFormError("Bu vaqt band. Boshqa vaqtni tanlang.");
-        toast({ title: "Bu vaqt band", description: "Boshqa vaqtni tanlang.", variant: "destructive" });
+        slotJustTaken();
         return;
       }
       if (!res.ok) throw new Error("booking failed");
@@ -426,6 +426,15 @@ function PublicBookingModal({
     }
   }
 
+  function slotJustTaken() {
+    const text = "Ushbu vaqt yangigina band qilindi. Iltimos, boshqa vaqtni tanlang.";
+    setSelectedTime(null);
+    setStep("time");
+    setSlotReload((n) => n + 1);
+    setFormError(text);
+    toast({ title: "Vaqt band", description: text, variant: "destructive" });
+  }
+
   async function handleConfirm() {
     if (submitting || !selectedTime) return;
     if (!clientName.trim()) {
@@ -439,8 +448,7 @@ function PublicBookingModal({
     try {
       const res = await createSession(false);
       if (res.status === 409) {
-        setFormError("Bu vaqt band. Boshqa vaqtni tanlang.");
-        toast({ title: "Bu vaqt band", description: "Boshqa vaqtni tanlang.", variant: "destructive" });
+        slotJustTaken();
         return;
       }
       if (!res.ok) throw new Error("Session creation failed");
@@ -495,7 +503,7 @@ function PublicBookingModal({
         <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 shrink-0" />
         <div className="flex items-center gap-3 px-5 py-4 shrink-0 border-b border-white/6">
           {(step === "name" || step === "confirm") && (
-            <button onClick={() => setStep("time")}
+            <button onClick={() => setStep(step === "confirm" ? "name" : "time")}
               className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
               <ArrowLeft className="w-4 h-4" />
             </button>
@@ -579,9 +587,9 @@ function PublicBookingModal({
                     ))}
                   </div>
                 )}
-                <button onClick={() => selectedTime && setStep("confirm")} disabled={!selectedTime || slotsLoading}
+                <button onClick={() => selectedTime && setStep("name")} disabled={!selectedTime || slotsLoading}
                   className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base mt-6 disabled:opacity-30 shadow-lg shadow-primary/20">
-                  Davom etish →
+                  Keyingi →
                 </button>
               </motion.div>
             )}
@@ -595,14 +603,14 @@ function PublicBookingModal({
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-muted-foreground block">Ismingiz *</label>
-                  <input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="masalan: Ali"
+                  <label className="text-sm font-semibold text-muted-foreground block">Ismingizni kiriting (Masalan: Ali)</label>
+                  <input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Masalan: Ali"
                     autoFocus
                     className="w-full h-12 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50" />
                 </div>
                 <button onClick={() => clientName.trim() && setStep("confirm")} disabled={!clientName.trim()}
                   className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base mt-6 disabled:opacity-30 shadow-lg shadow-primary/20">
-                  Keyingi →
+                  Davom etish →
                 </button>
               </motion.div>
             )}
@@ -615,6 +623,7 @@ function PublicBookingModal({
                     ["💸", "Narx", formatPrice(totalPrice)],
                     ["📅", "Sana", dateLabel],
                     ["⏰", "Vaqt", selectedTime || ""],
+                    ["👤", "Ism", clientName.trim()],
                   ] as const).map(([icon, label, value]) => (
                     <div key={label} className="flex items-center gap-3">
                       <span className="text-base w-5 shrink-0">{icon}</span>
@@ -625,46 +634,13 @@ function PublicBookingModal({
                     </div>
                   ))}
                 </div>
-                <div className="bg-white/4 border border-white/8 rounded-2xl p-4 mb-4 space-y-3" data-testid="client-profile">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-muted-foreground">Ism *</label>
-                    <input
-                      value={clientName}
-                      onChange={e => { setClientName(e.target.value); setNameError(""); }}
-                      placeholder="masalan: Ali"
-                      required
-                      autoComplete="name"
-                      className={`w-full h-11 px-3 rounded-xl bg-white/5 text-sm focus:outline-none ${
-                        nameError ? "border border-red-500/70 focus:border-red-400" : "border border-white/10 focus:border-primary/50"
-                      }`}
-                    />
-                    {nameError && <p className="text-xs text-red-400">{nameError}</p>}
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-muted-foreground">Telefon *</label>
-                    <input
-                      value={clientPhone}
-                      onChange={e => { setClientPhone(e.target.value); setPhoneError(""); }}
-                      inputMode="tel"
-                      placeholder="+998 90 123 45 67"
-                      required
-                      autoComplete="tel"
-                      data-testid="client-phone"
-                      aria-invalid={!!phoneError}
-                      className={`w-full h-11 px-3 rounded-xl bg-white/5 text-sm focus:outline-none ${
-                        phoneError ? "border border-red-500/70 focus:border-red-400" : "border border-white/10 focus:border-primary/50"
-                      }`}
-                    />
-                    {phoneError && <p className="text-xs text-red-400">{phoneError}</p>}
-                  </div>
-                </div>
                 {formError && <p className="text-sm text-red-400 mb-3" data-testid="booking-form-error">{formError}</p>}
-                <button type="button" onClick={() => void handleDirectConfirm()} disabled={submitting}
-                  data-testid="direct-confirm"
-                  className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40 shadow-lg shadow-primary/20">
+                <button type="button" onClick={() => void handleConfirm()} disabled={submitting || !clientName.trim()}
+                  data-testid="telegram-confirm"
+                  className="w-full py-3.5 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40">
                   {submitting
-                    ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Saqlanmoqda...</>
-                    : "✅ Bron qilishni tasdiqlash"}
+                    ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Ochilmoqda...</>
+                    : "👉 📲 Telegram orqali tasdiqlash"}
                 </button>
               </motion.div>
             )}
