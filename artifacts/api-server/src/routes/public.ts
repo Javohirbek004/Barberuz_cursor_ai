@@ -49,10 +49,14 @@ function getAppUrl(): string {
   if (process.env.NODE_ENV === "development") {
     if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
+  if (renderHost) return `https://${renderHost}`;
+  if (process.env.APP_URL && !/vercel\.app/i.test(process.env.APP_URL)) {
+    return process.env.APP_URL.replace(/\/$/, "");
+  }
   const firstDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
   if (firstDomain) return `https://${firstDomain}`;
-  return "https://barberuz-lovat.vercel.app";
+  return "https://barber-uz-clq6.onrender.com";
 }
 
 async function expireOldSessions() {

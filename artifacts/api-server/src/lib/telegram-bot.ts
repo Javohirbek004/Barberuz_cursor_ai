@@ -57,7 +57,7 @@ function getToken(): string {
  * Priority: REPLIT_DEV_DOMAIN (dev only, when NODE_ENV=development)
  *           → REPLIT_DOMAINS preferred entry (non-sisko first, e.g. barberuz.replit.app)
  *           → APP_URL (manual override / custom domain fallback)
- *           → barberuz-lovat.vercel.app (hardcoded last resort)
+ *           → barber-uz-clq6.onrender.com (hardcoded last resort)
  *
  * IMPORTANT: REPLIT_DOMAINS may contain both a sisko.replit.dev entry AND the
  * clean domain. We always prefer the clean domain so that bot links sent to
@@ -68,9 +68,11 @@ function getAppUrl(): string {
   if (process.env.NODE_ENV === "development") {
     if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
+  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
+  if (renderHost) return `https://${renderHost}`;
   if (process.env.APP_URL) {
     const appUrl = process.env.APP_URL.replace(/\/$/, "");
-    if (!/replit\./i.test(appUrl)) return appUrl;
+    if (!/replit\./i.test(appUrl) && !/vercel\.app$/i.test(appUrl)) return appUrl;
   }
   const domains = (process.env.REPLIT_DOMAINS || "")
     .split(",")
@@ -78,13 +80,11 @@ function getAppUrl(): string {
     .filter(d => d && !d.includes("sisko.replit.dev") && !d.includes("replit."));
   const preferred = domains[0];
   if (preferred) return `https://${preferred}`;
-  return "https://barberuz-lovat.vercel.app";
+  return "https://barber-uz-clq6.onrender.com";
 }
 
 function publicSiteUrl(): string {
-  const env = process.env.APP_URL?.replace(/\/$/, "");
-  if (env && /^https?:\/\//i.test(env)) return env;
-  return "https://barberuz-lovat.vercel.app";
+  return getAppUrl();
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -259,7 +259,7 @@ async function sendPhoneAlreadyRegistered(
       inline_keyboard: [[
         {
           text: "\uD83D\uDD11 Kirish sahifasiga o\u02BBtish",
-          url: "https://barberuz-lovat.vercel.app/login",
+          url: `${getAppUrl()}/login`,
         },
       ]],
     },
@@ -419,7 +419,7 @@ async function handlePasswordResetText(
       inline_keyboard: [[
         {
           text: "\uD83D\uDD11 Kirish sahifasiga o\u02BBtish",
-          url: "https://barberuz-lovat.vercel.app/login?reset=success",
+          url: `${getAppUrl()}/login?reset=success`,
         },
       ]],
     },

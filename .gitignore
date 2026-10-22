@@ -3,6 +3,7 @@
 # compiled output
 dist
 artifacts/api-server/server.mjs
+artifacts/api-server/public
 tmp
 out-tsc
 *.tsbuildinfo

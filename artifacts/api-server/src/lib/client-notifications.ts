@@ -59,7 +59,9 @@ function token(): string {
   return getTelegramBotToken();
 }
 
-const PUBLIC_SITE = "https://barberuz-lovat.vercel.app";
+const PUBLIC_SITE = process.env.RENDER_EXTERNAL_HOSTNAME
+  ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME.trim()}`
+  : "https://barber-uz-clq6.onrender.com";
 
 /** Client rebook link: the barber's booking page, not the app home. */
 export function rebookUrl(username: string | null | undefined): string {
