@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { copyFileSync, cpSync, existsSync, readdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -101,13 +101,6 @@ await esbuild.build({
   },
   external: ["pg-native"],
 });
-
-console.log("building the website into the server folder");
-pnpm(["--filter", "@workspace/barber-uz", "run", "build"]);
-const siteDir = path.join(repoRoot, "artifacts/barber-uz/dist/public");
-const publicDir = path.join(dir, "public");
-rmSync(publicDir, { recursive: true, force: true });
-cpSync(siteDir, publicDir, { recursive: true });
 
 const schemaSql = path.join(repoRoot, "lib/db/src/local-schema.sql");
 if (existsSync(schemaSql)) {

@@ -44,12 +44,14 @@ app.use("/api/v1", v1Router);
 app.use((req, res, next) => {
   const dir = siteDir();
   if (!dir) return next();
-  express.static(dir, { index: false })(req, res, (err) => {
-    if (err) return next(err);
-    if (req.method !== "GET" && req.method !== "HEAD") return next();
-    if (req.path.startsWith("/api")) return next();
-    res.sendFile(path.join(dir, "index.html"));
-  });
+  express.static(dir, { index: false })(req, res, next);
+});
+
+app.get("/{*splat}", (req, res, next) => {
+  if (req.path.startsWith("/api")) return next();
+  const dir = siteDir();
+  if (!dir) return next();
+  res.sendFile(path.join(dir, "index.html"));
 });
 
 export default app;
