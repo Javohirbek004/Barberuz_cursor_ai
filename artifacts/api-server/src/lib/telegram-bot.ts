@@ -43,9 +43,10 @@ import {
 } from "./client-notifications";
 import { getTelegramBotToken, webhookSecretToken } from "./telegram-token";
 import {
+  bindPendingToChat,
   createUserFromPending,
+  findPendingByChat,
   getLivePendingRegistration,
-  latestLivePendingRegistration,
 } from "./pending-registration";
 
 function getToken(): string {
@@ -836,6 +837,19 @@ export async function handleTelegramUpdate(update: unknown) {
     const tgUserId = String((contact.user_id as number) || chatId);
     const tgUsername = (from?.username as string) || null;
 
+    // The number must belong to the person sending it. A contact card of somebody else
+    // would otherwise let a stranger sign in as that barber or claim their number.
+    const contactOwnerId = contact.user_id != null ? String(contact.user_id) : "";
+    const contactSenderId = from?.id != null ? String(from.id) : String(chatId);
+    if (!contactOwnerId || contactOwnerId !== contactSenderId) {
+      console.warn(`[TelegramBot] Contact rejected: not the sender's own number (chatId=${chatId})`);
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "Iltimos, o\u02BBzingizning telefon raqamingizni yuboring.",
+      });
+      return;
+    }
+
     const resetPending = getPasswordReset(chatId);
     if (resetPending && resetPending.step === "phone") {
       const contactUserId = contact.user_id as number | undefined;
@@ -1187,6 +1201,12 @@ async function handleRegStart(chatId: number, userId: string, _lang: string, fro
   pendingNoPayloadLogins.delete(chatId);
 
   pendingVerifications.set(chatId, userId);
+  if (pending) {
+    // Keep the link between this chat and its signup in the database too.
+    await bindPendingToChat(userId, chatId).catch((err) =>
+      console.error("[TelegramBot] Could not remember the signup chat:", err),
+    );
+  }
   console.log(`[TelegramBot] Reg: pending chatId=${chatId} → userId=${userId}`);
   await sendContactRequest(chatId, user?.name || pending!.name);
 }
@@ -1727,32 +1747,9 @@ async function handleNoPayloadContact(
     return;
   }
 
-  // Phone not in DB — find the most recently registered unverified user
-  const [unverifiedUser] = await db
-    .select()
-    .from(usersTable)
-    .where(and(eq(usersTable.telegramVerified, false), isNull(usersTable.telegramId)))
-    .orderBy(desc(usersTable.createdAt))
-    .limit(1);
-
-  if (unverifiedUser) {
-    await db
-      .update(usersTable)
-      .set({
-        telegramVerified: true,
-        telegramId: tgUserId,
-        telegramUsername: tgUsername,
-        phone,
-        updatedAt: new Date(),
-      })
-      .where(eq(usersTable.id, unverifiedUser.id));
-
-    console.log(`[TelegramBot] NoPayload reg verified: userId=${unverifiedUser.id} \u2705`);
-    await sendVerificationSuccess(chatId, unverifiedUser.id);
-    return;
-  }
-
-  const pending = await latestLivePendingRegistration();
+  // Phone not in DB. Only the signup THIS chat opened the bot link for may be finished
+  // here. The bot never guesses "the newest signup", so strangers cannot take it.
+  const pending = await findPendingByChat(chatId);
   if (pending) {
     try {
       const created = await createUserFromPending(pending, {
