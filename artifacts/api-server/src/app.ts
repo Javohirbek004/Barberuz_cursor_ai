@@ -7,16 +7,29 @@ import router from "./routes";
 import v1Router from "./v1/router";
 
 const app: Express = express();
-const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "public");
-const indexHtml = path.join(publicDir, "index.html");
+
+function siteDir(): string | null {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.join(here, "public"),
+    path.resolve(process.cwd(), "public"),
+    path.resolve(process.cwd(), "artifacts/api-server/public"),
+    path.resolve(process.cwd(), "artifacts/barber-uz/dist/public"),
+  ];
+  for (const dir of candidates) {
+    if (existsSync(path.join(dir, "index.html"))) return dir;
+  }
+  return null;
+}
 
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));       // large enough for import payloads
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/", (_req, res) => {
-  if (existsSync(indexHtml)) {
-    res.sendFile(indexHtml);
+  const dir = siteDir();
+  if (dir) {
+    res.sendFile(path.join(dir, "index.html"));
     return;
   }
   res.json({ status: "ok", message: "Barber.uz API is running" });
@@ -28,13 +41,15 @@ app.use("/api", router);
 // v1 REST API — production-ready, versioned, portable
 app.use("/api/v1", v1Router);
 
-if (existsSync(indexHtml)) {
-  app.use(express.static(publicDir, { index: false }));
-  app.use((req, res, next) => {
+app.use((req, res, next) => {
+  const dir = siteDir();
+  if (!dir) return next();
+  express.static(dir, { index: false })(req, res, (err) => {
+    if (err) return next(err);
     if (req.method !== "GET" && req.method !== "HEAD") return next();
     if (req.path.startsWith("/api")) return next();
-    res.sendFile(indexHtml);
+    res.sendFile(path.join(dir, "index.html"));
   });
-}
+});
 
 export default app;
