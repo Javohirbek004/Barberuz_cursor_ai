@@ -37,7 +37,7 @@ interface ClientBookingsResponse {
   summary?: { cancelled: number; noShow: number };
 }
 
-/** One list of this client's bookings, shared by the stat note and the history. */
+/** This client's bookings, used by the history list and its header badge. */
 function useClientBookings(clientId: string) {
   return useQuery({
     queryKey: ["client-bookings", clientId],
@@ -233,6 +233,8 @@ function BookingHistorySection({ clientId }: { clientId: string }) {
   const { data, isLoading } = useClientBookings(clientId);
 
   const bookings = data?.bookings ?? [];
+  const cancelledCount = data?.summary?.cancelled ?? 0;
+  const noShowCount = data?.summary?.noShow ?? 0;
 
   if (isLoading) {
     return (
@@ -247,10 +249,32 @@ function BookingHistorySection({ clientId }: { clientId: string }) {
 
   return (
     <div className="bg-card border border-white/8 rounded-2xl p-4">
-      <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
-        <CalendarDays className="w-4 h-4" />
-        {t("client.history")}
-      </h3>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2 min-w-0">
+          <CalendarDays className="w-4 h-4 shrink-0" />
+          {t("client.history")}
+        </h3>
+        {(cancelledCount > 0 || noShowCount > 0) && (
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {cancelledCount > 0 && (
+              <span
+                data-testid="client-cancelled-badge"
+                className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-0.5 text-xs font-medium rounded-full"
+              >
+                ❌ Bekor qilingan: {cancelledCount}
+              </span>
+            )}
+            {noShowCount > 0 && (
+              <span
+                data-testid="client-noshow-badge"
+                className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-0.5 text-xs font-medium rounded-full"
+              >
+                🚫 Kelmadi: {noShowCount}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
 
       {bookings.length === 0 ? (
         <p className="text-sm text-muted-foreground/50 italic py-2">
@@ -407,9 +431,6 @@ function ClientDetailInner({ id }: { id: string }) {
   const { data: client, isLoading } = useGetClient(id, {
     query: { enabled: !!id },
   });
-  const { data: history } = useClientBookings(id);
-  const cancelledCount = history?.summary?.cancelled ?? 0;
-  const noShowCount = history?.summary?.noShow ?? 0;
 
   if (isLoading) {
     return (
@@ -515,20 +536,6 @@ function ClientDetailInner({ id }: { id: string }) {
           value={`${formatPrice(client.totalSpent ?? 0)}`}
         />
       </div>
-
-      {(cancelledCount > 0 || noShowCount > 0) && (
-        <p
-          data-testid="client-dropped-note"
-          className="-mt-2 mb-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
-        >
-          {cancelledCount > 0 && (
-            <span className="text-red-400/90">❌ Bekor qilingan: {cancelledCount} marta</span>
-          )}
-          {noShowCount > 0 && (
-            <span className="text-red-400/90">🚫 Kelmadi: {noShowCount} marta</span>
-          )}
-        </p>
-      )}
 
       <div className="flex gap-3 mb-5">
         {displayPhone ? (
