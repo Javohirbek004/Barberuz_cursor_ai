@@ -18,16 +18,42 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SEGMENT_META } from "@/data/mockClients";
+import { bookingVisualStatus, type BookingVisualKey } from "@/lib/booking-feed";
 
 type Segment = "regular" | "new" | "lost";
 
 interface ClientBooking {
   id: string;
   date: string;
+  startTime: string;
   serviceName: string;
   price: number;
   status: string;
 }
+
+interface ClientBookingsResponse {
+  bookings: ClientBooking[];
+  /** Counted over every booking of the client, not only the ones listed. */
+  summary?: { cancelled: number; noShow: number };
+}
+
+/** One list of this client's bookings, shared by the stat note and the history. */
+function useClientBookings(clientId: string) {
+  return useQuery({
+    queryKey: ["client-bookings", clientId],
+    queryFn: () => customFetch<ClientBookingsResponse>(`/api/clients/${clientId}/bookings`),
+    enabled: !!clientId,
+  });
+}
+
+/** Badge and price look for each lifecycle status. Cancelled and missed prices are struck through. */
+const HISTORY_LOOK: Record<BookingVisualKey, { label: string; badge: string; price: string }> = {
+  confirmed:      { label: "📅 Tasdiqlangan",         badge: "bg-green-500/10 text-green-500",   price: "text-green-400" },
+  pending_action: { label: "⚠️ Yakunlash kutilmoqda", badge: "bg-yellow-500/10 text-yellow-500", price: "text-yellow-400" },
+  completed:      { label: "✅ Tugallangan",           badge: "bg-blue-500/15 text-blue-400",     price: "text-blue-300" },
+  no_show:        { label: "🚫 Kelmadi",               badge: "bg-red-500/10 text-red-500",       price: "text-red-400 line-through opacity-60" },
+  cancelled:      { label: "❌ Bekor qilingan",        badge: "bg-red-500/10 text-red-500",       price: "text-red-400 line-through opacity-60" },
+};
 
 function formatLastVisit(isoDate: string | null | undefined): string {
   if (!isoDate) return "—";
@@ -48,8 +74,10 @@ function formatBookingDate(dateStr: string): string {
   return `${date.getDate()}-${months[date.getMonth()]}`;
 }
 
+/** 30000 -> "30 000", the same on every phone and browser. */
 function formatPrice(price: number): string {
-  return price.toLocaleString("uz-UZ");
+  const whole = Math.max(0, Math.round(Number(price) || 0));
+  return String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
 function StatBox({ label, value }: { label: string; value: string }) {
@@ -202,14 +230,7 @@ function NotesField({
 function BookingHistorySection({ clientId }: { clientId: string }) {
   const { t } = useTranslation();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["client-bookings", clientId],
-    queryFn: () =>
-      customFetch<{ bookings: ClientBooking[] }>(
-        `/api/clients/${clientId}/bookings`
-      ),
-    enabled: !!clientId,
-  });
+  const { data, isLoading } = useClientBookings(clientId);
 
   const bookings = data?.bookings ?? [];
 
@@ -237,25 +258,37 @@ function BookingHistorySection({ clientId }: { clientId: string }) {
         </p>
       ) : (
         <div className="space-y-0">
-          {bookings.map((b, i) => (
-            <div
-              key={b.id}
-              className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                  <Scissors className="w-3.5 h-3.5 text-primary" />
+          {bookings.map((b) => {
+            const look = HISTORY_LOOK[bookingVisualStatus(b).key];
+            return (
+              <div
+                key={b.id}
+                data-testid={`client-booking-${b.id}`}
+                className="flex items-center justify-between gap-3 py-2.5 border-b border-white/5 last:border-0"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                    <Scissors className="w-3.5 h-3.5 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{b.serviceName}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{formatBookingDate(b.date)}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">{b.serviceName}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{formatBookingDate(b.date)}</p>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className={`text-sm font-semibold ${look.price}`}>
+                    {formatPrice(b.price)} {t("client.spent_unit")}
+                  </span>
+                  <span
+                    data-testid={`client-booking-status-${b.id}`}
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold leading-tight ${look.badge}`}
+                  >
+                    {look.label}
+                  </span>
                 </div>
               </div>
-              <span className="text-sm font-semibold text-primary shrink-0">
-                {formatPrice(b.price)} {t("client.spent_unit")}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -374,6 +407,9 @@ function ClientDetailInner({ id }: { id: string }) {
   const { data: client, isLoading } = useGetClient(id, {
     query: { enabled: !!id },
   });
+  const { data: history } = useClientBookings(id);
+  const cancelledCount = history?.summary?.cancelled ?? 0;
+  const noShowCount = history?.summary?.noShow ?? 0;
 
   if (isLoading) {
     return (
@@ -479,6 +515,20 @@ function ClientDetailInner({ id }: { id: string }) {
           value={`${formatPrice(client.totalSpent ?? 0)}`}
         />
       </div>
+
+      {(cancelledCount > 0 || noShowCount > 0) && (
+        <p
+          data-testid="client-dropped-note"
+          className="-mt-2 mb-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
+        >
+          {cancelledCount > 0 && (
+            <span className="text-red-400/90">❌ Bekor qilingan: {cancelledCount} marta</span>
+          )}
+          {noShowCount > 0 && (
+            <span className="text-red-400/90">🚫 Kelmadi: {noShowCount} marta</span>
+          )}
+        </p>
+      )}
 
       <div className="flex gap-3 mb-5">
         {displayPhone ? (

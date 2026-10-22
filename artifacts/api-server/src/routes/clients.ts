@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, clientsTable, bookingsTable } from "@workspace/db";
-import { eq, and, ilike, count, or, sql, isNull, desc } from "drizzle-orm";
+import { eq, and, ilike, count, or, sql, isNull, desc, inArray } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
 import { findClientByPhone } from "../lib/client-lookup";
 import { normalizePhone, phoneDigits, sqlPhoneDigits } from "../lib/phone";
@@ -160,28 +160,46 @@ router.get("/:clientId/bookings", authenticate, async (req, res) => {
       res.status(404).json({ error: "not_found" });
       return;
     }
+    const own = and(
+      eq(bookingsTable.clientId, req.params.clientId),
+      eq(bookingsTable.barberId, user.id),
+      isNull(bookingsTable.deletedAt),
+    );
     const bookings = await db.select({
       id: bookingsTable.id,
       date: bookingsTable.date,
+      startTime: bookingsTable.startTime,
       serviceName: bookingsTable.serviceName,
       price: bookingsTable.price,
       status: bookingsTable.status,
     }).from(bookingsTable)
-      .where(and(
-        eq(bookingsTable.clientId, req.params.clientId),
-        eq(bookingsTable.barberId, user.id),
-        isNull(bookingsTable.deletedAt),
-      ))
-      .orderBy(desc(bookingsTable.date))
+      .where(own)
+      .orderBy(desc(bookingsTable.date), desc(bookingsTable.startTime))
       .limit(50);
+
+    // Counted over every booking of this client, not only the 50 shown.
+    // Cancelled and missed visits never count as visits or money; they are only noted.
+    const dropped = await db.select({ status: bookingsTable.status, n: count() })
+      .from(bookingsTable)
+      .where(and(own, inArray(bookingsTable.status, ["cancelled", "auto_cancelled", "no_show"])))
+      .groupBy(bookingsTable.status);
+    let cancelled = 0;
+    let noShow = 0;
+    for (const row of dropped) {
+      if (row.status === "no_show") noShow += Number(row.n);
+      else cancelled += Number(row.n);
+    }
+
     res.json({
       bookings: bookings.map((b) => ({
         id: b.id,
         date: b.date,
+        startTime: b.startTime.slice(0, 5),
         serviceName: b.serviceName ?? "—",
         price: Number(b.price),
         status: b.status,
       })),
+      summary: { cancelled, noShow },
     });
   } catch (err) {
     console.error(err);
