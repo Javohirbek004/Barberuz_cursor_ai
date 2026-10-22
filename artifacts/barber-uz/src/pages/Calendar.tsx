@@ -4,6 +4,7 @@ import { Layout } from "@/components/Layout";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { useListBookings, useGetDashboardStats, useUpdateBooking, getListClientsQueryKey } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -209,6 +210,7 @@ function IndividualCalendar() {
   const [reviewOpen, setReviewOpen] = useState(true);
   const [noShowTarget, setNoShowTarget] = useState<Booking | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [showDropped, setShowDropped] = useState(false);
 
   const selectedISO = toISO(selectedDate);
   useEffect(() => { setReviewOpen(true); }, [selectedISO]);
@@ -227,6 +229,12 @@ function IndividualCalendar() {
     : [];
   const reviewIds = new Set(reviewBookings.map((b) => b.id));
   const listedBookings = bookings.filter((b) => !reviewIds.has(b.id));
+  const isDroppedVisit = (status: string) =>
+    status === "cancelled" || status === "auto_cancelled" || status === "no_show";
+  const droppedCount = listedBookings.filter((b) => isDroppedVisit(b.status)).length;
+  const visibleBookings = showDropped
+    ? listedBookings
+    : listedBookings.filter((b) => !isDroppedVisit(b.status));
   const pastUnresolved = (overdueData?.bookings ?? [])
     .filter((b) => isOpenBooking(b.status) && b.date < todayISO)
     .sort((a, b) => b.date.localeCompare(a.date) || a.startTime.localeCompare(b.startTime));
@@ -287,8 +295,21 @@ function IndividualCalendar() {
         jumpIso={jumpIso}
       />
 
+      <label className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-card px-3.5 py-3">
+        <span className="text-[13px] font-semibold leading-snug text-foreground">
+          🚫 Bekor bo'lganlar & Kelmaganlar ({droppedCount})
+        </span>
+        <Switch
+          checked={showDropped}
+          onCheckedChange={setShowDropped}
+          data-testid="calendar-dropped-toggle"
+          aria-label="Bekor bo'lganlar va kelmaganlarni ko'rsatish"
+          className="data-[state=unchecked]:bg-white/25 data-[state=checked]:bg-primary"
+        />
+      </label>
+
       {/* Booking list */}
-      <div className="space-y-3">
+      <div className="space-y-3" data-testid="calendar-timeline">
         {reviewBookings.length > 0 && (
           <section data-testid="calendar-review" className="space-y-2">
             <button
@@ -357,7 +378,7 @@ function IndividualCalendar() {
             <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin mb-3" />
             <p className="text-sm text-muted-foreground">Yuklanmoqda...</p>
           </div>
-        ) : listedBookings.length === 0 && reviewBookings.length === 0 ? (
+        ) : visibleBookings.length === 0 && reviewBookings.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
               <CalendarDays className="w-6 h-6 text-muted-foreground/40" />
@@ -366,7 +387,7 @@ function IndividualCalendar() {
             <p className="text-xs text-muted-foreground/45 mt-1.5">Yangi bron qo'shish uchun + tugmasini bosing</p>
           </div>
         ) : (
-          listedBookings.map((b, i) => {
+          visibleBookings.map((b, i) => {
             const view = bookingLook(b);
             return (
             <motion.button
