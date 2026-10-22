@@ -297,13 +297,13 @@ function IndividualCalendar() {
 
       <label className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-card px-3.5 py-3">
         <span className="text-[13px] font-semibold leading-snug text-foreground">
-          🚫 Bekor bo'lganlar & Kelmaganlar ({droppedCount})
+          🚫 Bekor qilinganlar & Kelmaganlar ({droppedCount})
         </span>
         <Switch
           checked={showDropped}
           onCheckedChange={setShowDropped}
           data-testid="calendar-dropped-toggle"
-          aria-label="Bekor bo'lganlar va kelmaganlarni ko'rsatish"
+          aria-label="Bekor qilinganlar va kelmaganlarni ko'rsatish"
           className="data-[state=unchecked]:bg-white/25 data-[state=checked]:bg-primary"
         />
       </label>
