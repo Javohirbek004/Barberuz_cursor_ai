@@ -43,3 +43,22 @@ export function reviewDayLabel(date: string, today: string): string {
 export function isOpenBooking(status: string): boolean {
   return status === "confirmed" || status === "pending";
 }
+
+export type CalendarStatusTone = "upcoming" | "awaiting" | "done" | "missed" | "pending";
+
+/** What the calendar badge says. Past confirmed visits wait for Keldi / Kelmadi. */
+export function calendarStatusView(
+  booking: { status: string; date: string; startTime: string },
+  now = Date.now(),
+): { label: string; tone: CalendarStatusTone } {
+  const status = booking.status;
+  if (status === "completed") return { label: "Bajarildi", tone: "done" };
+  if (status === "no_show" || status === "cancelled") return { label: "Kelmadi", tone: "missed" };
+  if (status === "auto_cancelled") return { label: "Avtomatik bekor", tone: "missed" };
+  if (status === "pending") return { label: "Kutilmoqda", tone: "pending" };
+  if (status === "confirmed" && bookingStartMs(booking.date, booking.startTime) < now) {
+    return { label: "Yakunlash kutilmoqda", tone: "awaiting" };
+  }
+  if (status === "confirmed") return { label: "Tasdiqlandi", tone: "upcoming" };
+  return { label: status, tone: "upcoming" };
+}

@@ -8,7 +8,7 @@ import { useListBookings, useGetDashboardStats, useUpdateBooking, getListClients
 import type { Booking } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { isOpenBooking } from "@/lib/booking-feed";
+import { calendarStatusView, isOpenBooking, type CalendarStatusTone } from "@/lib/booking-feed";
 import { BookingDetailModal } from "@/components/BookingDetailModal";
 import { BookingNoteBadge } from "@/components/BookingNoteBadge";
 import { noteFromBooking } from "@/lib/booking-note";
@@ -60,38 +60,26 @@ function formatHeaderDate(date: Date): string {
   return `${d}-${m.toLowerCase()}, ${wd}`;
 }
 
-// ── 3-status config ───────────────────────────────────────────────────────────
-const STATUS_CARD: Record<string, string> = {
-  confirmed: "border-emerald-500/25 bg-emerald-500/5",
-  completed: "border-blue-400/20 bg-blue-500/5",
-  cancelled:  "border-red-500/20 bg-red-500/5 opacity-60",
-  auto_cancelled: "border-red-500/20 bg-red-500/5 opacity-60",
-  no_show: "border-red-500/20 bg-red-500/5 opacity-60",
-  pending:    "border-amber-400/25 bg-amber-400/5",
+const TONE_CARD: Record<CalendarStatusTone, string> = {
+  upcoming: "border-emerald-500/25 bg-emerald-500/5",
+  awaiting: "border-amber-400/35 bg-amber-400/8",
+  done: "border-emerald-500/40 bg-emerald-500/10",
+  missed: "border-red-500/25 bg-red-500/5",
+  pending: "border-amber-400/25 bg-amber-400/5",
 };
-const STATUS_DOT: Record<string, string> = {
-  confirmed: "bg-emerald-500",
-  completed: "bg-blue-400/70",
-  cancelled:  "bg-red-500",
-  auto_cancelled: "bg-red-500",
-  no_show: "bg-red-500",
-  pending:    "bg-amber-400",
+const TONE_DOT: Record<CalendarStatusTone, string> = {
+  upcoming: "bg-emerald-400",
+  awaiting: "bg-amber-400",
+  done: "bg-emerald-500",
+  missed: "bg-red-500",
+  pending: "bg-amber-400",
 };
-const STATUS_LABEL: Record<string, string> = {
-  confirmed: "Tasdiqlandi",
-  completed: "Yakunlandi",
-  cancelled:  "Bekor qilindi",
-  auto_cancelled: "Avtomatik bekor",
-  no_show: "Kelmadi",
-  pending:    "Kutilmoqda",
-};
-const STATUS_TEXT: Record<string, string> = {
-  confirmed: "text-emerald-400",
-  completed: "text-blue-400/80",
-  cancelled:  "text-red-400",
-  auto_cancelled: "text-red-400",
-  no_show: "text-red-400",
-  pending:    "text-amber-400",
+const TONE_BADGE: Record<CalendarStatusTone, string> = {
+  upcoming: "bg-emerald-500/15 text-emerald-300",
+  awaiting: "bg-amber-500/20 text-amber-300",
+  done: "bg-emerald-500 text-black",
+  missed: "bg-red-500/20 text-red-300",
+  pending: "bg-amber-500/15 text-amber-300",
 };
 
 // ── Month Nav ─────────────────────────────────────────────────────────────────
@@ -350,7 +338,9 @@ function IndividualCalendar() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline justify-between gap-2">
                           <span className="font-bold truncate text-foreground">{b.clientName}</span>
-                          <span className="text-xs font-semibold shrink-0 text-amber-400">Kutilmoqda</span>
+                          <span className="text-[11px] font-semibold shrink-0 text-right leading-tight max-w-[8.5rem] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300">
+                            {calendarStatusView(b).label}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between mt-0.5">
                           <span className="text-sm truncate text-muted-foreground">{b.serviceName ?? "—"}</span>
@@ -399,7 +389,9 @@ function IndividualCalendar() {
             <p className="text-xs text-muted-foreground/45 mt-1.5">Yangi bron qo'shish uchun + tugmasini bosing</p>
           </div>
         ) : (
-          listedBookings.map((b, i) => (
+          listedBookings.map((b, i) => {
+            const view = calendarStatusView(b);
+            return (
             <motion.button
               key={b.id}
               initial={{ opacity: 0, y: 8 }}
@@ -407,28 +399,31 @@ function IndividualCalendar() {
               transition={{ delay: i * 0.04 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => setSelectedBooking(b)}
-              className={`w-full text-left rounded-2xl border p-4 flex items-start gap-4 transition-all ${STATUS_CARD[b.status] ?? STATUS_CARD.confirmed}`}
+              className={`w-full text-left rounded-2xl border p-4 flex items-start gap-4 transition-all ${TONE_CARD[view.tone]}`}
             >
               <div className="flex flex-col items-center min-w-[2.75rem]">
-                <span className={`text-sm font-bold tabular-nums ${b.status === "completed" ? "text-white/40" : "text-foreground"}`}>
+                <span className="text-sm font-bold tabular-nums text-foreground">
                   {b.startTime.slice(0, 5)}
                 </span>
-                <div className={`mt-1.5 w-2.5 h-2.5 rounded-full ${STATUS_DOT[b.status] ?? STATUS_DOT.confirmed}`} />
+                <div className={`mt-1.5 w-2.5 h-2.5 rounded-full ${TONE_DOT[view.tone]}`} />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className={`font-bold truncate ${b.status === "completed" ? "text-white/40" : "text-foreground"}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-bold truncate text-foreground">
                     {b.clientName}
                   </span>
-                  <span className={`text-xs font-semibold shrink-0 ${STATUS_TEXT[b.status] ?? STATUS_TEXT.confirmed}`}>
-                    {STATUS_LABEL[b.status] ?? b.status}
+                  <span
+                    data-testid={`cal-status-${b.id}`}
+                    className={`text-[11px] font-semibold shrink-0 text-right leading-tight max-w-[8.5rem] px-2 py-0.5 rounded-full ${TONE_BADGE[view.tone]}`}
+                  >
+                    {view.label}
                   </span>
                 </div>
                 <div className="flex items-center justify-between mt-0.5">
-                  <span className={`text-sm truncate ${b.status === "completed" ? "text-white/30" : "text-muted-foreground"}`}>
+                  <span className="text-sm truncate text-muted-foreground">
                     {b.serviceName ?? "—"}
                   </span>
-                  <span className={`text-sm font-semibold ml-2 shrink-0 ${b.status === "completed" ? "text-white/35" : "text-primary"}`}>
+                  <span className="text-sm font-semibold ml-2 shrink-0 text-primary">
                     {b.price.toLocaleString()} so'm
                   </span>
                 </div>
@@ -438,7 +433,8 @@ function IndividualCalendar() {
                 />
               </div>
             </motion.button>
-          ))
+            );
+          })
         )}
       </div>
 

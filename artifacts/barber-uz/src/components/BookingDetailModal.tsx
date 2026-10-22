@@ -12,7 +12,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { isElapsedBooking } from "@/lib/booking-feed";
+import { calendarStatusView, isElapsedBooking } from "@/lib/booking-feed";
 import { noteFromBooking, parseBookingNotes } from "@/lib/booking-note";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 
@@ -405,8 +405,16 @@ export function BookingDetailModal({
 
   const isBusy = updateBookingMut.isPending;
   const bookingStatus = booking.status as string;
+  const statusView = calendarStatusView(booking);
   const isActive = bookingStatus !== "cancelled" && bookingStatus !== "auto_cancelled" && bookingStatus !== "completed" && bookingStatus !== "no_show";
   const needsReview = isActive && isElapsedBooking(booking.date, booking.startTime);
+  const statusPill = statusView.tone === "done"
+    ? "bg-emerald-500 text-black"
+    : statusView.tone === "awaiting" || statusView.tone === "pending"
+      ? "bg-amber-500/15 text-amber-300"
+      : statusView.tone === "missed"
+        ? "bg-red-500/15 text-red-300"
+        : "bg-emerald-500/15 text-emerald-300";
   const dateLabel = formatBookingDate(booking.date);
   const phone = clientData?.phone ?? parsedPhone;
 
@@ -463,17 +471,8 @@ export function BookingDetailModal({
               </span>
             </SheetRow>
             <SheetRow label="Holat">
-              <span className={`inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-full font-semibold tracking-wide ${
-                booking.status === "confirmed" ? "bg-emerald-500/12 text-emerald-400" :
-                booking.status === "pending"   ? "bg-amber-500/12 text-amber-400" :
-                booking.status === "completed" ? "bg-blue-500/12 text-blue-400" :
-                                                  "bg-red-500/12 text-red-400"
-              }`}>
-                {booking.status === "confirmed" ? "Tasdiqlangan" :
-                 booking.status === "pending"   ? "Kutilmoqda" :
-                 booking.status === "completed" ? "Yakunlangan" :
-                 bookingStatus === "no_show" ? "Kelmadi" :
-                 bookingStatus === "auto_cancelled" ? "Avtomatik bekor" : "Bekor qilingan"}
+              <span className={`inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-full font-semibold tracking-wide ${statusPill}`}>
+                {statusView.label}
               </span>
             </SheetRow>
           </div>
@@ -591,11 +590,11 @@ export function BookingDetailModal({
 
           {!isActive && (
             <div className={`mt-4 text-center text-sm font-semibold py-3 rounded-2xl ${
-              bookingStatus === "cancelled" || bookingStatus === "auto_cancelled"
-                ? "bg-red-500/10 text-red-400 border border-red-500/15"
-                : "bg-blue-500/10 text-blue-400 border border-blue-500/15"
+              statusView.tone === "done"
+                ? "bg-emerald-500 text-black"
+                : "bg-red-500/10 text-red-400 border border-red-500/15"
             }`}>
-              {bookingStatus === "no_show" ? "✕  Kelmadi" : bookingStatus === "auto_cancelled" ? "✕  Avtomatik bekor" : bookingStatus === "cancelled" ? "✕  Bekor qilingan" : "✓  Yakunlangan"}
+              {statusView.tone === "done" ? "✓  Bajarildi" : `✕  ${statusView.label}`}
             </div>
           )}
         </div>
