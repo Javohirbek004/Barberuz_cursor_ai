@@ -2,7 +2,7 @@ import { Router } from "express";
 import { randomBytes } from "crypto";
 import { db, usersTable } from "@workspace/db";
 import { eq, ilike, or, sql } from "drizzle-orm";
-import { hashPassword, legacyHash, generateToken, authenticate, getUser, secretsEqual } from "../lib/auth";
+import { makePasswordHash, verifyPassword, generateToken, authenticate, getUser, secretsEqual } from "../lib/auth";
 import { clearRateLimit, clientIp, consumeRateLimit } from "../lib/rate-limit";
 import { getTelegramLoginResult, storeLoginToken } from "../lib/telegram-bot";
 import { getLivePendingRegistration, savePendingRegistration } from "../lib/pending-registration";
@@ -51,7 +51,7 @@ router.post("/register", async (req, res) => {
       return;
     }
     const { name, username: providedUsername, brandName, password, mode, lang } = req.body;
-    if (!name || !password || !mode) {
+    if (!name || !password || !mode || typeof name !== "string" || typeof password !== "string") {
       res.status(400).json({ error: "validation", message: "Missing required fields" });
       return;
     }
@@ -66,7 +66,7 @@ router.post("/register", async (req, res) => {
     const pending = await savePendingRegistration({
       name,
       brandName: brandName || null,
-      passwordHash: hashPassword(password),
+      passwordHash: await makePasswordHash(password),
       mode: mode === "team" ? "team" : "solo",
       lang: lang === "ru" ? "ru" : "uz",
     });
@@ -95,7 +95,7 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
-    if (!username || !password) {
+    if (!username || !password || typeof password !== "string") {
       res.status(400).json({ error: "validation", message: "Missing credentials" });
       return;
     }
@@ -111,19 +111,18 @@ router.post("/login", async (req, res) => {
       res.status(401).json({ error: "unauthorized", message: "Invalid credentials" });
       return;
     }
-    const newHash = hashPassword(password);
-    const oldHash = legacyHash(password); // null when PASSWORD_SALT env is set
-
-    const passwordOk = newHash === user.passwordHash || (oldHash !== null && oldHash === user.passwordHash);
-    if (!passwordOk) {
+    const check = await verifyPassword(password, user.passwordHash);
+    if (!check.ok) {
       res.status(401).json({ error: "unauthorized", message: "Invalid credentials" });
       return;
     }
     clearRateLimit(`login:id:${ip}:${ident}`);
 
-    // Silently upgrade legacy hash to the corrected formula
-    if (oldHash !== null && oldHash === user.passwordHash) {
-      await db.update(usersTable).set({ passwordHash: newHash }).where(eq(usersTable.id, user.id));
+    // Accounts saved in the old fast format are quietly re-saved with the strong one.
+    if (check.needsUpgrade) {
+      await db.update(usersTable)
+        .set({ passwordHash: await makePasswordHash(password) })
+        .where(eq(usersTable.id, user.id));
     }
 
     const token = generateToken(user.id, 7 * 24 * 60 * 60, user.sessionEpoch ?? 0);

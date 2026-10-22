@@ -14,7 +14,7 @@ import {
   isUuid,
   isPhone,
 } from "../middleware/validate";
-import { hashPassword } from "../../lib/auth";
+import { makePasswordHash } from "../../lib/auth";
 
 async function buildUsername(name: string, brandName?: string | null, phone?: string | null): Promise<string> {
   const { allocatePublicSlug } = await import("../../lib/public-slug");
@@ -72,7 +72,7 @@ export async function postUser(req: Request, res: Response) {
     const row = await createUser({
       name: name.trim(),
       username,
-      password_hash: hashPassword(password),
+      password_hash: await makePasswordHash(password),
       role: role ?? "barber",
       language: language ?? "uz",
       phone: phone ?? null,

@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request } from "express";
 import { db, usersTable, slugRedirectsTable, bookingsTable, qrScansTable, loginDevicesTable } from "@workspace/db";
 import { and, eq, gte, isNull, lt, ne, notInArray, sql } from "drizzle-orm";
-import { authenticate, getUser, hashPassword, generateToken } from "../lib/auth";
+import { authenticate, getUser, makePasswordHash, verifyPassword, generateToken } from "../lib/auth";
 import { consumeRateLimit } from "../lib/rate-limit";
 import { bumpSessionEpoch } from "../lib/session-epoch";
 import { SLUG_LOCK_MS, isSlugAvailable, repairAccidentalSlug, suggestSlug, validateSlug } from "../lib/public-slug";
@@ -304,7 +304,7 @@ router.put("/password", authenticate, async (req, res) => {
       return;
     }
     const { oldPassword, newPassword } = req.body;
-    if (!oldPassword || !newPassword) {
+    if (!oldPassword || !newPassword || typeof oldPassword !== "string" || typeof newPassword !== "string") {
       res.status(400).json({ error: "validation", message: "Missing fields" });
       return;
     }
@@ -313,12 +313,12 @@ router.put("/password", authenticate, async (req, res) => {
       return;
     }
     const [fresh] = await db.select().from(usersTable).where(eq(usersTable.id, user.id)).limit(1);
-    if (hashPassword(oldPassword) !== fresh.passwordHash) {
+    if (!(await verifyPassword(oldPassword, fresh.passwordHash)).ok) {
       res.status(400).json({ error: "wrong_password", message: "Old password is incorrect" });
       return;
     }
     await db.update(usersTable)
-      .set({ passwordHash: hashPassword(newPassword), updatedAt: new Date() })
+      .set({ passwordHash: await makePasswordHash(newPassword), updatedAt: new Date() })
       .where(eq(usersTable.id, user.id));
     const { token } = await bumpSessionEpoch(user.id, deviceKeyOf(req));
     if (deviceKeyOf(req)) await rememberDevice(user.id, deviceKeyOf(req)!, deviceLabelOf(req), clientIp(req));
@@ -447,7 +447,7 @@ router.post("/verify-password", authenticate, async (req, res) => {
     }
     const password = typeof req.body?.password === "string" ? req.body.password : "";
     const [fresh] = await db.select().from(usersTable).where(eq(usersTable.id, user.id)).limit(1);
-    if (!password || hashPassword(password) !== fresh.passwordHash) {
+    if (!password || !(await verifyPassword(password, fresh.passwordHash)).ok) {
       res.status(400).json({ error: "wrong_password", message: "Wrong password" });
       return;
     }

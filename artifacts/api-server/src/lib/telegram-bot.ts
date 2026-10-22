@@ -28,7 +28,7 @@ import { eq, and, isNull, desc, sql, gte, inArray } from "drizzle-orm";
 import { syncClientMetrics } from "./client-metrics";
 import { findClientByPhone } from "./client-lookup";
 import { normalizePhone, phoneKey } from "./phone";
-import { generateToken, hashPassword } from "./auth";
+import { generateToken, makePasswordHash } from "./auth";
 import { bumpSessionEpoch } from "./session-epoch";
 import { consumeRateLimit } from "./rate-limit";
 import {
@@ -395,7 +395,7 @@ async function handlePasswordResetText(
   try {
     await db
       .update(usersTable)
-      .set({ passwordHash: hashPassword(text), updatedAt: new Date() })
+      .set({ passwordHash: await makePasswordHash(text), updatedAt: new Date() })
       .where(eq(usersTable.id, pending.userId));
     await bumpSessionEpoch(pending.userId);
   } catch (err) {
