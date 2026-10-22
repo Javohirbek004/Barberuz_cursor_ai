@@ -1,13 +1,31 @@
 import { Router } from "express";
-import { handleTelegramUpdate, registerWebhook, getWebhookInfo, isBotConfigured } from "../lib/telegram-bot";
+import {
+  handleTelegramUpdate,
+  registerWebhook,
+  getWebhookInfo,
+  isBotConfigured,
+  isWebhookSignatureActive,
+} from "../lib/telegram-bot";
+import { productionHost, webhookSecretToken } from "../lib/telegram-token";
+import { secretsEqual } from "../lib/auth";
+import { adminAuth } from "../v1/middleware/adminAuth";
 
 const router = Router();
 
 /**
  * POST /api/telegram/webhook
- * Telegram sends all bot updates here.
+ * Telegram sends all bot updates here. Once the signed registration is active,
+ * anything without Telegram's secret header is a forgery and is refused.
  */
 router.post("/webhook", async (req, res) => {
+  if (isWebhookSignatureActive()) {
+    const sent = req.headers["x-telegram-bot-api-secret-token"];
+    const provided = typeof sent === "string" ? sent : "";
+    if (!provided || !secretsEqual(provided, webhookSecretToken())) {
+      res.status(403).json({ ok: false });
+      return;
+    }
+  }
   try {
     await handleTelegramUpdate(req.body);
     res.json({ ok: true });
@@ -19,10 +37,10 @@ router.post("/webhook", async (req, res) => {
 
 /**
  * GET /api/telegram/setup
- * Call this to register (or re-register) the webhook with Telegram.
- * Also shows current webhook info and bot status.
+ * Owner-only: needs the X-Admin-Secret header. Registers (or re-registers) the webhook
+ * on the server's own address and shows the current webhook info.
  */
-router.get("/setup", async (req, res) => {
+router.get("/setup", adminAuth, async (_req, res) => {
   const configured = isBotConfigured();
   if (!configured) {
     res.status(503).json({
@@ -33,14 +51,8 @@ router.get("/setup", async (req, res) => {
     return;
   }
 
-  // Build webhook URL from request headers or env
-  const host = req.headers["x-forwarded-host"] || req.hostname;
-  const proto = req.headers["x-forwarded-proto"] || "https";
-  const baseUrl = (process.env.NODE_ENV === "development" && process.env.REPLIT_DEV_DOMAIN)
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : `${proto}://${host}`;
-
-  const webhookUrl = `${baseUrl}/api/telegram/webhook`;
+  // The address is never taken from the request, so nobody can point the bot elsewhere.
+  const webhookUrl = `https://${productionHost()}/api/telegram/webhook`;
   const registerResult = await registerWebhook(webhookUrl);
   const webhookInfo = await getWebhookInfo();
 

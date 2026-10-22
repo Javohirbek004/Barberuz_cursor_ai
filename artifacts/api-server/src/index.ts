@@ -1,7 +1,7 @@
 import "./load-env";
 import app from "./app";
 import { registerWebhook, isBotConfigured, startDevPolling } from "./lib/telegram-bot";
-import { shouldPollTelegram, shouldRegisterTelegramWebhook } from "./lib/telegram-token";
+import { productionHost, shouldPollTelegram, shouldRegisterTelegramWebhook } from "./lib/telegram-token";
 import { startReminderJob } from "./lib/reminders";
 import { normalizeStoredClientPhones } from "./lib/phone-migration";
 import { moveSlugToProfileName } from "./lib/public-slug";
@@ -19,30 +19,6 @@ const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
-
-/**
- * Telegram webhook must hit the live API (Render), not the old Replit host.
- * Prefer APP_URL / Render hostname; skip dead Replit domains.
- */
-function pickProdDomain(): string {
-  if (process.env.APP_URL) {
-    try {
-      const host = new URL(process.env.APP_URL).hostname;
-      if (host && !host.includes("replit")) return host;
-    } catch { /* ignore */ }
-  }
-
-  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
-  if (renderHost) return renderHost;
-
-  const domains = (process.env.REPLIT_DOMAINS || "")
-    .split(",")
-    .map(d => d.trim())
-    .filter(d => d && !d.includes("sisko.replit.dev") && !d.includes("replit."));
-  if (domains[0]) return domains[0];
-
-  return "barber-uz-clq6.onrender.com";
 }
 
 app.listen(port, async () => {
@@ -82,7 +58,7 @@ app.listen(port, async () => {
   if (!shouldRegisterTelegramWebhook()) return;
 
   setTimeout(async () => {
-    const domain = pickProdDomain();
+    const domain = productionHost();
     const webhookUrl = `https://${domain}/api/telegram/webhook`;
     console.log(`[TelegramBot] Registering webhook: ${webhookUrl}`);
     await registerWebhook(webhookUrl);

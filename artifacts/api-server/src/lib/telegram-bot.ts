@@ -41,7 +41,7 @@ import {
   receiptText,
   sendReminderPreview,
 } from "./client-notifications";
-import { getTelegramBotToken } from "./telegram-token";
+import { getTelegramBotToken, webhookSecretToken } from "./telegram-token";
 import {
   createUserFromPending,
   getLivePendingRegistration,
@@ -2712,14 +2712,25 @@ export async function registerWebhook(webhookUrl: string) {
     return { ok: false, description: "Token missing" };
   }
 
+  const secret = webhookSecretToken();
   console.log(`[TelegramBot] Registering webhook: ${webhookUrl}`);
   const result = await callTelegram("setWebhook", {
     url: webhookUrl,
     allowed_updates: ["message", "callback_query"],
     drop_pending_updates: true,
+    ...(secret ? { secret_token: secret } : {}),
   });
   console.log("[TelegramBot] setWebhook result:", JSON.stringify(result));
+  // Only start refusing unsigned updates once Telegram has accepted the signed registration.
+  if (secret && (result as { ok?: boolean } | null)?.ok === true) webhookSignatureActive = true;
   return result;
+}
+
+let webhookSignatureActive = false;
+
+/** True after Telegram confirmed it will sign every update it sends us. */
+export function isWebhookSignatureActive(): boolean {
+  return webhookSignatureActive;
 }
 
 export async function getWebhookInfo() {
