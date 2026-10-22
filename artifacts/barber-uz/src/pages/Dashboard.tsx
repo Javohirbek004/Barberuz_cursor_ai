@@ -636,7 +636,6 @@ function IndividualDashboard() {
                       </div>
                       <div className="text-right flex-shrink-0">
                         <div className="text-sm font-semibold text-yellow-500">{b.price.toLocaleString()} so'm</div>
-                        <BookingStatusBadge booking={b} now={now.getTime()} />
                       </div>
                     </button>
                     <p className="px-4 pb-2 text-xs text-muted-foreground leading-snug">
