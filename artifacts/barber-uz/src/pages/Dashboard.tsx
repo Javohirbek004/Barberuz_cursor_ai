@@ -12,7 +12,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { bookingDay, bookingStartMs, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
+import { bookingDay, bookingStartMs, isOpenBooking, localToday } from "@/lib/booking-feed";
 import { BookingStatusBadge, bookingLook } from "@/components/BookingStatusBadge";
 import { Layout } from "@/components/Layout";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
@@ -41,9 +41,7 @@ const RU_MONTHS = [
 const RU_DAYS = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"];
 
 function formatDateLocale(lang: string): string {
-  const iso = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
-  const [y, m, d] = iso.split("-").map(Number);
-  const now = new Date(y || 1970, (m || 1) - 1, d || 1);
+  const now = new Date();
   const day = now.getDate();
   const month = now.getMonth();
   const weekday = now.getDay();
@@ -85,11 +83,10 @@ function calcNextBookingInfo(
   upcomingBookings: Booking[],
   now: Date,
 ): { main: string; sub: string; nextId: string | null } {
-  const clock = tashkentClock(now);
-  const nowMins = clock.mins;
-  const today = clock.date;
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const today = localToday(now);
   for (const b of upcomingBookings) {
-    if (b.date !== today) continue;
+    if (bookingDay(b.date) !== today) continue;
     const start = toMins(b.startTime);
     if (start <= nowMins) continue;
     return {
@@ -386,11 +383,13 @@ function IndividualDashboard() {
 
   const { isLoading: statsLoading, refetch: refetchStats } = useGetDashboardStats();
   const { data: profile } = useGetProfile();
-  // Use Tashkent date so today's filter matches the server-side timezone
-  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const today = localToday(now);
   const { data: bookingsData, isLoading: bookingsLoading, refetch } = useListBookings({ date: today });
-  // Separate query for the "Yaqin bronlar" list — shows today + future bookings
-  const { data: upcomingData, isLoading: upcomingLoading, refetch: refetchUpcoming } = useListBookings({ date: "upcoming" as any });
 
   // Refresh often and when the app comes back to the screen, so Telegram changes
   // (new, confirmed or cancelled bookings) show up without a reload.
@@ -398,7 +397,6 @@ function IndividualDashboard() {
     const refreshAll = () => {
       void refetch();
       void refetchStats();
-      void refetchUpcoming();
     };
     const id = setInterval(refreshAll, 20_000);
     const onVisible = () => { if (document.visibilityState === "visible") refreshAll(); };
@@ -407,13 +405,7 @@ function IndividualDashboard() {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [refetch, refetchStats, refetchUpcoming]);
-
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(id);
-  }, []);
+  }, [refetch, refetchStats]);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -435,9 +427,9 @@ function IndividualDashboard() {
     .filter((b) => b.status === "completed")
     .reduce((sum, b) => sum + Number(b.price || 0), 0);
 
-  const openBookings = [...(bookingsData?.bookings ?? []), ...(upcomingData?.bookings ?? [])]
-    .filter((b, index, all) => isOpenBooking(b.status) && all.findIndex((row) => row.id === b.id) === index)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+  const openBookings = bookings
+    .filter((b) => isOpenBooking(b.status) && bookingDay(b.date) === today)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
   // A confirmed visit whose clock time has passed waits for Keldi / Kelmadi.
   const awaitingClose = (b: Booking) => {
     if (!isOpenBooking(b.status)) return false;
@@ -520,13 +512,12 @@ function IndividualDashboard() {
       })));
       await Promise.all([
         refetch(),
-        refetchUpcoming(),
         refetchStats(),
         queryClient.invalidateQueries({ queryKey: getListClientsQueryKey() }),
       ]);
       const sum = rows.reduce((total, row) => total + Number(row.price || 0), 0);
       if (status === "completed") {
-        const allToday = rows.every((row) => row.date === today);
+        const allToday = rows.every((row) => bookingDay(row.date) === today);
         toast({
           title: rows.length > 1 ? "Barchasi bajarildi" : "✓ Keldi",
           description: allToday
@@ -597,7 +588,7 @@ function IndividualDashboard() {
         />
       </div>
 
-      {(bookingsLoading || upcomingLoading) ? (
+      {bookingsLoading ? (
         <p className="text-muted-foreground text-center py-8 text-sm">{t("loading")}</p>
       ) : (
         <div ref={bookingsListRef} className="space-y-8">
@@ -695,8 +686,7 @@ function IndividualDashboard() {
               <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
                 <CalendarDays className="w-6 h-6 text-muted-foreground/40" />
               </div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">Yaqin bronlar yo'q</p>
-              <p className="text-xs text-muted-foreground/50">Yangi bron qo'shish uchun + tugmasini bosing</p>
+              <p className="text-sm font-medium text-muted-foreground mb-1">Bugun boshqa bron yo'q</p>
             </div>
           )}
         </div>
@@ -708,7 +698,7 @@ function IndividualDashboard() {
           <BookingDetailModal
             booking={selectedBooking}
             onClose={() => setSelectedBooking(null)}
-            onRefetch={() => { void refetch(); void refetchUpcoming(); }}
+            onRefetch={() => { void refetch(); }}
             onRefetchStats={refetchStats}
           />
         )}

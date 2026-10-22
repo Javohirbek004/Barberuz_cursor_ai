@@ -23,10 +23,18 @@ export function bookingDay(date: string): string {
   return match?.[0] ?? String(date).slice(0, 10);
 }
 
+/** The phone's own calendar day, not a fixed country clock. */
+export function localToday(now = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+/** Wall-clock start on this phone. 11:00 means 11:00 where the barber is standing. */
 export function bookingStartMs(date: string, startTime: string): number {
-  const day = bookingDay(date);
-  const [hour = "0", minute = "0"] = String(startTime).slice(0, 5).split(":");
-  return new Date(`${day}T${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:00+05:00`).getTime();
+  const [year = 1970, month = 1, dayNum = 1] = bookingDay(date).split("-").map(Number);
+  const [hour = 0, minute = 0] = String(startTime).slice(0, 5).split(":").map(Number);
+  return new Date(year, month - 1, dayNum, hour, minute, 0, 0).getTime();
 }
 
 /** A confirmed visit stays in the upcoming list for 15 minutes after its start. */
