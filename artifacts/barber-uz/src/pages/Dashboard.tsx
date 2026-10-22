@@ -302,7 +302,7 @@ function TodayStatsModal({ open, onClose, total, completed, remaining, cancelled
           <div className={`${metricCard} bg-green-500/8 border border-green-500/20`}>
             <div className={`${metricLabel} text-emerald-400 inline-flex items-center justify-center gap-1.5`}>
               <Calendar className="w-5 h-5 text-emerald-400 stroke-[2.5] shrink-0" />
-              <span>Tasdiqlangan / Kutilayotgan</span>
+              <span>Tasdiqlangan</span>
             </div>
             <div className={`${metricValue} text-emerald-400`}>{remaining} ta</div>
           </div>
@@ -474,10 +474,17 @@ function IndividualDashboard() {
   const freeSlots   = freeWindows.reduce((s, w) => s + Math.floor((w.end - w.start) / SLOT_MIN), 0);
 
   // The report tiles must add up to every booking made today.
-  const todayCompleted = bookings.filter(b => b.status === "completed").length;
-  const todayRemaining = bookings.filter(b => b.status === "confirmed" || b.status === "pending").length;
-  const todayCancelled = bookings.filter(b => b.status === "no_show" || b.status === "cancelled" || b.status === "auto_cancelled").length;
-  const todayTotal = bookings.length;
+  const reportStatus = (status: string) => status.trim().toLowerCase();
+  const todayCompleted = bookings.filter((b) => reportStatus(b.status) === "completed").length;
+  const todayRemaining = bookings.filter((b) => {
+    const status = reportStatus(b.status);
+    return status === "confirmed" || status === "pending" || status === "pending_action";
+  }).length;
+  const todayCancelled = bookings.filter((b) => {
+    const status = reportStatus(b.status);
+    return status === "no_show" || status === "cancelled" || status === "auto_cancelled";
+  }).length;
+  const todayTotal = todayCompleted + todayRemaining + todayCancelled;
   const todayDurMins = bookings
     .filter(b => b.status === "completed")
     .reduce((s, b) => s + toMins(b.endTime) - toMins(b.startTime), 0);

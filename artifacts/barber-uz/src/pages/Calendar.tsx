@@ -227,10 +227,13 @@ function IndividualCalendar() {
   const reviewBookings = isPastDay
     ? bookings.filter((b) => isOpenBooking(b.status))
     : [];
+  const bookingStatus = (status: string) => status.trim().toLowerCase();
   const isDroppedVisit = (status: string) =>
-    status === "cancelled" || status === "auto_cancelled" || status === "no_show";
-  const isTimelineVisit = (status: string) =>
-    status === "confirmed" || status === "pending" || status === "completed";
+    bookingStatus(status) === "cancelled" || bookingStatus(status) === "auto_cancelled" || bookingStatus(status) === "no_show";
+  const isTimelineVisit = (status: string) => {
+    const value = bookingStatus(status);
+    return value === "confirmed" || value === "pending" || value === "pending_action" || value === "completed";
+  };
   const droppedCount = bookings.filter((b) => isDroppedVisit(b.status)).length;
   const visibleBookings = bookings.filter((b) =>
     isTimelineVisit(b.status) || (showDropped && isDroppedVisit(b.status)),
@@ -390,8 +393,8 @@ function IndividualCalendar() {
           </div>
         ) : (
           visibleBookings.map((b, i) => {
-            const shown = b.status === "confirmed" || b.status === "pending"
-              ? { ...b, date: "2099-01-01", startTime: "23:59" }
+            const shown = bookingStatus(b.status) === "confirmed" || bookingStatus(b.status) === "pending" || bookingStatus(b.status) === "pending_action"
+              ? { ...b, status: "confirmed" as Booking["status"], date: "2099-01-01", startTime: "23:59" }
               : b;
             const view = bookingLook(shown);
             return (
