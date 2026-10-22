@@ -12,7 +12,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { bookingStartMs, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
+import { bookingDay, bookingStartMs, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
 import { BookingStatusBadge, bookingLook } from "@/components/BookingStatusBadge";
 import { Layout } from "@/components/Layout";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
@@ -435,13 +435,17 @@ function IndividualDashboard() {
     .filter((b) => b.status === "completed")
     .reduce((sum, b) => sum + Number(b.price || 0), 0);
 
-  const openBookings = (upcomingData?.bookings ?? [])
-    .filter((b) => isOpenBooking(b.status))
+  const openBookings = [...(bookingsData?.bookings ?? []), ...(upcomingData?.bookings ?? [])]
+    .filter((b, index, all) => isOpenBooking(b.status) && all.findIndex((row) => row.id === b.id) === index)
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
-  // After midnight, earlier days leave this home list. Only today's elapsed visits wait here.
-  const awaitingClose = (b: Booking) => isOpenBooking(b.status) && bookingStartMs(b.date, b.startTime) < now.getTime();
+  // A confirmed visit whose clock time has passed waits for Keldi / Kelmadi.
+  const awaitingClose = (b: Booking) => {
+    if (!isOpenBooking(b.status)) return false;
+    const start = bookingStartMs(b.date, b.startTime);
+    return Number.isFinite(start) && start < now.getTime();
+  };
   const reviewBookings = openBookings
-    .filter((b) => b.date === today && awaitingClose(b))
+    .filter((b) => bookingDay(b.date) === today && awaitingClose(b))
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
   const upcomingBookings = openBookings
     .filter((b) => !awaitingClose(b))
@@ -656,8 +660,9 @@ function IndividualDashboard() {
                         </div>
                         <BookingNoteBadge note={noteFromBooking(b)} />
                       </div>
-                      <div className="text-right flex-shrink-0">
+                      <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                         <div className="text-sm font-semibold text-yellow-500">{b.price.toLocaleString()} so'm</div>
+                        <BookingStatusBadge booking={b} now={now.getTime()} />
                       </div>
                     </button>
                     <p className="px-4 pb-2 text-xs text-muted-foreground leading-snug">
