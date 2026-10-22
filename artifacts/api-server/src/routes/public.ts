@@ -7,7 +7,7 @@
  */
 
 import { Router } from "express";
-import { db, bookingSessionsTable, usersTable, servicesTable, serviceCategoriesTable, slugRedirectsTable, bookingsTable, clientsTable, qrScansTable } from "@workspace/db";
+import { db, bookingSessionsTable, usersTable, servicesTable, serviceCategoriesTable, slugRedirectsTable, bookingsTable, clientsTable, qrScansTable, phoneUpdateIntentsTable } from "@workspace/db";
 import { eq, and, isNull, or, desc, gt, notInArray } from "drizzle-orm";
 import { deliverBookingReceipt } from "../lib/client-notifications";
 import { findClientByPhone } from "../lib/client-lookup";
@@ -365,12 +365,29 @@ router.get("/sessions/:sessionId", async (req, res) => {
 });
 
 /**
- * GET /api/public/client-phone
- * Phone numbers are not handed out by Telegram id. The booking form keeps
- * the number on this device after the owner shares their contact.
+ * GET /api/public/client-phone?telegramId=
+ * Returns the phone only for 30 minutes after this Telegram account
+ * finishes a phone update, so the same browser can refresh the field.
  */
-router.get("/client-phone", async (_req, res) => {
-  res.json({ phone: null });
+router.get("/client-phone", async (req, res) => {
+  const telegramId = String(req.query.telegramId || "").replace(/\D/g, "");
+  if (!telegramId) {
+    res.json({ phone: null });
+    return;
+  }
+  try {
+    const [intent] = await db
+      .select()
+      .from(phoneUpdateIntentsTable)
+      .where(eq(phoneUpdateIntentsTable.telegramId, telegramId))
+      .limit(1);
+    const fresh = intent?.phone
+      && !intent.pending
+      && Date.now() - new Date(intent.updatedAt).getTime() < 30 * 60 * 1000;
+    res.json({ phone: fresh ? intent.phone : null });
+  } catch {
+    res.json({ phone: null });
+  }
 });
 
 /**

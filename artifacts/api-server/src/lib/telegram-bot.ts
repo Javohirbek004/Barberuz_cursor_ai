@@ -27,7 +27,7 @@ import { db, usersTable, bookingSessionsTable, bookingsTable, clientsTable, phon
 import { eq, and, isNull, desc, sql, gte, inArray } from "drizzle-orm";
 import { syncClientMetrics } from "./client-metrics";
 import { findClientByPhone } from "./client-lookup";
-import { normalizePhone } from "./phone";
+import { normalizePhone, phoneKey } from "./phone";
 import { generateToken, hashPassword } from "./auth";
 import { bumpSessionEpoch } from "./session-epoch";
 import { consumeRateLimit } from "./rate-limit";
@@ -1042,20 +1042,13 @@ async function getPhoneUpdateIntent(telegramId: string): Promise<{ barberSlug: s
   }
 }
 
-async function sendPhoneUpdatePrompt(chatId: number, firstName: string) {
-  const name = escHtml(firstName.trim() || "do'stim");
+async function sendPhoneUpdatePrompt(chatId: number, _firstName: string) {
   await callTelegram("sendMessage", {
     chat_id: chatId,
     parse_mode: "HTML",
-    text: [
-      "📱 <b>Raqamni yangilashni tasdiqlash</b>",
-      "",
-      `<b>${name}</b>, telefon raqamingizni yangilash uchun pastdagi <b>"Raqamni yuborish"</b> tugmasini bosing.`,
-      "",
-      "<i>(Ushbu raqam Telegram akkauntingizga biriktirilgan rasmiy raqam bo'ladi)</i>",
-    ].join("\n"),
+    text: "Salom! Telefon raqamingizni yangilash uchun pastdagi tugmani bosib yangi raqamingizni yuboring:",
     reply_markup: {
-      keyboard: [[{ text: "📲 Raqamni yuborish", request_contact: true }]],
+      keyboard: [[{ text: "📞 Yangi raqamni yuborish", request_contact: true }]],
       resize_keyboard: true,
       one_time_keyboard: true,
     },
@@ -1088,34 +1081,43 @@ async function completePhoneUpdate(
   }
 
   const now = new Date();
+  let unchanged = false;
   try {
-    await db.update(clientsTable).set({
-      phone,
-      updatedAt: now,
-    }).where(eq(clientsTable.telegramId, telegramId));
+    const [current] = await db
+      .select({ phone: clientsTable.phone })
+      .from(clientsTable)
+      .where(eq(clientsTable.telegramId, telegramId))
+      .limit(1);
+    unchanged = !!phoneKey(current?.phone) && phoneKey(current?.phone) === phoneKey(phone);
+    if (!unchanged) {
+      await db.update(clientsTable).set({
+        phone,
+        updatedAt: now,
+      }).where(eq(clientsTable.telegramId, telegramId));
 
-    const slug = barberSlug ? safeBarberSlug(barberSlug) : null;
-    if (slug) {
-      const [barber] = await db
-        .select({ id: usersTable.id })
-        .from(usersTable)
-        .where(eq(usersTable.username, slug))
-        .limit(1);
-      if (barber) {
-        const [existing] = await db
-          .select({ id: clientsTable.id })
-          .from(clientsTable)
-          .where(and(eq(clientsTable.barberId, barber.id), eq(clientsTable.telegramId, telegramId)))
+      const slug = barberSlug ? safeBarberSlug(barberSlug) : null;
+      if (slug) {
+        const [barber] = await db
+          .select({ id: usersTable.id })
+          .from(usersTable)
+          .where(eq(usersTable.username, slug))
           .limit(1);
-        if (!existing) {
-          const name = ((from?.first_name as string) || "").trim() || "Mijoz";
-          await db.insert(clientsTable).values({
-            barberId: barber.id,
-            name,
-            phone,
-            telegramId,
-            status: "new",
-          });
+        if (barber) {
+          const [existing] = await db
+            .select({ id: clientsTable.id })
+            .from(clientsTable)
+            .where(and(eq(clientsTable.barberId, barber.id), eq(clientsTable.telegramId, telegramId)))
+            .limit(1);
+          if (!existing) {
+            const name = ((from?.first_name as string) || "").trim() || "Mijoz";
+            await db.insert(clientsTable).values({
+              barberId: barber.id,
+              name,
+              phone,
+              telegramId,
+              status: "new",
+            });
+          }
         }
       }
     }
@@ -1141,14 +1143,12 @@ async function completePhoneUpdate(
   await callTelegram("sendMessage", {
     chat_id: chatId,
     parse_mode: "HTML",
-    text: [
-      "✅ <b>Raqamingiz muvaffaqiyatli yangilandi!</b>",
-      "",
-      `Yangi raqam: <b>${escHtml(phone)}</b>`,
-    ].join("\n"),
+    text: unchanged
+      ? "ℹ️ Ushbu raqam allaqachon amaldagi raqamingiz sifatida tasdiqlangan. Bron qilishni davom ettirishingiz mumkin."
+      : "✅ Telefon raqamingiz muvaffaqiyatli yangilandi!",
     reply_markup: {
       inline_keyboard: [[
-        { text: "📱 Bron qilishni davom ettirish", url: backUrl },
+        { text: "🔙 Bron sahifasiga qaytish", url: backUrl },
       ]],
     },
   });

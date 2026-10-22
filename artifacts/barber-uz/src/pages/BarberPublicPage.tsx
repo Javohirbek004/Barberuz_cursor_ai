@@ -124,7 +124,7 @@ function dateFullLabel(iso: string, todayISO: string, tomorrowISO: string): stri
   return `${UZ_FULL_DAYS_PUB[d.getUTCDay()]}, ${d.getUTCDate()}-${UZ_MONTHS_PUB[d.getUTCMonth()]}`;
 }
 
-type PubBookingStep = "time" | "name" | "confirm" | "verifying" | "done";
+type PubBookingStep = "time" | "name" | "confirm" | "phone" | "verifying" | "done";
 
 interface SavedClient {
   tgId: string;
@@ -154,6 +154,14 @@ function phoneDigits(value: string): string {
 
 function phoneReady(value: string): boolean {
   return phoneDigits(value).length >= 9;
+}
+
+/** Saved Uzbek numbers read as "+998 90 123 45 67". */
+function formatSavedPhone(raw: string): string {
+  const digits = phoneDigits(raw);
+  const local = digits.startsWith("998") && digits.length === 12 ? digits.slice(3) : digits;
+  if (local.length !== 9) return raw.trim();
+  return `+998 ${local.slice(0, 2)} ${local.slice(2, 5)} ${local.slice(5, 7)} ${local.slice(7)}`;
 }
 
 function loadClientProfile(): SavedClient | null {
@@ -211,17 +219,28 @@ function clearBookingDraft() {
 }
 
 async function refreshSavedClientPhone() {
-  // Phone numbers are not fetched from a public URL. This device already stored it.
+  const profile = loadClientProfile();
+  if (!profile?.tgId) return;
+  try {
+    const res = await fetch(`/api/public/client-phone?telegramId=${encodeURIComponent(profile.tgId)}`);
+    if (!res.ok) return;
+    const data = await res.json() as { phone?: string | null };
+    if (!data.phone || data.phone === profile.phone) return;
+    saveClientProfile({ ...profile, phone: data.phone });
+  } catch {
+    // The saved number stays until the next visit.
+  }
 }
 
 function PublicBookingModal({
-  barber, selectedServices, totalDuration, totalPrice, onClose, resume,
+  barber, selectedServices, totalDuration, totalPrice, onClose, onFinished, resume,
 }: {
   barber: BarberData;
   selectedServices: BarberData["services"];
   totalDuration: number;
   totalPrice: number;
   onClose: () => void;
+  onFinished?: () => void;
   resume?: BookingDraft | null;
 }) {
   // Calendar days are always Tashkent days, whatever the client's device timezone is.
@@ -258,10 +277,11 @@ function PublicBookingModal({
       if (!profile) return;
       savedClient.current = profile;
       setClientName((current) => current.trim() ? current : profile.name);
-      setClientPhone((current) => phoneReady(current) ? current : profile.phone);
+      if (profile.phone) setClientPhone(profile.phone);
       setPhoneError("");
     };
     window.addEventListener("barber-client-saved", refresh);
+    void refreshSavedClientPhone();
     return () => window.removeEventListener("barber-client-saved", refresh);
   }, []);
 
@@ -342,7 +362,7 @@ function PublicBookingModal({
   // because the date changed or new busy data arrived), clear the selection so
   // the user cannot silently advance with a taken slot.
   useEffect(() => {
-    if (step === "confirm" || step === "done" || step === "verifying") return;
+    if (step === "confirm" || step === "phone" || step === "done" || step === "verifying") return;
     if (selectedTime && !allSlots.includes(selectedTime)) {
       setSelectedTime(null);
     }
@@ -491,19 +511,44 @@ function PublicBookingModal({
     }
   }
 
+  const returning = phoneReady(clientPhone);
+
+  function finishToShop() {
+    if (onFinished) onFinished();
+    else onClose();
+  }
+
+  function openPhoneChange() {
+    if (!selectedTime) return;
+    const slug = barber.username.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48);
+    localStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify({
+      slug: barber.username,
+      serviceIds: selectedServices.map(s => s.id),
+      date: dateOpt,
+      time: selectedTime,
+      name: clientName.trim(),
+      at: Date.now(),
+    } satisfies BookingDraft));
+    const start = slug ? `update_phone_${slug}` : "update_phone";
+    window.location.assign(`https://t.me/${BOT_USERNAME}?start=${start}`);
+  }
+
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        onClick={step !== "done" ? onClose : undefined} />
+        onClick={() => {
+          if (step === "done" && bookedDirect) finishToShop();
+          else if (step !== "done") onClose();
+        }} />
       <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 30, stiffness: 280 }}
         className="relative w-full max-w-md bg-card rounded-t-3xl z-10 max-h-[92vh] flex flex-col"
         onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 shrink-0" />
         <div className="flex items-center gap-3 px-5 py-4 shrink-0 border-b border-white/6">
-          {(step === "name" || step === "confirm") && (
-            <button onClick={() => setStep(step === "confirm" ? "name" : "time")}
+          {(step === "name" || step === "confirm" || step === "phone") && (
+            <button onClick={() => setStep(step === "phone" ? "confirm" : step === "confirm" ? (returning ? "time" : "name") : "time")}
               className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
               <ArrowLeft className="w-4 h-4" />
             </button>
@@ -511,19 +556,21 @@ function PublicBookingModal({
           <div className="flex-1">
             {step === "time" && <h2 className="font-bold text-base">Vaqt tanlash</h2>}
             {step === "name" && <h2 className="font-bold text-base">✍️ Ismingizni kiriting</h2>}
-            {step === "confirm" && <h2 className="font-bold text-base">📌 Buyurtmani tasdiqlash</h2>}
+            {step === "confirm" && <h2 className="font-bold text-base">{returning ? "Bronni tasdiqlash" : "📌 Buyurtmani tasdiqlash"}</h2>}
+            {step === "phone" && <h2 className="font-bold text-base">Raqamni yangilash</h2>}
             {step === "verifying" && <h2 className="font-bold text-base text-[#2AABEE]">Tasdiq kutilmoqda...</h2>}
-            {step === "done" && <h2 className="font-bold text-base text-emerald-400">Bron tasdiqlandi! 🎉</h2>}
+            {step === "done" && <h2 className="font-bold text-base text-emerald-400">{bookedDirect ? "Bron qabul qilindi" : "Bron tasdiqlandi! 🎉"}</h2>}
           </div>
-          {step !== "done" && (
-            <button onClick={onClose}
-              className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
+          {(step !== "done" || bookedDirect) && (
+            <button onClick={step === "done" && bookedDirect ? finishToShop : onClose}
+              className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0"
+              aria-label="Yopish">
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
         <div className="overflow-y-auto flex-1 px-5 pb-8">
-          {step !== "done" && step !== "verifying" && (
+          {step !== "done" && step !== "verifying" && !(returning && (step === "confirm" || step === "phone")) && (
             <div className="bg-primary/6 border border-primary/12 rounded-2xl px-4 py-3 mt-4 mb-5 flex items-center justify-between gap-3">
               <div className="flex flex-wrap gap-1.5 flex-1">
                 {selectedServices.map(s => (
@@ -587,9 +634,9 @@ function PublicBookingModal({
                     ))}
                   </div>
                 )}
-                <button onClick={() => selectedTime && setStep("name")} disabled={!selectedTime || slotsLoading}
+                <button onClick={() => selectedTime && setStep(returning ? "confirm" : "name")} disabled={!selectedTime || slotsLoading}
                   className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base mt-6 disabled:opacity-30 shadow-lg shadow-primary/20">
-                  Keyingi →
+                  {returning ? "Davom etish →" : "Keyingi →"}
                 </button>
               </motion.div>
             )}
@@ -614,7 +661,53 @@ function PublicBookingModal({
                 </button>
               </motion.div>
             )}
-            {step === "confirm" && (
+            {step === "confirm" && returning && (
+              <motion.div key="confirm-return" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="pt-4">
+                <div className="bg-white/4 border border-white/8 rounded-2xl p-4 space-y-3 mb-5">
+                  {([
+                    ["👤", "Usta", displayName],
+                    ["✂️", "Xizmat", selectedServices.map(s => s.name).join(", ")],
+                    ["💰", "Narx", formatPrice(totalPrice)],
+                    ["📅", "Sana", dateLabel],
+                    ["⏰", "Vaqt", selectedTime || ""],
+                  ] as const).map(([icon, label, value]) => (
+                    <div key={label} className="flex items-center gap-3">
+                      <span className="text-base w-5 shrink-0">{icon}</span>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide font-semibold">{label}</p>
+                        <p className="text-sm font-semibold text-foreground">{value}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-2 mb-4">
+                  <label className="text-sm font-semibold text-muted-foreground block">Ismingiz</label>
+                  <input value={clientName} onChange={e => { setClientName(e.target.value); setNameError(""); }}
+                    className="w-full h-12 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50" />
+                  {nameError && <p className="text-xs text-red-400">{nameError}</p>}
+                </div>
+                <div className="space-y-2 mb-5">
+                  <label className="text-sm font-semibold text-muted-foreground block">Telefon raqamingiz</label>
+                  <div className="flex items-center gap-2">
+                    <input value={formatSavedPhone(clientPhone)} disabled readOnly
+                      className="min-w-0 flex-1 h-12 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground/80 cursor-not-allowed" />
+                    <button type="button" onClick={() => setStep("phone")}
+                      className="shrink-0 h-12 px-3 rounded-2xl bg-white/5 border border-white/10 text-sm font-semibold text-primary">
+                      ✏️ Oʻzgartirish
+                    </button>
+                  </div>
+                </div>
+                {formError && <p className="text-sm text-red-400 mb-3" data-testid="booking-form-error">{formError}</p>}
+                <button type="button" onClick={() => void handleDirectConfirm()} disabled={submitting || !clientName.trim()}
+                  data-testid="direct-confirm"
+                  className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base disabled:opacity-40 shadow-lg shadow-primary/20">
+                  {submitting
+                    ? <span className="inline-flex items-center gap-2"><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Saqlanmoqda...</span>
+                    : "🎉 Bronni tasdiqlash"}
+                </button>
+              </motion.div>
+            )}
+            {step === "confirm" && !returning && (
               <motion.div key="confirm" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="pt-2">
                 <div className="bg-white/4 border border-white/8 rounded-2xl p-4 space-y-3 mb-4">
                   {([
@@ -644,6 +737,17 @@ function PublicBookingModal({
                 </button>
               </motion.div>
             )}
+            {step === "phone" && (
+              <motion.div key="phone" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="pt-4">
+                <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-4 mb-5">
+                  <p className="text-sm leading-relaxed">Oʻzgartirmoqchi boʻlgan raqamingiz faol Telegram hisobingizga ulangan boʻlishi kerak.</p>
+                </div>
+                <button type="button" onClick={openPhoneChange}
+                  className="w-full py-3.5 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm">
+                  📲 Telegram orqali raqamni yangilash
+                </button>
+              </motion.div>
+            )}
             {step === "verifying" && (
               <motion.div key="verifying" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-10">
                 <div className="w-20 h-20 rounded-3xl bg-[#2AABEE]/10 border border-[#2AABEE]/20 flex items-center justify-center text-4xl mx-auto mb-5">💬</div>
@@ -665,13 +769,35 @@ function PublicBookingModal({
                   className="text-xs text-muted-foreground underline">Bekor qilish</button>
               </motion.div>
             )}
-            {step === "done" && (
+            {step === "done" && bookedDirect && (
+              <motion.div key="done-direct" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="py-6">
+                <h2 className="text-lg font-bold text-center mb-4 leading-snug">🎉 TABRIKLAYMIZ! Broningiz muvaffaqiyatli qabul qilindi!</h2>
+                <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-4 text-left space-y-2">
+                  <p className="text-sm"><span className="text-muted-foreground">👤 Usta:</span> <span className="font-semibold">{displayName}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">✂️ Xizmat:</span> <span className="font-semibold">{selectedServices.map(s => s.name).join(", ")}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">💰 Narx:</span> <span className="font-semibold">{formatPrice(totalPrice)}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">📅 Vaqt:</span> <span className="font-semibold">{dateLabel}, {selectedTime}</span></p>
+                </div>
+                <p className="text-sm text-muted-foreground text-center mb-5">💡 Telegram botga bron cheki va eslatma yuborildi.</p>
+                <a
+                  href={`https://t.me/${BOT_USERNAME}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full h-12 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2 mb-3"
+                >
+                  🤖 Telegram Botga oʻtish
+                </a>
+                <button onClick={finishToShop}
+                  className="w-full h-12 rounded-2xl bg-white/8 border border-white/10 text-foreground font-bold">
+                  🏠 Sartaroshxona sahifasiga qaytish
+                </button>
+              </motion.div>
+            )}
+            {step === "done" && !bookedDirect && (
               <motion.div key="done" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-8">
                 <div className="w-24 h-24 rounded-3xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-5xl mx-auto mb-5">✅</div>
                 <h2 className="text-xl font-bold mb-2">Broningiz muvaffaqiyatli tasdiqlandi!</h2>
-                <p className="text-sm text-muted-foreground mb-5">
-                  {bookedDirect ? "Usta va sizga Telegram orqali xabar yuborildi." : "Barcha ma'lumotlar Telegram orqali yuborildi."}
-                </p>
+                <p className="text-sm text-muted-foreground mb-5">Barcha ma'lumotlar Telegram orqali yuborildi.</p>
                 <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-5 text-left space-y-2">
                   <p className="text-sm"><span className="text-muted-foreground">Usta:</span> <span className="font-semibold">{displayName}</span></p>
                   <p className="text-sm"><span className="text-muted-foreground">Xizmat:</span> <span className="font-semibold">{selectedServices.map(s => s.name).join(", ")}</span></p>
@@ -684,7 +810,7 @@ function PublicBookingModal({
                   rel="noopener noreferrer"
                   className="w-full h-12 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2 mb-3"
                 >
-                  🤖 Telegram Botga o'tish
+                  🤖 Telegram Botga oʻtish
                 </a>
                 <button onClick={onClose}
                   className="w-full h-12 rounded-2xl bg-white/8 border border-white/10 text-foreground font-bold">
@@ -1058,6 +1184,13 @@ function PublicView({ barber }: { barber: BarberData }) {
               setBookingOpen(false);
               setResume(null);
               clearBookingDraft();
+            }}
+            onFinished={() => {
+              setBookingOpen(false);
+              setResume(null);
+              setSelectedIds([]);
+              clearBookingDraft();
+              setTab("asosiy");
             }}
           />
         )}
