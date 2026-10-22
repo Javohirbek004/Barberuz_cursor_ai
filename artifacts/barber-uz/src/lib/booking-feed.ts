@@ -23,35 +23,11 @@ export function bookingDay(date: string): string {
   return match?.[0] ?? String(date).slice(0, 10);
 }
 
-const TURKEY_TZ = "Europe/Istanbul";
-
-/** Turkey's calendar day and clock, wherever the phone happens to be. */
-export function turkeyClock(now = new Date()): { date: string; mins: number } {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: TURKEY_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(now);
-  const pick = (type: string) => parts.find((part) => part.type === type)?.value ?? "0";
-  return {
-    date: `${pick("year")}-${pick("month")}-${pick("day")}`,
-    mins: Number(pick("hour")) * 60 + Number(pick("minute")),
-  };
-}
-
-export function turkeyToday(now = new Date()): string {
-  return turkeyClock(now).date;
-}
-
-/** 11:00 on the booking means 11:00 in Turkey. */
+/** 11:00 on the booking means 11:00 in Uzbekistan. */
 export function bookingStartMs(date: string, startTime: string): number {
   const day = bookingDay(date);
   const [hour = "0", minute = "0"] = String(startTime).slice(0, 5).split(":");
-  return new Date(`${day}T${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:00+03:00`).getTime();
+  return new Date(`${day}T${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:00+05:00`).getTime();
 }
 
 /** A confirmed visit stays in the upcoming list for 15 minutes after its start. */
