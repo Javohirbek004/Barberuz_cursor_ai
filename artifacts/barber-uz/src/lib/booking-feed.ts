@@ -44,21 +44,23 @@ export function isOpenBooking(status: string): boolean {
   return status === "confirmed" || status === "pending";
 }
 
-export type CalendarStatusTone = "upcoming" | "awaiting" | "done" | "missed" | "pending";
+export type BookingVisualKey = "confirmed" | "pending_action" | "completed" | "no_show" | "cancelled";
 
-/** What the calendar badge says. Past confirmed visits wait for Keldi / Kelmadi. */
-export function calendarStatusView(
+/**
+ * The five labels the barber sees. A confirmed visit whose time has passed
+ * is shown as waiting for Keldi / Kelmadi; the saved status stays confirmed.
+ */
+export function bookingVisualStatus(
   booking: { status: string; date: string; startTime: string },
   now = Date.now(),
-): { label: string; tone: CalendarStatusTone } {
+): { key: BookingVisualKey; label: string } {
   const status = booking.status;
-  if (status === "completed") return { label: "Bajarildi", tone: "done" };
-  if (status === "no_show" || status === "cancelled") return { label: "Kelmadi", tone: "missed" };
-  if (status === "auto_cancelled") return { label: "Avtomatik bekor", tone: "missed" };
-  if (status === "pending") return { label: "Kutilmoqda", tone: "pending" };
-  if (status === "confirmed" && bookingStartMs(booking.date, booking.startTime) < now) {
-    return { label: "Yakunlash kutilmoqda", tone: "awaiting" };
+  if (status === "completed") return { key: "completed", label: "Tugallangan" };
+  if (status === "no_show") return { key: "no_show", label: "Kelmadi" };
+  if (status === "cancelled" || status === "auto_cancelled") return { key: "cancelled", label: "Bekor qilingan" };
+  const stillOpen = status === "confirmed" || status === "pending";
+  if (stillOpen && bookingStartMs(booking.date, booking.startTime) < now) {
+    return { key: "pending_action", label: "Yakunlash kutilmoqda" };
   }
-  if (status === "confirmed") return { label: "Tasdiqlandi", tone: "upcoming" };
-  return { label: status, tone: "upcoming" };
+  return { key: "confirmed", label: "Tasdiqlangan" };
 }

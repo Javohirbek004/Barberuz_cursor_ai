@@ -12,7 +12,8 @@ import {
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { isElapsedBooking, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
+import { bookingStartMs, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
+import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { Layout } from "@/components/Layout";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 import { Card } from "@/components/ui/card";
@@ -293,17 +294,17 @@ function TodayStatsModal({ open, onClose, total, completed, remaining, cancelled
           <div className="font-bold text-3xl text-white">{total} ta</div>
         </div>
         <div className="grid grid-cols-2 gap-3 mb-5">
-          <div className={`${metricCard} bg-emerald-500/8 border border-emerald-500/20`}>
-            <div className={`${metricLabel} text-emerald-400/80`}>✅ Tugallangan</div>
-            <div className={`${metricValue} text-emerald-400`}>{completed} ta</div>
+          <div className={`${metricCard} bg-green-500/8 border border-green-500/20`}>
+            <div className={`${metricLabel} text-green-500`}>🟢 Tugallangan</div>
+            <div className={`${metricValue} text-green-500`}>{completed} ta</div>
           </div>
-          <div className={`${metricCard} bg-amber-400/8 border border-amber-400/20`}>
-            <div className={`${metricLabel} text-amber-400/80`}>⏳ Kutilayotgan</div>
-            <div className={`${metricValue} text-amber-400`}>{remaining} ta</div>
+          <div className={`${metricCard} bg-blue-500/8 border border-blue-500/20`}>
+            <div className={`${metricLabel} text-blue-500`}>🔵 Tasdiqlangan / Kutilayotgan</div>
+            <div className={`${metricValue} text-blue-500`}>{remaining} ta</div>
           </div>
           <div className={`${metricCard} bg-red-500/8 border border-red-500/20`}>
-            <div className={`${metricLabel} text-red-400/80`}>❌ Bekor qilingan</div>
-            <div className={`${metricValue} text-red-400`}>{cancelled} ta</div>
+            <div className={`${metricLabel} text-red-500`}>🔴 Kelmadi & Bekor qilingan</div>
+            <div className={`${metricValue} text-red-500`}>{cancelled} ta</div>
           </div>
           <div className={`${metricCard} bg-white/5 border border-white/8`}>
             <div className={`${metricLabel} text-muted-foreground`}>⏱️ Ishlangan vaqt</div>
@@ -427,11 +428,12 @@ function IndividualDashboard() {
     .filter((b) => isOpenBooking(b.status))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
   // After midnight, earlier days leave this home list. Only today's elapsed visits wait here.
+  const awaitingClose = (b: Booking) => isOpenBooking(b.status) && bookingStartMs(b.date, b.startTime) < now.getTime();
   const reviewBookings = openBookings
-    .filter((b) => b.date === today && isElapsedBooking(b.date, b.startTime, now.getTime()))
+    .filter((b) => b.date === today && awaitingClose(b))
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
   const upcomingBookings = openBookings
-    .filter((b) => !isElapsedBooking(b.date, b.startTime, now.getTime()))
+    .filter((b) => !awaitingClose(b))
     .slice(0, 10);
 
   // Today's upcoming only — used for "next booking" time calculation (same-day, time-based)
@@ -463,7 +465,7 @@ function IndividualDashboard() {
   // The report tiles must add up to every booking made today.
   const todayCompleted = bookings.filter(b => b.status === "completed").length;
   const todayRemaining = bookings.filter(b => b.status === "confirmed" || b.status === "pending").length;
-  const todayCancelled = bookings.length - todayCompleted - todayRemaining;
+  const todayCancelled = bookings.filter(b => b.status === "no_show" || b.status === "cancelled" || b.status === "auto_cancelled").length;
   const todayTotal = bookings.length;
   const todayDurMins = bookings
     .filter(b => b.status === "completed")
@@ -518,13 +520,6 @@ function IndividualDashboard() {
       setBusyKey(null);
     }
   }
-
-  const statusLabel = (status: string) => {
-    if (status === "confirmed") return t("status.confirmed");
-    if (status === "pending") return t("status.pending");
-    if (status === "completed") return t("status.completed");
-    return status;
-  };
 
   return (
     <>
@@ -600,7 +595,7 @@ function IndividualDashboard() {
                         flashId === b.id ? "border-primary/60 bg-primary/10 scale-[1.02]" : ""
                       }`}
                     >
-                      <div className="w-14 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold flex-shrink-0">
+                      <div className="w-14 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500 font-bold flex-shrink-0">
                         <span className="text-sm whitespace-nowrap">{b.startTime.slice(0, 5)}</span>
                       </div>
                       <div className="flex-1 min-w-0">
@@ -610,13 +605,9 @@ function IndividualDashboard() {
                         </div>
                         <BookingNoteBadge note={noteFromBooking(b)} />
                       </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className="text-sm font-semibold text-primary">{b.price.toLocaleString()} so'm</div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-bold ${
-                          b.status === "confirmed" ? "bg-emerald-500/10 text-emerald-400"
-                            : b.status === "pending" ? "bg-amber-500/10 text-amber-400"
-                            : "bg-white/10 text-white/60"
-                        }`}>{statusLabel(b.status)}</span>
+                      <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
+                        <div className="text-sm font-semibold text-blue-400">{b.price.toLocaleString()} so'm</div>
+                        <BookingStatusBadge booking={b} now={now.getTime()} />
                       </div>
                     </Card>
                   </motion.div>
@@ -627,7 +618,7 @@ function IndividualDashboard() {
 
           {reviewBookings.length > 0 && (
             <section data-testid="review-feed">
-              <h2 className="text-lg font-bold text-foreground mb-4">⚠️ Tasdiqlash kutilmoqda</h2>
+              <h2 className="text-lg font-bold text-foreground mb-4">⚠️ Yakunlash kutilmoqda</h2>
               <div className="space-y-2">
                 {reviewBookings.map((b) => (
                   <Card key={b.id} className="relative bg-card border-white/5 overflow-hidden">
@@ -644,8 +635,8 @@ function IndividualDashboard() {
                         <BookingNoteBadge note={noteFromBooking(b)} />
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <div className="text-sm font-semibold text-primary">{b.price.toLocaleString()} so'm</div>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-bold bg-amber-500/10 text-amber-400">Kutilmoqda</span>
+                        <div className="text-sm font-semibold text-yellow-500">{b.price.toLocaleString()} so'm</div>
+                        <BookingStatusBadge booking={b} now={now.getTime()} />
                       </div>
                     </button>
                     <p className="px-4 pb-2 text-xs text-muted-foreground leading-snug">

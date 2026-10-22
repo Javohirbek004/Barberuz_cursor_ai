@@ -12,7 +12,8 @@ import {
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { calendarStatusView, isElapsedBooking } from "@/lib/booking-feed";
+import { bookingStartMs } from "@/lib/booking-feed";
+import { BookingStatusBadge, bookingLook } from "@/components/BookingStatusBadge";
 import { noteFromBooking, parseBookingNotes } from "@/lib/booking-note";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 
@@ -405,16 +406,9 @@ export function BookingDetailModal({
 
   const isBusy = updateBookingMut.isPending;
   const bookingStatus = booking.status as string;
-  const statusView = calendarStatusView(booking);
+  const look = bookingLook(booking);
   const isActive = bookingStatus !== "cancelled" && bookingStatus !== "auto_cancelled" && bookingStatus !== "completed" && bookingStatus !== "no_show";
-  const needsReview = isActive && isElapsedBooking(booking.date, booking.startTime);
-  const statusPill = statusView.tone === "done"
-    ? "bg-emerald-500 text-black"
-    : statusView.tone === "awaiting" || statusView.tone === "pending"
-      ? "bg-amber-500/15 text-amber-300"
-      : statusView.tone === "missed"
-        ? "bg-red-500/15 text-red-300"
-        : "bg-emerald-500/15 text-emerald-300";
+  const needsReview = isActive && bookingStartMs(booking.date, booking.startTime) < Date.now();
   const dateLabel = formatBookingDate(booking.date);
   const phone = clientData?.phone ?? parsedPhone;
 
@@ -466,14 +460,12 @@ export function BookingDetailModal({
               ? <PhoneRow phone={phone} />
               : <SheetRow label="Telefon"><span className="text-muted-foreground/40">—</span></SheetRow>}
             <SheetRow label="Narxi">
-              <span className="font-semibold tabular-nums text-foreground/95">
+              <span className={`font-semibold tabular-nums ${look.key === "no_show" ? "text-red-400/70 line-through" : "text-foreground/95"}`}>
                 {formatSom(bookingPrice)}
               </span>
             </SheetRow>
             <SheetRow label="Holat">
-              <span className={`inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-full font-semibold tracking-wide ${statusPill}`}>
-                {statusView.label}
-              </span>
+              <BookingStatusBadge booking={booking} />
             </SheetRow>
           </div>
 
@@ -550,7 +542,7 @@ export function BookingDetailModal({
                 className="flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/25 active:scale-[0.98] transition-all disabled:opacity-40"
               >
                 <CheckCircle className="w-4 h-4" />
-                {isBusy ? "..." : "Yakunlash"}
+                {isBusy ? "..." : "Yakunlandi"}
               </button>
             </div>
           )}
@@ -589,12 +581,8 @@ export function BookingDetailModal({
           )}
 
           {!isActive && (
-            <div className={`mt-4 text-center text-sm font-semibold py-3 rounded-2xl ${
-              statusView.tone === "done"
-                ? "bg-emerald-500 text-black"
-                : "bg-red-500/10 text-red-400 border border-red-500/15"
-            }`}>
-              {statusView.tone === "done" ? "✓  Bajarildi" : `✕  ${statusView.label}`}
+            <div className="mt-4 flex justify-center">
+              <BookingStatusBadge booking={booking} />
             </div>
           )}
         </div>

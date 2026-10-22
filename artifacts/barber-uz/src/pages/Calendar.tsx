@@ -8,7 +8,8 @@ import { useListBookings, useGetDashboardStats, useUpdateBooking, getListClients
 import type { Booking } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { calendarStatusView, isOpenBooking, type CalendarStatusTone } from "@/lib/booking-feed";
+import { isOpenBooking } from "@/lib/booking-feed";
+import { BookingStatusBadge, bookingLook } from "@/components/BookingStatusBadge";
 import { BookingDetailModal } from "@/components/BookingDetailModal";
 import { BookingNoteBadge } from "@/components/BookingNoteBadge";
 import { noteFromBooking } from "@/lib/booking-note";
@@ -59,28 +60,6 @@ function formatHeaderDate(date: Date): string {
   const wd = UZ_DAY_SHORT[date.getDay()];
   return `${d}-${m.toLowerCase()}, ${wd}`;
 }
-
-const TONE_CARD: Record<CalendarStatusTone, string> = {
-  upcoming: "border-emerald-500/25 bg-emerald-500/5",
-  awaiting: "border-amber-400/35 bg-amber-400/8",
-  done: "border-emerald-500/40 bg-emerald-500/10",
-  missed: "border-red-500/25 bg-red-500/5",
-  pending: "border-amber-400/25 bg-amber-400/5",
-};
-const TONE_DOT: Record<CalendarStatusTone, string> = {
-  upcoming: "bg-emerald-400",
-  awaiting: "bg-amber-400",
-  done: "bg-emerald-500",
-  missed: "bg-red-500",
-  pending: "bg-amber-400",
-};
-const TONE_BADGE: Record<CalendarStatusTone, string> = {
-  upcoming: "bg-emerald-500/15 text-emerald-300",
-  awaiting: "bg-amber-500/20 text-amber-300",
-  done: "bg-emerald-500 text-black",
-  missed: "bg-red-500/20 text-red-300",
-  pending: "bg-amber-500/15 text-amber-300",
-};
 
 // ── Month Nav ─────────────────────────────────────────────────────────────────
 function MonthNav({
@@ -319,7 +298,7 @@ function IndividualCalendar() {
               className="w-full min-h-11 flex items-center justify-between gap-3 text-left py-2.5 px-1 rounded-xl hover:bg-white/5 active:bg-white/8"
             >
               <span className="text-sm font-bold text-foreground">
-                ⚠️ Tasdiqlash kutilmoqda ({reviewBookings.length})
+                ⚠️ Yakunlash kutilmoqda ({reviewBookings.length})
               </span>
               {reviewOpen
                 ? <ChevronUp className="w-5 h-5 text-muted-foreground shrink-0" />
@@ -336,11 +315,9 @@ function IndividualCalendar() {
                         <div className="mt-1.5 w-2.5 h-2.5 rounded-full bg-amber-400" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline justify-between gap-2">
+                        <div className="flex items-start justify-between gap-2">
                           <span className="font-bold truncate text-foreground">{b.clientName}</span>
-                          <span className="text-[11px] font-semibold shrink-0 text-right leading-tight max-w-[8.5rem] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300">
-                            {calendarStatusView(b).label}
-                          </span>
+                          <BookingStatusBadge booking={b} />
                         </div>
                         <div className="flex items-center justify-between mt-0.5">
                           <span className="text-sm truncate text-muted-foreground">{b.serviceName ?? "—"}</span>
@@ -390,40 +367,36 @@ function IndividualCalendar() {
           </div>
         ) : (
           listedBookings.map((b, i) => {
-            const view = calendarStatusView(b);
+            const view = bookingLook(b);
             return (
             <motion.button
               key={b.id}
               initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
+              animate={{ opacity: view.key === "completed" ? 0.6 : 1, y: 0 }}
               transition={{ delay: i * 0.04 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => setSelectedBooking(b)}
-              className={`w-full text-left rounded-2xl border p-4 flex items-start gap-4 transition-all ${TONE_CARD[view.tone]}`}
+              data-testid={`cal-card-${b.id}`}
+              className={`w-full text-left rounded-2xl border p-4 flex items-start gap-4 transition-colors ${view.card}`}
             >
               <div className="flex flex-col items-center min-w-[2.75rem]">
                 <span className="text-sm font-bold tabular-nums text-foreground">
                   {b.startTime.slice(0, 5)}
                 </span>
-                <div className={`mt-1.5 w-2.5 h-2.5 rounded-full ${TONE_DOT[view.tone]}`} />
+                <div className={`mt-1.5 w-2.5 h-2.5 rounded-full ${view.dot}`} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
                   <span className="font-bold truncate text-foreground">
                     {b.clientName}
                   </span>
-                  <span
-                    data-testid={`cal-status-${b.id}`}
-                    className={`text-[11px] font-semibold shrink-0 text-right leading-tight max-w-[8.5rem] px-2 py-0.5 rounded-full ${TONE_BADGE[view.tone]}`}
-                  >
-                    {view.label}
-                  </span>
+                  <BookingStatusBadge booking={b} testId={`cal-status-${b.id}`} />
                 </div>
                 <div className="flex items-center justify-between mt-0.5">
                   <span className="text-sm truncate text-muted-foreground">
                     {b.serviceName ?? "—"}
                   </span>
-                  <span className="text-sm font-semibold ml-2 shrink-0 text-primary">
+                  <span className={`text-sm font-semibold ml-2 shrink-0 ${view.price}`}>
                     {b.price.toLocaleString()} so'm
                   </span>
                 </div>
