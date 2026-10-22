@@ -18,7 +18,7 @@ import { Layout } from "@/components/Layout";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 import { Card } from "@/components/ui/card";
 import {
-  CalendarDays, Wallet, Timer, Clock,
+  CalendarDays, Wallet, Timer, Clock, Calendar, CheckCircle2, XCircle,
   HardHat, Armchair, ChevronRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -84,7 +84,6 @@ function countdownUntil(diffMins: number): string {
 function calcNextBookingInfo(
   upcomingBookings: Booking[],
   now: Date,
-  shift: { enabled: boolean; endMins: number },
 ): { main: string; sub: string; nextId: string | null } {
   const clock = tashkentClock(now);
   const nowMins = clock.mins;
@@ -99,8 +98,6 @@ function calcNextBookingInfo(
       nextId: b.id,
     };
   }
-  const shiftEnded = !shift.enabled || nowMins >= shift.endMins;
-  if (shiftEnded) return { main: "Ish kuni tugadi", sub: "", nextId: null };
   return { main: "Boshqa bron yo'q", sub: "", nextId: null };
 }
 
@@ -296,19 +293,31 @@ function TodayStatsModal({ open, onClose, total, completed, remaining, cancelled
         </div>
         <div className="grid grid-cols-2 gap-3 mb-5">
           <div className={`${metricCard} bg-blue-500/8 border border-blue-500/20`}>
-            <div className={`${metricLabel} text-blue-400`}>🔵 Tugallangan</div>
+            <div className={`${metricLabel} text-blue-400 inline-flex items-center justify-center gap-1.5`}>
+              <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0" />
+              <span>Tugallangan</span>
+            </div>
             <div className={`${metricValue} text-blue-400`}>{completed} ta</div>
           </div>
           <div className={`${metricCard} bg-green-500/8 border border-green-500/20`}>
-            <div className={`${metricLabel} text-green-500`}>🟢 Tasdiqlangan / Kutilayotgan</div>
-            <div className={`${metricValue} text-green-500`}>{remaining} ta</div>
+            <div className={`${metricLabel} text-emerald-400 inline-flex items-center justify-center gap-1.5`}>
+              <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Tasdiqlangan / Kutilayotgan</span>
+            </div>
+            <div className={`${metricValue} text-emerald-400`}>{remaining} ta</div>
           </div>
           <div className={`${metricCard} bg-red-500/8 border border-red-500/20`}>
-            <div className={`${metricLabel} text-red-500`}>🔴 Kelmadi & Bekor qilingan</div>
-            <div className={`${metricValue} text-red-500`}>{cancelled} ta</div>
+            <div className={`${metricLabel} text-red-400 inline-flex items-center justify-center gap-1.5`}>
+              <XCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>Kelmadi & Bekor qilingan</span>
+            </div>
+            <div className={`${metricValue} text-red-400`}>{cancelled} ta</div>
           </div>
           <div className={`${metricCard} bg-white/5 border border-white/8`}>
-            <div className={`${metricLabel} text-muted-foreground`}>⏱️ Ishlangan vaqt</div>
+            <div className={`${metricLabel} text-slate-400 inline-flex items-center justify-center gap-1.5`}>
+              <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+              <span>Ishlangan vaqt</span>
+            </div>
             <div className={`${metricValue} text-foreground`}>{durationMins > 0 ? durStr : "—"}</div>
           </div>
         </div>
@@ -375,7 +384,7 @@ function IndividualDashboard() {
   const { t } = useTranslation();
   const [, navigate] = useLocation();
 
-  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useGetDashboardStats();
+  const { isLoading: statsLoading, refetch: refetchStats } = useGetDashboardStats();
   const { data: profile } = useGetProfile();
   // Use Tashkent date so today's filter matches the server-side timezone
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
@@ -422,8 +431,9 @@ function IndividualDashboard() {
 
   // Today's bookings — for stats, free-slot calc, and TodayStatsModal
   const bookings = bookingsData?.bookings ?? [];
-  const activeStats = stats;
-  const todayRevenue = activeStats?.todayRevenue ?? 0;
+  const todayRevenue = bookings
+    .filter((b) => b.status === "completed")
+    .reduce((sum, b) => sum + Number(b.price || 0), 0);
 
   const openBookings = (upcomingData?.bookings ?? [])
     .filter((b) => isOpenBooking(b.status))
@@ -474,10 +484,7 @@ function IndividualDashboard() {
 
   const durationLabel = calcTotalDuration(todayUpcoming);
 
-  const { main: nextMain, sub: nextSub, nextId } = calcNextBookingInfo(upcomingBookings, now, {
-    enabled: todayHours.enabled,
-    endMins: workEnd,
-  });
+  const { main: nextMain, sub: nextSub, nextId } = calcNextBookingInfo(upcomingBookings, now);
 
   const handleScrollToNext = () => {
     if (!nextId) return;
@@ -544,11 +551,11 @@ function IndividualDashboard() {
         {/* Card 2: Bugungi daromad */}
         <StatCard
           label="Bugungi daromad"
-          value={statsLoading ? "..." : `${todayRevenue.toLocaleString()} so'm`}
+          value={bookingsLoading ? "..." : `${todayRevenue.toLocaleString()} so'm`}
           pillLabel="Tafsilotlar"
           icon={Wallet}
           iconColor="text-emerald-400"
-          loading={statsLoading}
+          loading={bookingsLoading}
           delay={0.05}
           testId="revenue-details"
           onClick={() => setIsFinancialModalOpen(true)}
@@ -572,7 +579,7 @@ function IndividualDashboard() {
           value={nextMain}
           subtext={nextSub || undefined}
           icon={Clock}
-          iconColor="text-violet-400"
+          iconColor="text-purple-400"
           delay={0.15}
           testId="next-booking-card"
           onClick={nextId ? handleScrollToNext : undefined}
