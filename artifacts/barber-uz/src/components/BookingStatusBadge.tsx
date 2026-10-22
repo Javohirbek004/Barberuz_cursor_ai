@@ -4,10 +4,10 @@ import { bookingVisualStatus, type BookingVisualKey } from "@/lib/booking-feed";
 const LOOK: Record<BookingVisualKey, { Icon: LucideIcon; badge: string; card: string; dot: string; price: string }> = {
   confirmed: {
     Icon: Calendar,
-    badge: "bg-blue-500/10 text-blue-500",
-    card: "border-blue-500/45 bg-blue-500/10",
-    dot: "bg-blue-500",
-    price: "text-blue-400",
+    badge: "bg-green-500/10 text-green-500",
+    card: "border-green-500/55 bg-green-500/15",
+    dot: "bg-green-500",
+    price: "text-green-400",
   },
   pending_action: {
     Icon: AlertTriangle,
@@ -18,10 +18,10 @@ const LOOK: Record<BookingVisualKey, { Icon: LucideIcon; badge: string; card: st
   },
   completed: {
     Icon: CheckCircle2,
-    badge: "bg-green-500/10 text-green-500",
-    card: "border-green-500/20 bg-green-500/5 opacity-60",
-    dot: "bg-green-500",
-    price: "text-foreground/70",
+    badge: "bg-blue-500/15 text-blue-400",
+    card: "border-blue-500/60 bg-blue-500/20 opacity-60",
+    dot: "bg-blue-500",
+    price: "text-blue-300",
   },
   no_show: {
     Icon: UserX,

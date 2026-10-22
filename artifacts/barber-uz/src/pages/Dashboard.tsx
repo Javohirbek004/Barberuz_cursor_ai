@@ -13,7 +13,7 @@ import {
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { bookingStartMs, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
-import { BookingStatusBadge } from "@/components/BookingStatusBadge";
+import { BookingStatusBadge, bookingLook } from "@/components/BookingStatusBadge";
 import { Layout } from "@/components/Layout";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 import { Card } from "@/components/ui/card";
@@ -294,13 +294,13 @@ function TodayStatsModal({ open, onClose, total, completed, remaining, cancelled
           <div className="font-bold text-3xl text-white">{total} ta</div>
         </div>
         <div className="grid grid-cols-2 gap-3 mb-5">
-          <div className={`${metricCard} bg-green-500/8 border border-green-500/20`}>
-            <div className={`${metricLabel} text-green-500`}>🟢 Tugallangan</div>
-            <div className={`${metricValue} text-green-500`}>{completed} ta</div>
-          </div>
           <div className={`${metricCard} bg-blue-500/8 border border-blue-500/20`}>
-            <div className={`${metricLabel} text-blue-500`}>🔵 Tasdiqlangan / Kutilayotgan</div>
-            <div className={`${metricValue} text-blue-500`}>{remaining} ta</div>
+            <div className={`${metricLabel} text-blue-400`}>🔵 Tugallangan</div>
+            <div className={`${metricValue} text-blue-400`}>{completed} ta</div>
+          </div>
+          <div className={`${metricCard} bg-green-500/8 border border-green-500/20`}>
+            <div className={`${metricLabel} text-green-500`}>🟢 Tasdiqlangan / Kutilayotgan</div>
+            <div className={`${metricValue} text-green-500`}>{remaining} ta</div>
           </div>
           <div className={`${metricCard} bg-red-500/8 border border-red-500/20`}>
             <div className={`${metricLabel} text-red-500`}>🔴 Kelmadi & Bekor qilingan</div>
@@ -582,7 +582,9 @@ function IndividualDashboard() {
             <section data-testid="upcoming-feed">
               <h2 className="text-lg font-bold text-foreground mb-4">{t("dash.recent_bookings")}</h2>
               <div className="space-y-2">
-                {upcomingBookings.map((b) => (
+                {upcomingBookings.map((b) => {
+                  const look = bookingLook(b, now.getTime());
+                  return (
                   <motion.div
                     key={b.id}
                     ref={(el) => { bookingItemRefs.current[b.id] = el; }}
@@ -595,7 +597,7 @@ function IndividualDashboard() {
                         flashId === b.id ? "border-primary/60 bg-primary/10 scale-[1.02]" : ""
                       }`}
                     >
-                      <div className="w-14 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500 font-bold flex-shrink-0">
+                      <div className={`w-14 h-12 rounded-xl flex items-center justify-center font-bold flex-shrink-0 ${look.badge}`}>
                         <span className="text-sm whitespace-nowrap">{b.startTime.slice(0, 5)}</span>
                       </div>
                       <div className="flex-1 min-w-0">
@@ -606,12 +608,13 @@ function IndividualDashboard() {
                         <BookingNoteBadge note={noteFromBooking(b)} />
                       </div>
                       <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
-                        <div className="text-sm font-semibold text-blue-400">{b.price.toLocaleString()} so'm</div>
+                        <div className={`text-sm font-semibold ${look.price}`}>{b.price.toLocaleString()} so'm</div>
                         <BookingStatusBadge booking={b} now={now.getTime()} />
                       </div>
                     </Card>
                   </motion.div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           )}
