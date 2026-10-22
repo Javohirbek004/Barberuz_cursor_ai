@@ -35,7 +35,7 @@ const LOOK: Record<BookingVisualKey, { Icon: LucideIcon; badge: string; card: st
     badge: "bg-red-500/10 text-red-500",
     card: "border-red-500/30 bg-red-500/5",
     dot: "bg-red-500",
-    price: "text-red-400/80",
+    price: "text-red-400/70 line-through",
   },
 };
 

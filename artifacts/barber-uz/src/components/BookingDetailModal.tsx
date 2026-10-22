@@ -460,7 +460,7 @@ export function BookingDetailModal({
               ? <PhoneRow phone={phone} />
               : <SheetRow label="Telefon"><span className="text-muted-foreground/40">—</span></SheetRow>}
             <SheetRow label="Narxi">
-              <span className={`font-semibold tabular-nums ${look.key === "no_show" ? "text-red-400/70 line-through" : "text-foreground/95"}`}>
+              <span className={`font-semibold tabular-nums ${look.key === "no_show" || look.key === "cancelled" ? "text-red-400/70 line-through" : "text-foreground/95"}`}>
                 {formatSom(bookingPrice)}
               </span>
             </SheetRow>
