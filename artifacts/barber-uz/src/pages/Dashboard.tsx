@@ -73,34 +73,35 @@ function calcTotalDuration(bookings: Booking[]): string {
   return `Bandlik • ${h}s ${m}d`;
 }
 
+function countdownUntil(diffMins: number): string {
+  const hours = Math.floor(diffMins / 60);
+  const minutes = diffMins % 60;
+  if (hours > 0 && minutes > 0) return `${hours} soat ${minutes} daqiqadan keyin`;
+  if (hours > 0) return `${hours} soatdan keyin`;
+  return `${minutes} daqiqadan keyin`;
+}
+
 function calcNextBookingInfo(
   upcomingBookings: Booking[],
   now: Date,
+  shift: { enabled: boolean; endMins: number },
 ): { main: string; sub: string; nextId: string | null } {
   const clock = tashkentClock(now);
   const nowMins = clock.mins;
   const today = clock.date;
   for (const b of upcomingBookings) {
-    if (b.date > today) {
-      return { main: b.startTime.slice(0, 5), sub: b.date, nextId: b.id };
-    }
     if (b.date !== today) continue;
     const start = toMins(b.startTime);
-    const end = toMins(b.endTime);
-    if (nowMins >= start && nowMins < end) {
-      return { main: "Hozir band", sub: "Mijoz stulda", nextId: b.id };
-    }
-    if (start > nowMins) {
-      const diff = start - nowMins;
-      const h = Math.floor(diff / 60);
-      const m = diff % 60;
-      const main = h > 0
-        ? (m > 0 ? `${h} soat ${m} daq keyin` : `${h} soat keyin`)
-        : `${m} daq keyin`;
-      return { main, sub: b.startTime.slice(0, 5), nextId: b.id };
-    }
+    if (start <= nowMins) continue;
+    return {
+      main: countdownUntil(start - nowMins),
+      sub: b.startTime.slice(0, 5),
+      nextId: b.id,
+    };
   }
-  return { main: "Bugun tugadi", sub: "Ish yakunlandi", nextId: null };
+  const shiftEnded = !shift.enabled || nowMins >= shift.endMins;
+  if (shiftEnded) return { main: "Ish kuni tugadi", sub: "", nextId: null };
+  return { main: "Boshqa bron yo'q", sub: "", nextId: null };
 }
 
 function serviceNames(raw: string | null | undefined): string[] {
@@ -473,7 +474,10 @@ function IndividualDashboard() {
 
   const durationLabel = calcTotalDuration(todayUpcoming);
 
-  const { main: nextMain, sub: nextSub, nextId } = calcNextBookingInfo(upcomingBookings, now);
+  const { main: nextMain, sub: nextSub, nextId } = calcNextBookingInfo(upcomingBookings, now, {
+    enabled: todayHours.enabled,
+    endMins: workEnd,
+  });
 
   const handleScrollToNext = () => {
     if (!nextId) return;
@@ -562,14 +566,15 @@ function IndividualDashboard() {
           onClick={() => setShowSlotModal(true)}
         />
 
-        {/* Card 4: Keyingi brongacha */}
+        {/* Card 4: Keyingi bron */}
         <StatCard
-          label="Keyingi brongacha"
+          label="Keyingi bron"
           value={nextMain}
-          subtext={nextSub}
+          subtext={nextSub || undefined}
           icon={Clock}
           iconColor="text-violet-400"
           delay={0.15}
+          testId="next-booking-card"
           onClick={nextId ? handleScrollToNext : undefined}
         />
       </div>
