@@ -2556,43 +2556,47 @@ async function handleBookingContact(
 }
 
 function moneyLabel(value: number): string {
-  return `${Number(value || 0).toLocaleString("uz-UZ")} so'm`;
+  const amount = Math.max(0, Math.round(Number(value) || 0));
+  const grouped = String(amount).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return `${grouped} so'm`;
+}
+
+function safeMapUrl(raw: string | null | undefined): string {
+  const value = (raw || "").trim();
+  if (!/^https?:\/\//i.test(value)) return "";
+  return value;
 }
 
 async function sendUnifiedBookingReceipt(
   chatId: number,
   data: BookingData,
   clientName: string,
-  phone: string | null,
+  _phone: string | null,
   barberId: string,
 ) {
   const [barber] = await db.select().from(usersTable).where(eq(usersTable.id, barberId)).limit(1);
   const master = barber?.brandName || barber?.name || data.barberName || "Usta";
   const service = data.services.map((s) => s.name).join(", ") || "Xizmat";
-  const address = (barber?.address || data.barberAddress || "").trim();
-  const map = (barber?.mapLink || data.mapLink || "").trim();
-  let addressLine = "";
-  if (address) {
-    addressLine = map
-      ? `📍 Manzil: ${escapeHtml(address)} (<a href="${escapeHtml(map)}">Xaritada koʻrish 🧭</a>)`
-      : `📍 Manzil: ${escapeHtml(address)}`;
-  }
+  const barberPhone = plusPhone(barber?.phone);
+  const map = safeMapUrl(barber?.mapLink || data.mapLink);
   const lines = [
     `🎉 <b>Broningiz qabul qilindi, ${escapeHtml(clientName)}!</b>`,
     "",
     `👤 Usta: ${escapeHtml(master)}`,
     `✂️ Xizmat: ${escapeHtml(service)}`,
-    `💰 Narx: ${escapeHtml(moneyLabel(data.totalPrice))}`,
+    `💵 Narx: ${escapeHtml(moneyLabel(data.totalPrice))}`,
     `📅 Sana: ${escapeHtml(formatDateLabel(data.date))}`,
     `⏰ Vaqt: ${escapeHtml(data.time)}`,
-    `📞 Raqam: ${escapeHtml(phone || "—")}`,
   ];
-  if (addressLine) lines.push(addressLine);
+  if (barberPhone) lines.push(`📞 Aloqa: ${escapeHtml(barberPhone)}`);
+  if (map) {
+    lines.push(`🧭 Manzil: <a href="${escapeHtml(map)}">Xaritada koʻrish 🧭</a>`);
+  }
   lines.push(
     "",
     "💡 Iltimos, belgilangan vaqtdan 5-10 daqiqa ertaroq keling.",
     "",
-    "────────────────────────",
+    "━━━━━━━━━━━━━━━━━━━━",
     "🤖 <b>Bot haqida eslatma:</b>",
     "Ushbu bot sizning shaxsiy yordamchingiz:",
     "• Navbatingizga oz qolganda eslatma yuboradi",
