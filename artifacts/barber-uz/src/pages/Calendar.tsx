@@ -227,14 +227,14 @@ function IndividualCalendar() {
   const reviewBookings = isPastDay
     ? bookings.filter((b) => isOpenBooking(b.status))
     : [];
-  const reviewIds = new Set(reviewBookings.map((b) => b.id));
-  const listedBookings = bookings.filter((b) => !reviewIds.has(b.id));
   const isDroppedVisit = (status: string) =>
     status === "cancelled" || status === "auto_cancelled" || status === "no_show";
-  const droppedCount = listedBookings.filter((b) => isDroppedVisit(b.status)).length;
-  const visibleBookings = showDropped
-    ? listedBookings
-    : listedBookings.filter((b) => !isDroppedVisit(b.status));
+  const isTimelineVisit = (status: string) =>
+    status === "confirmed" || status === "pending" || status === "completed";
+  const droppedCount = bookings.filter((b) => isDroppedVisit(b.status)).length;
+  const visibleBookings = bookings.filter((b) =>
+    isTimelineVisit(b.status) || (showDropped && isDroppedVisit(b.status)),
+  );
   const pastUnresolved = (overdueData?.bookings ?? [])
     .filter((b) => isOpenBooking(b.status) && b.date < todayISO)
     .sort((a, b) => b.date.localeCompare(a.date) || a.startTime.localeCompare(b.startTime));
@@ -390,7 +390,10 @@ function IndividualCalendar() {
           </div>
         ) : (
           visibleBookings.map((b, i) => {
-            const view = bookingLook(b);
+            const shown = b.status === "confirmed" || b.status === "pending"
+              ? { ...b, date: "2099-01-01", startTime: "23:59" }
+              : b;
+            const view = bookingLook(shown);
             return (
             <motion.button
               key={b.id}
@@ -413,7 +416,7 @@ function IndividualCalendar() {
                   <span className="font-bold truncate text-foreground">
                     {b.clientName}
                   </span>
-                  <BookingStatusBadge booking={b} testId={`cal-status-${b.id}`} />
+                  <BookingStatusBadge booking={shown} testId={`cal-status-${b.id}`} />
                 </div>
                 <div className="flex items-center justify-between mt-0.5">
                   <span className="text-sm truncate text-muted-foreground">

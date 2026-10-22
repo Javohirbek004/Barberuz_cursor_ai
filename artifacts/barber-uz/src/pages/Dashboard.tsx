@@ -294,28 +294,28 @@ function TodayStatsModal({ open, onClose, total, completed, remaining, cancelled
         <div className="grid grid-cols-2 gap-3 mb-5">
           <div className={`${metricCard} bg-blue-500/8 border border-blue-500/20`}>
             <div className={`${metricLabel} text-blue-400 inline-flex items-center justify-center gap-1.5`}>
-              <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0" />
+              <CheckCircle2 className="w-5 h-5 text-blue-400 stroke-[2.5] shrink-0" />
               <span>Tugallangan</span>
             </div>
             <div className={`${metricValue} text-blue-400`}>{completed} ta</div>
           </div>
           <div className={`${metricCard} bg-green-500/8 border border-green-500/20`}>
             <div className={`${metricLabel} text-emerald-400 inline-flex items-center justify-center gap-1.5`}>
-              <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
+              <Calendar className="w-5 h-5 text-emerald-400 stroke-[2.5] shrink-0" />
               <span>Tasdiqlangan / Kutilayotgan</span>
             </div>
             <div className={`${metricValue} text-emerald-400`}>{remaining} ta</div>
           </div>
           <div className={`${metricCard} bg-red-500/8 border border-red-500/20`}>
             <div className={`${metricLabel} text-red-400 inline-flex items-center justify-center gap-1.5`}>
-              <XCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <XCircle className="w-5 h-5 text-red-400 stroke-[2.5] shrink-0" />
               <span>Kelmadi & Bekor qilingan</span>
             </div>
             <div className={`${metricValue} text-red-400`}>{cancelled} ta</div>
           </div>
           <div className={`${metricCard} bg-white/5 border border-white/8`}>
-            <div className={`${metricLabel} text-slate-400 inline-flex items-center justify-center gap-1.5`}>
-              <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+            <div className={`${metricLabel} text-slate-300 inline-flex items-center justify-center gap-1.5`}>
+              <Timer className="w-5 h-5 text-slate-300 stroke-[2.5] shrink-0" />
               <span>Ishlangan vaqt</span>
             </div>
             <div className={`${metricValue} text-foreground`}>{durationMins > 0 ? durStr : "—"}</div>
