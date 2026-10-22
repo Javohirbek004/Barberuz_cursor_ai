@@ -12,7 +12,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { bookingDay, bookingStartMs, isOpenBooking, localToday } from "@/lib/booking-feed";
+import { bookingDay, bookingStartMs, isOpenBooking, turkeyClock, turkeyToday } from "@/lib/booking-feed";
 import { BookingStatusBadge, bookingLook } from "@/components/BookingStatusBadge";
 import { Layout } from "@/components/Layout";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
@@ -41,7 +41,9 @@ const RU_MONTHS = [
 const RU_DAYS = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"];
 
 function formatDateLocale(lang: string): string {
-  const now = new Date();
+  const iso = turkeyToday();
+  const [y, m, d] = iso.split("-").map(Number);
+  const now = new Date(y || 1970, (m || 1) - 1, d || 1);
   const day = now.getDate();
   const month = now.getMonth();
   const weekday = now.getDay();
@@ -83,8 +85,9 @@ function calcNextBookingInfo(
   upcomingBookings: Booking[],
   now: Date,
 ): { main: string; sub: string; nextId: string | null } {
-  const nowMins = now.getHours() * 60 + now.getMinutes();
-  const today = localToday(now);
+  const clock = turkeyClock(now);
+  const nowMins = clock.mins;
+  const today = clock.date;
   for (const b of upcomingBookings) {
     if (bookingDay(b.date) !== today) continue;
     const start = toMins(b.startTime);
@@ -388,7 +391,7 @@ function IndividualDashboard() {
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
   }, []);
-  const today = localToday(now);
+  const today = turkeyToday(now);
   const { data: bookingsData, isLoading: bookingsLoading, refetch } = useListBookings({ date: today });
 
   // Refresh often and when the app comes back to the screen, so Telegram changes
