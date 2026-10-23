@@ -545,8 +545,8 @@ function IndividualDashboard() {
     }
     const url = `${APP_ORIGIN}/${slug}`;
     const shareData: ShareData = {
-      title: "Barber.uz — Onlayn bron qilish",
-      text: "Mening vaqtimni band qilish uchun ushbu havola orqali o'ting:",
+      title: "Onlayn bron qilish",
+      text: "Barbershopimizga onlayn bron qilish uchun ushbu havola orqali o'ting:",
       url,
     };
     if (canUseShare(shareData)) {
