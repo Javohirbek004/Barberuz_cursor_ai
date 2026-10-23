@@ -3,6 +3,7 @@ import usersRouter    from "./routes/users.routes";
 import servicesRouter from "./routes/services.routes";
 import bookingsRouter from "./routes/bookings.routes";
 import adminRouter    from "./routes/admin.routes";
+import { adminAuth }  from "./middleware/adminAuth";
 
 const v1Router = Router();
 
@@ -31,9 +32,11 @@ v1Router.get("/health", (_req, res) => {
   });
 });
 
-v1Router.use("/users",    usersRouter);
-v1Router.use("/services", servicesRouter);
-v1Router.use("/bookings", bookingsRouter);
+// The app never calls these routes. They hold every barber's data, so only the
+// owner's admin secret may open them.
+v1Router.use("/users",    adminAuth, usersRouter);
+v1Router.use("/services", adminAuth, servicesRouter);
+v1Router.use("/bookings", adminAuth, bookingsRouter);
 v1Router.use("/admin",    adminRouter);
 
 export default v1Router;

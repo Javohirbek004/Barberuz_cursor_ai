@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, desc, eq, gt, lte } from "drizzle-orm";
+import { and, desc, eq, gt, lte, ne } from "drizzle-orm";
 import { db, pendingRegistrationsTable, usersTable, type PendingRegistration } from "@workspace/db";
 import { allocatePublicSlug, isSlugAvailable } from "./public-slug";
 
@@ -62,11 +62,35 @@ export async function getLivePendingRegistration(id: string): Promise<PendingReg
   return row ?? null;
 }
 
-export async function latestLivePendingRegistration(): Promise<PendingRegistration | null> {
+/**
+ * Remember which Telegram chat opened this signup's bot link. It is stored in the
+ * database, so a server restart or sleep cannot make the bot forget whose signup it is.
+ * A chat belongs to one signup at a time: the newest link wins.
+ */
+export async function bindPendingToChat(pendingId: string, chatId: number): Promise<void> {
+  const chat = String(chatId);
+  await db
+    .update(pendingRegistrationsTable)
+    .set({ telegramChatId: null })
+    .where(and(
+      eq(pendingRegistrationsTable.telegramChatId, chat),
+      ne(pendingRegistrationsTable.id, pendingId),
+    ));
+  await db
+    .update(pendingRegistrationsTable)
+    .set({ telegramChatId: chat })
+    .where(eq(pendingRegistrationsTable.id, pendingId));
+}
+
+/** The signup this exact chat started, if it is still waiting. Never a guess. */
+export async function findPendingByChat(chatId: number): Promise<PendingRegistration | null> {
   const [row] = await db
     .select()
     .from(pendingRegistrationsTable)
-    .where(gt(pendingRegistrationsTable.expiresAt, new Date()))
+    .where(and(
+      eq(pendingRegistrationsTable.telegramChatId, String(chatId)),
+      gt(pendingRegistrationsTable.expiresAt, new Date()),
+    ))
     .orderBy(desc(pendingRegistrationsTable.createdAt))
     .limit(1);
   return row ?? null;

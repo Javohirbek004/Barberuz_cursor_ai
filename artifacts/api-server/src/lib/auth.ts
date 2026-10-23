@@ -60,12 +60,94 @@ export function assertAuthSecrets(): void {
   }
 }
 
+/** Old fast format. Kept only so existing accounts can still sign in; new passwords use makePasswordHash. */
 export function hashPassword(password: string): string {
   const salt = passwordSalt();
   return crypto
     .createHash("sha256")
     .update(password + salt)
     .digest("hex");
+}
+
+const SCRYPT_PREFIX = "scrypt";
+const SCRYPT_N = 16384;
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_KEYLEN = 64;
+const MAX_PASSWORD_LENGTH = 1024;
+
+function scryptAsync(
+  password: string,
+  salt: Buffer,
+  keylen: number,
+  params: { N: number; r: number; p: number },
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(
+      password,
+      salt,
+      keylen,
+      { ...params, maxmem: 256 * params.N * params.r },
+      (err, derived) => (err ? reject(err) : resolve(derived)),
+    );
+  });
+}
+
+/**
+ * New passwords are stored with scrypt: slow on purpose, and a different random salt
+ * for every person, so a stolen database cannot be cracked quickly.
+ * Format: scrypt$N$r$p$salt$hash
+ */
+export async function makePasswordHash(password: string): Promise<string> {
+  const salt = crypto.randomBytes(16);
+  const derived = await scryptAsync(password, salt, SCRYPT_KEYLEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P });
+  return [
+    SCRYPT_PREFIX,
+    SCRYPT_N,
+    SCRYPT_R,
+    SCRYPT_P,
+    salt.toString("base64url"),
+    derived.toString("base64url"),
+  ].join("$");
+}
+
+/**
+ * Checks a password against either storage format.
+ * `needsUpgrade` is true when it matched the old fast format, so the caller can
+ * quietly re-save it with scrypt and nobody has to reset their password.
+ */
+export async function verifyPassword(
+  password: string,
+  stored: string | null | undefined,
+): Promise<{ ok: boolean; needsUpgrade: boolean }> {
+  const fail = { ok: false, needsUpgrade: false };
+  if (typeof password !== "string" || !password || password.length > MAX_PASSWORD_LENGTH) return fail;
+  if (!stored) return fail;
+
+  if (stored.startsWith(`${SCRYPT_PREFIX}$`)) {
+    const parts = stored.split("$");
+    if (parts.length !== 6) return fail;
+    const N = Number(parts[1]);
+    const r = Number(parts[2]);
+    const p = Number(parts[3]);
+    const salt = Buffer.from(parts[4], "base64url");
+    const expected = Buffer.from(parts[5], "base64url");
+    const sane =
+      Number.isInteger(N) && N >= 1024 && N <= 1 << 20 && (N & (N - 1)) === 0 &&
+      Number.isInteger(r) && r >= 1 && r <= 16 &&
+      Number.isInteger(p) && p >= 1 && p <= 4 &&
+      salt.length >= 8 && expected.length >= 16 && expected.length <= 128;
+    if (!sane) return fail;
+    const derived = await scryptAsync(password, salt, expected.length, { N, r, p });
+    const ok = derived.length === expected.length && crypto.timingSafeEqual(derived, expected);
+    return { ok, needsUpgrade: false };
+  }
+
+  // Older accounts: fast salted hash, or the even older unsalted one.
+  const current = hashPassword(password);
+  const oldest = legacyHash(password);
+  const ok = secretsEqual(current, stored) || (oldest !== null && secretsEqual(oldest, stored));
+  return { ok, needsUpgrade: ok };
 }
 
 /**

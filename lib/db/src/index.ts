@@ -151,6 +151,8 @@ const ENSURE_SCHEMA_SQL = [
     "expires_at" timestamptz NOT NULL
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "pending_registrations_username_key" ON "pending_registrations" ("username")`,
+  `ALTER TABLE "pending_registrations" ADD COLUMN IF NOT EXISTS "telegram_chat_id" text`,
+  `CREATE INDEX IF NOT EXISTS "pending_registrations_chat_idx" ON "pending_registrations" ("telegram_chat_id")`,
   `CREATE TABLE IF NOT EXISTS "phone_update_intents" (
     "telegram_id" text PRIMARY KEY,
     "barber_slug" text,

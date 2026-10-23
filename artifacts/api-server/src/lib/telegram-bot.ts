@@ -28,7 +28,7 @@ import { eq, and, isNull, desc, sql, gte, inArray } from "drizzle-orm";
 import { syncClientMetrics } from "./client-metrics";
 import { findClientByPhone } from "./client-lookup";
 import { normalizePhone, phoneKey } from "./phone";
-import { generateToken, hashPassword } from "./auth";
+import { generateToken, makePasswordHash } from "./auth";
 import { bumpSessionEpoch } from "./session-epoch";
 import { consumeRateLimit } from "./rate-limit";
 import {
@@ -41,11 +41,12 @@ import {
   receiptText,
   sendReminderPreview,
 } from "./client-notifications";
-import { getTelegramBotToken } from "./telegram-token";
+import { getTelegramBotToken, webhookSecretToken } from "./telegram-token";
 import {
+  bindPendingToChat,
   createUserFromPending,
+  findPendingByChat,
   getLivePendingRegistration,
-  latestLivePendingRegistration,
 } from "./pending-registration";
 
 function getToken(): string {
@@ -57,7 +58,7 @@ function getToken(): string {
  * Priority: REPLIT_DEV_DOMAIN (dev only, when NODE_ENV=development)
  *           → REPLIT_DOMAINS preferred entry (non-sisko first, e.g. barberuz.replit.app)
  *           → APP_URL (manual override / custom domain fallback)
- *           → barberuz-lovat.vercel.app (hardcoded last resort)
+ *           → barber-uz-clq6.onrender.com (hardcoded last resort)
  *
  * IMPORTANT: REPLIT_DOMAINS may contain both a sisko.replit.dev entry AND the
  * clean domain. We always prefer the clean domain so that bot links sent to
@@ -68,9 +69,11 @@ function getAppUrl(): string {
   if (process.env.NODE_ENV === "development") {
     if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
+  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
+  if (renderHost) return `https://${renderHost}`;
   if (process.env.APP_URL) {
     const appUrl = process.env.APP_URL.replace(/\/$/, "");
-    if (!/replit\./i.test(appUrl)) return appUrl;
+    if (!/replit\./i.test(appUrl) && !/vercel\.app$/i.test(appUrl)) return appUrl;
   }
   const domains = (process.env.REPLIT_DOMAINS || "")
     .split(",")
@@ -78,13 +81,11 @@ function getAppUrl(): string {
     .filter(d => d && !d.includes("sisko.replit.dev") && !d.includes("replit."));
   const preferred = domains[0];
   if (preferred) return `https://${preferred}`;
-  return "https://barberuz-lovat.vercel.app";
+  return "https://barber-uz-clq6.onrender.com";
 }
 
 function publicSiteUrl(): string {
-  const env = process.env.APP_URL?.replace(/\/$/, "");
-  if (env && /^https?:\/\//i.test(env)) return env;
-  return "https://barberuz-lovat.vercel.app";
+  return getAppUrl();
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -259,7 +260,7 @@ async function sendPhoneAlreadyRegistered(
       inline_keyboard: [[
         {
           text: "\uD83D\uDD11 Kirish sahifasiga o\u02BBtish",
-          url: "https://barberuz-lovat.vercel.app/login",
+          url: `${getAppUrl()}/login`,
         },
       ]],
     },
@@ -394,7 +395,7 @@ async function handlePasswordResetText(
   try {
     await db
       .update(usersTable)
-      .set({ passwordHash: hashPassword(text), updatedAt: new Date() })
+      .set({ passwordHash: await makePasswordHash(text), updatedAt: new Date() })
       .where(eq(usersTable.id, pending.userId));
     await bumpSessionEpoch(pending.userId);
   } catch (err) {
@@ -419,7 +420,7 @@ async function handlePasswordResetText(
       inline_keyboard: [[
         {
           text: "\uD83D\uDD11 Kirish sahifasiga o\u02BBtish",
-          url: "https://barberuz-lovat.vercel.app/login?reset=success",
+          url: `${getAppUrl()}/login?reset=success`,
         },
       ]],
     },
@@ -836,6 +837,19 @@ export async function handleTelegramUpdate(update: unknown) {
     const tgUserId = String((contact.user_id as number) || chatId);
     const tgUsername = (from?.username as string) || null;
 
+    // The number must belong to the person sending it. A contact card of somebody else
+    // would otherwise let a stranger sign in as that barber or claim their number.
+    const contactOwnerId = contact.user_id != null ? String(contact.user_id) : "";
+    const contactSenderId = from?.id != null ? String(from.id) : String(chatId);
+    if (!contactOwnerId || contactOwnerId !== contactSenderId) {
+      console.warn(`[TelegramBot] Contact rejected: not the sender's own number (chatId=${chatId})`);
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "Iltimos, o\u02BBzingizning telefon raqamingizni yuboring.",
+      });
+      return;
+    }
+
     const resetPending = getPasswordReset(chatId);
     if (resetPending && resetPending.step === "phone") {
       const contactUserId = contact.user_id as number | undefined;
@@ -1187,6 +1201,12 @@ async function handleRegStart(chatId: number, userId: string, _lang: string, fro
   pendingNoPayloadLogins.delete(chatId);
 
   pendingVerifications.set(chatId, userId);
+  if (pending) {
+    // Keep the link between this chat and its signup in the database too.
+    await bindPendingToChat(userId, chatId).catch((err) =>
+      console.error("[TelegramBot] Could not remember the signup chat:", err),
+    );
+  }
   console.log(`[TelegramBot] Reg: pending chatId=${chatId} → userId=${userId}`);
   await sendContactRequest(chatId, user?.name || pending!.name);
 }
@@ -1727,32 +1747,9 @@ async function handleNoPayloadContact(
     return;
   }
 
-  // Phone not in DB — find the most recently registered unverified user
-  const [unverifiedUser] = await db
-    .select()
-    .from(usersTable)
-    .where(and(eq(usersTable.telegramVerified, false), isNull(usersTable.telegramId)))
-    .orderBy(desc(usersTable.createdAt))
-    .limit(1);
-
-  if (unverifiedUser) {
-    await db
-      .update(usersTable)
-      .set({
-        telegramVerified: true,
-        telegramId: tgUserId,
-        telegramUsername: tgUsername,
-        phone,
-        updatedAt: new Date(),
-      })
-      .where(eq(usersTable.id, unverifiedUser.id));
-
-    console.log(`[TelegramBot] NoPayload reg verified: userId=${unverifiedUser.id} \u2705`);
-    await sendVerificationSuccess(chatId, unverifiedUser.id);
-    return;
-  }
-
-  const pending = await latestLivePendingRegistration();
+  // Phone not in DB. Only the signup THIS chat opened the bot link for may be finished
+  // here. The bot never guesses "the newest signup", so strangers cannot take it.
+  const pending = await findPendingByChat(chatId);
   if (pending) {
     try {
       const created = await createUserFromPending(pending, {
@@ -2556,43 +2553,47 @@ async function handleBookingContact(
 }
 
 function moneyLabel(value: number): string {
-  return `${Number(value || 0).toLocaleString("uz-UZ")} so'm`;
+  const amount = Math.max(0, Math.round(Number(value) || 0));
+  const grouped = String(amount).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return `${grouped} so'm`;
+}
+
+function safeMapUrl(raw: string | null | undefined): string {
+  const value = (raw || "").trim();
+  if (!/^https?:\/\//i.test(value)) return "";
+  return value;
 }
 
 async function sendUnifiedBookingReceipt(
   chatId: number,
   data: BookingData,
   clientName: string,
-  phone: string | null,
+  _phone: string | null,
   barberId: string,
 ) {
   const [barber] = await db.select().from(usersTable).where(eq(usersTable.id, barberId)).limit(1);
   const master = barber?.brandName || barber?.name || data.barberName || "Usta";
   const service = data.services.map((s) => s.name).join(", ") || "Xizmat";
-  const address = (barber?.address || data.barberAddress || "").trim();
-  const map = (barber?.mapLink || data.mapLink || "").trim();
-  let addressLine = "";
-  if (address) {
-    addressLine = map
-      ? `📍 Manzil: ${escapeHtml(address)} (<a href="${escapeHtml(map)}">Xaritada koʻrish 🧭</a>)`
-      : `📍 Manzil: ${escapeHtml(address)}`;
-  }
+  const barberPhone = plusPhone(barber?.phone);
+  const map = safeMapUrl(barber?.mapLink || data.mapLink);
   const lines = [
     `🎉 <b>Broningiz qabul qilindi, ${escapeHtml(clientName)}!</b>`,
     "",
     `👤 Usta: ${escapeHtml(master)}`,
     `✂️ Xizmat: ${escapeHtml(service)}`,
-    `💰 Narx: ${escapeHtml(moneyLabel(data.totalPrice))}`,
+    `💵 Narx: ${escapeHtml(moneyLabel(data.totalPrice))}`,
     `📅 Sana: ${escapeHtml(formatDateLabel(data.date))}`,
     `⏰ Vaqt: ${escapeHtml(data.time)}`,
-    `📞 Raqam: ${escapeHtml(phone || "—")}`,
   ];
-  if (addressLine) lines.push(addressLine);
+  if (barberPhone) lines.push(`📞 Aloqa: ${escapeHtml(barberPhone)}`);
+  if (map) {
+    lines.push(`🧭 Manzil: <a href="${escapeHtml(map)}">Xaritada koʻrish 🧭</a>`);
+  }
   lines.push(
     "",
     "💡 Iltimos, belgilangan vaqtdan 5-10 daqiqa ertaroq keling.",
     "",
-    "────────────────────────",
+    "━━━━━━━━━━━━━━━━━━━━",
     "🤖 <b>Bot haqida eslatma:</b>",
     "Ushbu bot sizning shaxsiy yordamchingiz:",
     "• Navbatingizga oz qolganda eslatma yuboradi",
@@ -2708,14 +2709,25 @@ export async function registerWebhook(webhookUrl: string) {
     return { ok: false, description: "Token missing" };
   }
 
+  const secret = webhookSecretToken();
   console.log(`[TelegramBot] Registering webhook: ${webhookUrl}`);
   const result = await callTelegram("setWebhook", {
     url: webhookUrl,
     allowed_updates: ["message", "callback_query"],
     drop_pending_updates: true,
+    ...(secret ? { secret_token: secret } : {}),
   });
   console.log("[TelegramBot] setWebhook result:", JSON.stringify(result));
+  // Only start refusing unsigned updates once Telegram has accepted the signed registration.
+  if (secret && (result as { ok?: boolean } | null)?.ok === true) webhookSignatureActive = true;
   return result;
+}
+
+let webhookSignatureActive = false;
+
+/** True after Telegram confirmed it will sign every update it sends us. */
+export function isWebhookSignatureActive(): boolean {
+  return webhookSignatureActive;
 }
 
 export async function getWebhookInfo() {

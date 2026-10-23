@@ -227,14 +227,17 @@ function IndividualCalendar() {
   const reviewBookings = isPastDay
     ? bookings.filter((b) => isOpenBooking(b.status))
     : [];
-  const reviewIds = new Set(reviewBookings.map((b) => b.id));
-  const listedBookings = bookings.filter((b) => !reviewIds.has(b.id));
+  const bookingStatus = (status: string) => status.trim().toLowerCase();
   const isDroppedVisit = (status: string) =>
-    status === "cancelled" || status === "auto_cancelled" || status === "no_show";
-  const droppedCount = listedBookings.filter((b) => isDroppedVisit(b.status)).length;
-  const visibleBookings = showDropped
-    ? listedBookings
-    : listedBookings.filter((b) => !isDroppedVisit(b.status));
+    bookingStatus(status) === "cancelled" || bookingStatus(status) === "auto_cancelled" || bookingStatus(status) === "no_show";
+  const isTimelineVisit = (status: string) => {
+    const value = bookingStatus(status);
+    return value === "confirmed" || value === "pending" || value === "pending_action" || value === "completed";
+  };
+  const droppedCount = bookings.filter((b) => isDroppedVisit(b.status)).length;
+  const visibleBookings = bookings.filter((b) =>
+    isTimelineVisit(b.status) || (showDropped && isDroppedVisit(b.status)),
+  );
   const pastUnresolved = (overdueData?.bookings ?? [])
     .filter((b) => isOpenBooking(b.status) && b.date < todayISO)
     .sort((a, b) => b.date.localeCompare(a.date) || a.startTime.localeCompare(b.startTime));
@@ -295,18 +298,20 @@ function IndividualCalendar() {
         jumpIso={jumpIso}
       />
 
-      <label className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-card px-3.5 py-3">
-        <span className="text-[13px] font-semibold leading-snug text-foreground">
-          🚫 Bekor qilinganlar & Kelmaganlar ({droppedCount})
-        </span>
-        <Switch
-          checked={showDropped}
-          onCheckedChange={setShowDropped}
-          data-testid="calendar-dropped-toggle"
-          aria-label="Bekor qilinganlar va kelmaganlarni ko'rsatish"
-          className="data-[state=unchecked]:bg-white/25 data-[state=checked]:bg-primary"
-        />
-      </label>
+      {droppedCount > 0 && (
+        <label className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-card px-3.5 py-3">
+          <span className="text-[13px] font-semibold leading-snug text-foreground">
+            🚫 Bekor qilinganlar & Kelmaganlar ({droppedCount})
+          </span>
+          <Switch
+            checked={showDropped}
+            onCheckedChange={setShowDropped}
+            data-testid="calendar-dropped-toggle"
+            aria-label="Bekor qilinganlar va kelmaganlarni ko'rsatish"
+            className="data-[state=unchecked]:bg-white/25 data-[state=checked]:bg-primary"
+          />
+        </label>
+      )}
 
       {/* Booking list */}
       <div className="space-y-3" data-testid="calendar-timeline">
@@ -388,7 +393,10 @@ function IndividualCalendar() {
           </div>
         ) : (
           visibleBookings.map((b, i) => {
-            const view = bookingLook(b);
+            const shown = bookingStatus(b.status) === "confirmed" || bookingStatus(b.status) === "pending" || bookingStatus(b.status) === "pending_action"
+              ? { ...b, status: "confirmed" as Booking["status"], date: "2099-01-01", startTime: "23:59" }
+              : b;
+            const view = bookingLook(shown);
             return (
             <motion.button
               key={b.id}
@@ -411,7 +419,7 @@ function IndividualCalendar() {
                   <span className="font-bold truncate text-foreground">
                     {b.clientName}
                   </span>
-                  <BookingStatusBadge booking={b} testId={`cal-status-${b.id}`} />
+                  <BookingStatusBadge booking={shown} testId={`cal-status-${b.id}`} />
                 </div>
                 <div className="flex items-center justify-between mt-0.5">
                   <span className="text-sm truncate text-muted-foreground">

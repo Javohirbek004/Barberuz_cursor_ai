@@ -17,8 +17,12 @@ import { slotOutsideWorkingHours } from "../lib/schedule-guard";
 import { normalizePhone } from "../lib/phone";
 import { randomBytes } from "crypto";
 import { sendBarberBookingNotification } from "../lib/telegram-bot";
+import { clientIp, consumeRateLimit } from "../lib/rate-limit";
 
 const router = Router();
+
+const HOUR_MS = 60 * 60 * 1000;
+const TOO_MANY = { error: "too_many", message: "Ko'p urinish. Biroz kuting." };
 
 function generateSessionId(): string {
   return randomBytes(5).toString("hex");
@@ -49,10 +53,14 @@ function getAppUrl(): string {
   if (process.env.NODE_ENV === "development") {
     if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
+  if (renderHost) return `https://${renderHost}`;
+  if (process.env.APP_URL && !/vercel\.app/i.test(process.env.APP_URL)) {
+    return process.env.APP_URL.replace(/\/$/, "");
+  }
   const firstDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
   if (firstDomain) return `https://${firstDomain}`;
-  return "https://barberuz-lovat.vercel.app";
+  return "https://barber-uz-clq6.onrender.com";
 }
 
 async function expireOldSessions() {
@@ -82,6 +90,23 @@ async function expireOldSessions() {
  */
 router.post("/sessions", async (req, res) => {
   try {
+    // Anyone on the internet can call this, so a script must not be able to fill a
+    // barber's calendar. The limits are generous for real clients and tight for floods.
+    const earlyPhone = typeof req.body?.clientPhone === "string"
+      ? normalizePhone(req.body.clientPhone.trim())
+      : null;
+    const earlyTelegram = req.body?.tgCustomer?.tgId ? String(req.body.tgCustomer.tgId).slice(0, 32) : "";
+    const earlyBarber = typeof req.body?.barberId === "string" ? req.body.barberId.slice(0, 64) : "";
+    if (
+      !consumeRateLimit(`sessions:ip:${clientIp(req)}`, 40, HOUR_MS)
+      || (earlyPhone && !consumeRateLimit(`sessions:phone:${earlyPhone}`, 8, HOUR_MS))
+      || (earlyTelegram && !consumeRateLimit(`sessions:tg:${earlyTelegram}`, 8, HOUR_MS))
+      || (earlyBarber && !consumeRateLimit(`sessions:barber:${earlyBarber}`, 120, HOUR_MS))
+    ) {
+      res.status(429).json(TOO_MANY);
+      return;
+    }
+
     await expireOldSessions();
 
     const {
@@ -479,6 +504,11 @@ router.post("/qr-scan", async (req, res) => {
     const slug = String(req.body?.slug || "").replace(/^@/, "").trim().toLowerCase();
     if (!/^[a-z0-9_-]{3,24}$/.test(slug)) {
       res.status(400).json({ error: "bad_slug" });
+      return;
+    }
+    // Too many scans from one place count nothing, so the page counter cannot be inflated.
+    if (!consumeRateLimit(`qr:${clientIp(req)}:${slug}`, 30, HOUR_MS)) {
+      res.json({ ok: true });
       return;
     }
     const [barber] = await db

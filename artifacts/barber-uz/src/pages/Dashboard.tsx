@@ -12,13 +12,13 @@ import {
 } from "@workspace/api-client-react";
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { bookingStartMs, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
+import { bookingDay, bookingStartMs, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
 import { BookingStatusBadge, bookingLook } from "@/components/BookingStatusBadge";
 import { Layout } from "@/components/Layout";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 import { Card } from "@/components/ui/card";
 import {
-  CalendarDays, Wallet, Timer, Clock,
+  CalendarDays, Wallet, Timer, Clock, Calendar, CheckCircle2, XCircle,
   HardHat, Armchair, ChevronRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -43,7 +43,7 @@ const RU_MONTHS = [
 const RU_DAYS = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"];
 
 function formatDateLocale(lang: string): string {
-  const iso = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+  const iso = tashkentClock().date;
   const [y, m, d] = iso.split("-").map(Number);
   const now = new Date(y || 1970, (m || 1) - 1, d || 1);
   const day = now.getDate();
@@ -93,7 +93,7 @@ function calcNextBookingInfo(
   const nowMins = clock.mins;
   const today = clock.date;
   for (const b of upcomingBookings) {
-    if (b.date !== today) continue;
+    if (bookingDay(b.date) !== today) continue;
     const start = toMins(b.startTime);
     if (start <= nowMins) continue;
     return {
@@ -301,19 +301,31 @@ function TodayStatsModal({ open, onClose, total, completed, remaining, cancelled
         </div>
         <div className="grid grid-cols-2 gap-3 mb-5">
           <div className={`${metricCard} bg-blue-500/8 border border-blue-500/20`}>
-            <div className={`${metricLabel} text-blue-400`}>🔵 Tugallangan</div>
+            <div className={`${metricLabel} text-blue-400 inline-flex items-center justify-center gap-1.5`}>
+              <CheckCircle2 className="w-5 h-5 text-blue-400 stroke-[2.5] shrink-0" />
+              <span>Tugallangan</span>
+            </div>
             <div className={`${metricValue} text-blue-400`}>{completed} ta</div>
           </div>
           <div className={`${metricCard} bg-green-500/8 border border-green-500/20`}>
-            <div className={`${metricLabel} text-green-500`}>🟢 Tasdiqlangan / Kutilayotgan</div>
-            <div className={`${metricValue} text-green-500`}>{remaining} ta</div>
+            <div className={`${metricLabel} text-emerald-400 inline-flex items-center justify-center gap-1.5`}>
+              <Calendar className="w-5 h-5 text-emerald-400 stroke-[2.5] shrink-0" />
+              <span>Tasdiqlangan</span>
+            </div>
+            <div className={`${metricValue} text-emerald-400`}>{remaining} ta</div>
           </div>
           <div className={`${metricCard} bg-red-500/8 border border-red-500/20`}>
-            <div className={`${metricLabel} text-red-500`}>🔴 Kelmadi & Bekor qilingan</div>
-            <div className={`${metricValue} text-red-500`}>{cancelled} ta</div>
+            <div className={`${metricLabel} text-red-400 inline-flex items-center justify-center gap-1.5`}>
+              <XCircle className="w-5 h-5 text-red-400 stroke-[2.5] shrink-0" />
+              <span>Kelmadi & Bekor qilingan</span>
+            </div>
+            <div className={`${metricValue} text-red-400`}>{cancelled} ta</div>
           </div>
           <div className={`${metricCard} bg-white/5 border border-white/8`}>
-            <div className={`${metricLabel} text-muted-foreground`}>⏱️ Ishlangan vaqt</div>
+            <div className={`${metricLabel} text-slate-300 inline-flex items-center justify-center gap-1.5`}>
+              <Timer className="w-5 h-5 text-slate-300 stroke-[2.5] shrink-0" />
+              <span>Ishlangan vaqt</span>
+            </div>
             <div className={`${metricValue} text-foreground`}>{durationMins > 0 ? durStr : "—"}</div>
           </div>
         </div>
@@ -380,13 +392,15 @@ function IndividualDashboard() {
   const { t } = useTranslation();
   const [, navigate] = useLocation();
 
-  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useGetDashboardStats();
+  const { isLoading: statsLoading, refetch: refetchStats } = useGetDashboardStats();
   const { data: profile } = useGetProfile();
-  // Use Tashkent date so today's filter matches the server-side timezone
-  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const today = tashkentClock(now).date;
   const { data: bookingsData, isLoading: bookingsLoading, refetch } = useListBookings({ date: today });
-  // Separate query for the "Yaqin bronlar" list — shows today + future bookings
-  const { data: upcomingData, isLoading: upcomingLoading, refetch: refetchUpcoming } = useListBookings({ date: "upcoming" as any });
 
   // Refresh often and when the app comes back to the screen, so Telegram changes
   // (new, confirmed or cancelled bookings) show up without a reload.
@@ -394,7 +408,6 @@ function IndividualDashboard() {
     const refreshAll = () => {
       void refetch();
       void refetchStats();
-      void refetchUpcoming();
     };
     const id = setInterval(refreshAll, 20_000);
     const onVisible = () => { if (document.visibilityState === "visible") refreshAll(); };
@@ -403,13 +416,7 @@ function IndividualDashboard() {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [refetch, refetchStats, refetchUpcoming]);
-
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(id);
-  }, []);
+  }, [refetch, refetchStats]);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -428,16 +435,21 @@ function IndividualDashboard() {
 
   // Today's bookings — for stats, free-slot calc, and TodayStatsModal
   const bookings = bookingsData?.bookings ?? [];
-  const activeStats = stats;
-  const todayRevenue = activeStats?.todayRevenue ?? 0;
+  const todayRevenue = bookings
+    .filter((b) => b.status === "completed")
+    .reduce((sum, b) => sum + Number(b.price || 0), 0);
 
-  const openBookings = (upcomingData?.bookings ?? [])
-    .filter((b) => isOpenBooking(b.status))
-    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
-  // After midnight, earlier days leave this home list. Only today's elapsed visits wait here.
-  const awaitingClose = (b: Booking) => isOpenBooking(b.status) && bookingStartMs(b.date, b.startTime) < now.getTime();
+  const openBookings = bookings
+    .filter((b) => isOpenBooking(b.status) && bookingDay(b.date) === today)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+  // A confirmed visit whose clock time has passed waits for Keldi / Kelmadi.
+  const awaitingClose = (b: Booking) => {
+    if (!isOpenBooking(b.status)) return false;
+    const start = bookingStartMs(b.date, b.startTime);
+    return Number.isFinite(start) && start < now.getTime();
+  };
   const reviewBookings = openBookings
-    .filter((b) => b.date === today && awaitingClose(b))
+    .filter((b) => bookingDay(b.date) === today && awaitingClose(b))
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
   const upcomingBookings = openBookings
     .filter((b) => !awaitingClose(b))
@@ -470,17 +482,24 @@ function IndividualDashboard() {
   const freeSlots   = freeWindows.reduce((s, w) => s + Math.floor((w.end - w.start) / SLOT_MIN), 0);
 
   // The report tiles must add up to every booking made today.
-  const todayCompleted = bookings.filter(b => b.status === "completed").length;
-  const todayRemaining = bookings.filter(b => b.status === "confirmed" || b.status === "pending").length;
-  const todayCancelled = bookings.filter(b => b.status === "no_show" || b.status === "cancelled" || b.status === "auto_cancelled").length;
-  const todayTotal = bookings.length;
+  const reportStatus = (status: string) => status.trim().toLowerCase();
+  const todayCompleted = bookings.filter((b) => reportStatus(b.status) === "completed").length;
+  const todayRemaining = bookings.filter((b) => {
+    const status = reportStatus(b.status);
+    return status === "confirmed" || status === "pending" || status === "pending_action";
+  }).length;
+  const todayCancelled = bookings.filter((b) => {
+    const status = reportStatus(b.status);
+    return status === "no_show" || status === "cancelled" || status === "auto_cancelled";
+  }).length;
+  const todayTotal = todayCompleted + todayRemaining + todayCancelled;
   const todayDurMins = bookings
     .filter(b => b.status === "completed")
     .reduce((s, b) => s + toMins(b.endTime) - toMins(b.startTime), 0);
 
   const durationLabel = calcTotalDuration(todayUpcoming);
 
-  const hadCompletedToday = bookings.some((b) => b.status === "completed");
+  const hadCompletedToday = bookings.some((b) => reportStatus(b.status) === "completed");
   const { main: nextMain, sub: nextSub, nextId } = calcNextBookingInfo(upcomingBookings, now, {
     enabled: todayHours.enabled,
     startMins: workStart,
@@ -510,13 +529,12 @@ function IndividualDashboard() {
       })));
       await Promise.all([
         refetch(),
-        refetchUpcoming(),
         refetchStats(),
         queryClient.invalidateQueries({ queryKey: getListClientsQueryKey() }),
       ]);
       const sum = rows.reduce((total, row) => total + Number(row.price || 0), 0);
       if (status === "completed") {
-        const allToday = rows.every((row) => row.date === today);
+        const allToday = rows.every((row) => bookingDay(row.date) === today);
         toast({
           title: rows.length > 1 ? "Barchasi bajarildi" : "✓ Keldi",
           description: allToday
@@ -552,11 +570,11 @@ function IndividualDashboard() {
         {/* Card 2: Bugungi daromad */}
         <StatCard
           label="Bugungi daromad"
-          value={statsLoading ? "..." : todayRevenue === 0 ? "—" : `${todayRevenue.toLocaleString()} so'm`}
+          value={bookingsLoading ? "..." : todayRevenue === 0 ? "—" : `${todayRevenue.toLocaleString()} so'm`}
           pillLabel="Tafsilotlar"
           icon={Wallet}
           iconColor="text-emerald-400"
-          loading={statsLoading}
+          loading={bookingsLoading}
           delay={0.05}
           testId="revenue-details"
           onClick={() => setIsFinancialModalOpen(true)}
@@ -580,14 +598,14 @@ function IndividualDashboard() {
           value={nextMain}
           subtext={nextSub || undefined}
           icon={Clock}
-          iconColor="text-violet-400"
+          iconColor="text-purple-400"
           delay={0.15}
           testId="next-booking-card"
           onClick={nextId ? handleScrollToNext : undefined}
         />
       </div>
 
-      {(bookingsLoading || upcomingLoading) ? (
+      {bookingsLoading ? (
         <p className="text-muted-foreground text-center py-8 text-sm">{t("loading")}</p>
       ) : (
         <div ref={bookingsListRef} className="space-y-8">
@@ -650,8 +668,9 @@ function IndividualDashboard() {
                         </div>
                         <BookingNoteBadge note={noteFromBooking(b)} />
                       </div>
-                      <div className="text-right flex-shrink-0">
+                      <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                         <div className="text-sm font-semibold text-yellow-500">{b.price.toLocaleString()} so'm</div>
+                        <BookingStatusBadge booking={b} now={now.getTime()} />
                       </div>
                     </button>
                     <p className="px-4 pb-2 text-xs text-muted-foreground leading-snug">
@@ -753,7 +772,7 @@ function IndividualDashboard() {
           <BookingDetailModal
             booking={selectedBooking}
             onClose={() => setSelectedBooking(null)}
-            onRefetch={() => { void refetch(); void refetchUpcoming(); }}
+            onRefetch={() => { void refetch(); }}
             onRefetchStats={refetchStats}
           />
         )}

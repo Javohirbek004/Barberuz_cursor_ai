@@ -17,8 +17,17 @@ export function tashkentClock(now = new Date()): { date: string; mins: number } 
   };
 }
 
+/** Calendar day only, even if the server sent a full timestamp. */
+export function bookingDay(date: string): string {
+  const match = String(date).match(/\d{4}-\d{2}-\d{2}/);
+  return match?.[0] ?? String(date).slice(0, 10);
+}
+
+/** 11:00 on the booking means 11:00 in Uzbekistan. */
 export function bookingStartMs(date: string, startTime: string): number {
-  return new Date(`${date}T${startTime.slice(0, 5)}:00+05:00`).getTime();
+  const day = bookingDay(date);
+  const [hour = "0", minute = "0"] = String(startTime).slice(0, 5).split(":");
+  return new Date(`${day}T${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:00+05:00`).getTime();
 }
 
 /** A confirmed visit stays in the upcoming list for 15 minutes after its start. */
@@ -41,7 +50,8 @@ export function reviewDayLabel(date: string, today: string): string {
 }
 
 export function isOpenBooking(status: string): boolean {
-  return status === "confirmed" || status === "pending";
+  const value = status.trim().toLowerCase();
+  return value === "confirmed" || value === "pending";
 }
 
 export type BookingVisualKey = "confirmed" | "pending_action" | "completed" | "no_show" | "cancelled";
@@ -54,7 +64,7 @@ export function bookingVisualStatus(
   booking: { status: string; date: string; startTime: string },
   now = Date.now(),
 ): { key: BookingVisualKey; label: string } {
-  const status = booking.status;
+  const status = booking.status.trim().toLowerCase();
   if (status === "completed") return { key: "completed", label: "Tugallangan" };
   if (status === "no_show") return { key: "no_show", label: "Kelmadi" };
   if (status === "cancelled" || status === "auto_cancelled") return { key: "cancelled", label: "Bekor qilingan" };
