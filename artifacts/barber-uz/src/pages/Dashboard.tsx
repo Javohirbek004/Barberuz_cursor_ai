@@ -114,6 +114,37 @@ function serviceNames(raw: string | null | undefined): string[] {
   return raw.split(/[,·+]/).map((part) => part.trim()).filter(Boolean);
 }
 
+function canUseShare(data: ShareData): boolean {
+  if (typeof navigator.share !== "function" || typeof navigator.canShare !== "function") return false;
+  try {
+    return navigator.canShare(data);
+  } catch {
+    return false;
+  }
+}
+
+async function copyText(value: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    try {
+      const area = document.createElement("textarea");
+      area.value = value;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      const ok = document.execCommand("copy");
+      area.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
 // ── Static team barbers ───────────────────────────────────────────────────────
 const TEAM_BARBERS = [
   { id: "1", name: "Ali Karimov",    bookings: 4, active: true  },
@@ -506,6 +537,32 @@ function IndividualDashboard() {
     endMins: workEnd,
   }, hadCompletedToday);
 
+  async function shareBookingLink() {
+    const slug = profile?.username?.trim();
+    if (!slug) {
+      toast({ title: "Havola tayyor emas", description: "Avval sahifa manzilini saqlang" });
+      return;
+    }
+    const url = `${APP_ORIGIN}/${slug}`;
+    const shareData: ShareData = {
+      title: "Barber.uz — Onlayn bron qilish",
+      text: "Mening vaqtimni band qilish uchun ushbu havola orqali o'ting:",
+      url,
+    };
+    if (canUseShare(shareData)) {
+      try {
+        await navigator.share(shareData);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+      }
+      return;
+    }
+    const copied = await copyText(url);
+    toast(copied
+      ? { title: "✅ Havola nusxalandi! Uni mijozga yuborishingiz mumkin." }
+      : { title: "Nusxalanmadi", description: "Qayta urinib ko'ring", variant: "destructive" });
+  }
+
   const handleScrollToNext = () => {
     if (!nextId) return;
     const el = bookingItemRefs.current[nextId];
@@ -699,55 +756,21 @@ function IndividualDashboard() {
           )}
 
           {upcomingBookings.length === 0 && reviewBookings.length === 0 && (
-            <div
-              data-testid="dashboard-empty"
-              className="rounded-2xl border border-neutral-800 bg-[#18181b] p-5"
-            >
-              <div className="flex items-start gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                  <CalendarDays className="w-6 h-6" />
-                </div>
-                <div className="min-w-0">
-                  <p className="font-semibold text-foreground leading-snug">Bugunga hali bronlar yo'q</p>
-                  <p className="text-xs text-muted-foreground mt-1 leading-snug">
-                    Keyingi mijoz uchun havola yuboring yoki o'zingiz bron qo'shing.
-                  </p>
-                </div>
+            <div data-testid="dashboard-empty" className="px-1 pt-2 text-center">
+              <div className="mx-auto mb-3.5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 text-muted-foreground/70">
+                <Calendar className="h-6 w-6" strokeWidth={1.8} />
               </div>
-              <div className="grid grid-cols-2 gap-2 mt-4">
+              <p className="mx-auto max-w-[280px] text-base font-semibold leading-snug text-foreground">
+                Xayrli kun! Bugun hali bronlar mavjud emas
+              </p>
+              <p className="mx-auto mt-1.5 max-w-[280px] text-[13px] leading-relaxed text-muted-foreground/70">
+                Mijozlaringizga bron havolasini yuboring yoki qo‘lda bron qo‘shing.
+              </p>
+              <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   data-testid="share-booking-link"
-                  onClick={() => {
-                    const slug = profile?.username?.trim();
-                    if (!slug) {
-                      toast({ title: "Havola tayyor emas", description: "Avval sahifa manzilini saqlang" });
-                      return;
-                    }
-                    const url = `${APP_ORIGIN}/${slug}`;
-                    const copy = async () => {
-                      try {
-                        await navigator.clipboard.writeText(url);
-                        return true;
-                      } catch {
-                        const area = document.createElement("textarea");
-                        area.value = url;
-                        area.setAttribute("readonly", "");
-                        area.style.position = "fixed";
-                        area.style.left = "-9999px";
-                        document.body.appendChild(area);
-                        area.select();
-                        const ok = document.execCommand("copy");
-                        area.remove();
-                        return ok;
-                      }
-                    };
-                    void copy().then((ok) => {
-                      toast(ok
-                        ? { title: "✅ Havola nusxalandi! Uni mijozga yuborishingiz mumkin." }
-                        : { title: "Nusxalanmadi", description: "Qayta urinib ko'ring", variant: "destructive" });
-                    });
-                  }}
+                  onClick={() => { void shareBookingLink(); }}
                   className="h-11 rounded-xl border border-white/10 bg-white/5 text-[13px] font-semibold text-foreground"
                 >
                   🔗 Havolani ulashish
@@ -758,7 +781,7 @@ function IndividualDashboard() {
                   onClick={() => setAddOpen(true)}
                   className="h-11 rounded-xl border border-primary/30 bg-primary/15 text-[13px] font-semibold text-primary"
                 >
-                  ➕ Bron qo'shish
+                  ➕ Bron qo‘shish
                 </button>
               </div>
             </div>
