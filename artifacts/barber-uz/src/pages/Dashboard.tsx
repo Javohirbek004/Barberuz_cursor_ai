@@ -27,6 +27,8 @@ import { BookingNoteBadge } from "@/components/BookingNoteBadge";
 import { noteFromBooking } from "@/lib/booking-note";
 import { IncomeAnalyticsSheet } from "@/pages/settings/IncomeAnalyticsSheet";
 import { resolveDaySchedule, type ScheduleSource } from "@/lib/schedule";
+import { APP_ORIGIN } from "@/lib/config";
+import { BookingFlowDialog } from "@/components/BookingFlowDialog";
 
 // ── Uzbek date formatter ──────────────────────────────────────────────────────
 const UZ_MONTHS = [
@@ -84,7 +86,8 @@ function countdownUntil(diffMins: number): string {
 function calcNextBookingInfo(
   upcomingBookings: Booking[],
   now: Date,
-  shift: { enabled: boolean; endMins: number },
+  shift: { enabled: boolean; startMins: number; endMins: number },
+  hadCompletedToday: boolean,
 ): { main: string; sub: string; nextId: string | null } {
   const clock = tashkentClock(now);
   const nowMins = clock.mins;
@@ -99,9 +102,11 @@ function calcNextBookingInfo(
       nextId: b.id,
     };
   }
-  const shiftEnded = !shift.enabled || nowMins >= shift.endMins;
-  if (shiftEnded) return { main: "Ish kuni tugadi", sub: "", nextId: null };
-  return { main: "Boshqa bron yo'q", sub: "", nextId: null };
+  const beforeOpen = shift.enabled && nowMins < shift.startMins;
+  if (beforeOpen) return { main: "Ish vaqti hali boshlanmadi", sub: "", nextId: null };
+  const duringHours = shift.enabled && nowMins < shift.endMins;
+  if (duringHours && !hadCompletedToday) return { main: "Hali bron yo'q", sub: "", nextId: null };
+  return { main: "Bugun boshqa bron yo'q", sub: "", nextId: null };
 }
 
 function serviceNames(raw: string | null | undefined): string[] {
@@ -416,6 +421,7 @@ function IndividualDashboard() {
   const [showSlotModal, setShowSlotModal] = useState(false);
   const [isFinancialModalOpen, setIsFinancialModalOpen] = useState(false);
   const [noShowTarget, setNoShowTarget] = useState<Booking | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const bookingsListRef = useRef<HTMLDivElement>(null);
   const bookingItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -474,10 +480,12 @@ function IndividualDashboard() {
 
   const durationLabel = calcTotalDuration(todayUpcoming);
 
+  const hadCompletedToday = bookings.some((b) => b.status === "completed");
   const { main: nextMain, sub: nextSub, nextId } = calcNextBookingInfo(upcomingBookings, now, {
     enabled: todayHours.enabled,
+    startMins: workStart,
     endMins: workEnd,
-  });
+  }, hadCompletedToday);
 
   const handleScrollToNext = () => {
     if (!nextId) return;
@@ -532,7 +540,7 @@ function IndividualDashboard() {
         {/* Card 1: Bugungi bronlar */}
         <InteractiveCard
           label="Bugungi bronlar"
-          value={`${todayBusy.length} ta`}
+          value={todayBusy.length === 0 ? "—" : `${todayBusy.length} ta`}
           pillLabel="Tafsilotlar"
           icon={CalendarDays}
           iconColor="text-amber-400"
@@ -544,7 +552,7 @@ function IndividualDashboard() {
         {/* Card 2: Bugungi daromad */}
         <StatCard
           label="Bugungi daromad"
-          value={statsLoading ? "..." : `${todayRevenue.toLocaleString()} so'm`}
+          value={statsLoading ? "..." : todayRevenue === 0 ? "—" : `${todayRevenue.toLocaleString()} so'm`}
           pillLabel="Tafsilotlar"
           icon={Wallet}
           iconColor="text-emerald-400"
@@ -672,12 +680,68 @@ function IndividualDashboard() {
           )}
 
           {upcomingBookings.length === 0 && reviewBookings.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
-                <CalendarDays className="w-6 h-6 text-muted-foreground/40" />
+            <div
+              data-testid="dashboard-empty"
+              className="rounded-2xl border border-neutral-800 bg-[#18181b] p-5"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  <CalendarDays className="w-6 h-6" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground leading-snug">Bugunga hali bronlar yo'q</p>
+                  <p className="text-xs text-muted-foreground mt-1 leading-snug">
+                    Keyingi mijoz uchun havola yuboring yoki o'zingiz bron qo'shing.
+                  </p>
+                </div>
               </div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">Yaqin bronlar yo'q</p>
-              <p className="text-xs text-muted-foreground/50">Yangi bron qo'shish uchun + tugmasini bosing</p>
+              <div className="grid grid-cols-2 gap-2 mt-4">
+                <button
+                  type="button"
+                  data-testid="share-booking-link"
+                  onClick={() => {
+                    const slug = profile?.username?.trim();
+                    if (!slug) {
+                      toast({ title: "Havola tayyor emas", description: "Avval sahifa manzilini saqlang" });
+                      return;
+                    }
+                    const url = `${APP_ORIGIN}/${slug}`;
+                    const copy = async () => {
+                      try {
+                        await navigator.clipboard.writeText(url);
+                        return true;
+                      } catch {
+                        const area = document.createElement("textarea");
+                        area.value = url;
+                        area.setAttribute("readonly", "");
+                        area.style.position = "fixed";
+                        area.style.left = "-9999px";
+                        document.body.appendChild(area);
+                        area.select();
+                        const ok = document.execCommand("copy");
+                        area.remove();
+                        return ok;
+                      }
+                    };
+                    void copy().then((ok) => {
+                      toast(ok
+                        ? { title: "✅ Havola nusxalandi! Uni mijozga yuborishingiz mumkin." }
+                        : { title: "Nusxalanmadi", description: "Qayta urinib ko'ring", variant: "destructive" });
+                    });
+                  }}
+                  className="h-11 rounded-xl border border-white/10 bg-white/5 text-[13px] font-semibold text-foreground"
+                >
+                  🔗 Havolani ulashish
+                </button>
+                <button
+                  type="button"
+                  data-testid="empty-add-booking"
+                  onClick={() => setAddOpen(true)}
+                  className="h-11 rounded-xl border border-primary/30 bg-primary/15 text-[13px] font-semibold text-primary"
+                >
+                  ➕ Bron qo'shish
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -713,6 +777,8 @@ function IndividualDashboard() {
         freeWindows={freeWindows}
         totalFreeSlots={freeSlots}
       />
+
+      <BookingFlowDialog open={addOpen} onOpenChange={setAddOpen} />
 
       <NoShowConfirmModal
         open={!!noShowTarget}
