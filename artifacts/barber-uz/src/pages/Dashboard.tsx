@@ -545,7 +545,7 @@ function IndividualDashboard() {
     }
     const url = `${APP_ORIGIN}/${slug}`;
     const shareData: ShareData = {
-      title: "Onlayn bron qilish",
+      title: "Onlayn bron qilish -",
       text: "Barbershopimizga onlayn bron qilish uchun ushbu havola orqali o'ting:",
       url,
     };
