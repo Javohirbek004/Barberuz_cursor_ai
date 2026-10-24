@@ -595,11 +595,33 @@ async function sendVerificationSuccess(chatId: number, userId: string, extraDele
   for (const id of extraDeleteIds) rememberRegistrationPrompt(chatId, id);
   await deleteRegistrationPrompts(chatId);
   log("reg_verified", { chatId, userId });
+  const [account] = await db
+    .select({ phone: usersTable.phone })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  const phone = account?.phone || "";
+  const url = phone ? `${getAppUrl()}/dashboard?phone=${encodeURIComponent(phone)}` : "";
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text: "Raqamingiz tasdiqlandi! ✅\nHisobingizga kirish uchun pastdagi tugmani bosing.",
-    reply_markup: appEntryKeyboard(),
+    reply_markup: {
+      inline_keyboard: url
+        ? [[{ text: APP_ENTRY_BUTTON, url }]]
+        : [],
+    },
   });
+  const keyboardMsg = await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: APP_ENTRY_BUTTON,
+    reply_markup: appEntryKeyboard(),
+  }) as { result?: { message_id?: number } } | null;
+  if (keyboardMsg?.result?.message_id) {
+    await callTelegram("deleteMessage", {
+      chat_id: chatId,
+      message_id: keyboardMsg.result.message_id,
+    });
+  }
 }
 
 async function sendAppEntryLink(chatId: number, from: Record<string, unknown> | undefined) {
