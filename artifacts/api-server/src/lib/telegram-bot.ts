@@ -603,7 +603,7 @@ async function sendVerificationSuccess(chatId: number, userId: string) {
   });
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Pastdagi tugma doim qoladi.",
+    text: "\u2060",
     reply_markup: appEntryKeyboard(),
   });
 }
