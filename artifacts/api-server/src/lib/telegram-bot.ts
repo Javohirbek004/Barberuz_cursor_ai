@@ -110,7 +110,6 @@ const pendingBookingVerifications = new Map<number, string>();
 const bookingPromptMessageIds = new Map<number, number[]>();
 
 const APP_ENTRY_BUTTON = "🌐 Ilovaga kirish";
-const APP_ENTRY_CALLBACK = "app_entry";
 const registrationPromptIds = new Map<number, number[]>();
 
 function appEntryKeyboard() {
@@ -592,18 +591,13 @@ async function sendContactRequest(chatId: number, userName: string) {
   return sent;
 }
 
-async function sendVerificationSuccess(chatId: number, userId: string) {
+async function sendVerificationSuccess(chatId: number, userId: string, extraDeleteIds: number[] = []) {
+  for (const id of extraDeleteIds) rememberRegistrationPrompt(chatId, id);
+  await deleteRegistrationPrompts(chatId);
   log("reg_verified", { chatId, userId });
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Raqamingiz tasdiqlandi! ✅",
-    reply_markup: {
-      inline_keyboard: [[{ text: APP_ENTRY_BUTTON, callback_data: APP_ENTRY_CALLBACK }]],
-    },
-  });
-  await callTelegram("sendMessage", {
-    chat_id: chatId,
-    text: "\u2060",
+    text: "Raqamingiz tasdiqlandi! ✅\nHisobingizga kirish uchun pastdagi tugmani bosing.",
     reply_markup: appEntryKeyboard(),
   });
 }
@@ -990,12 +984,12 @@ export async function handleTelegramUpdate(update: unknown) {
 
     // Check if this is a no-payload fallback flow (phone-based identification)
     if (pendingNoPayloadLogins.has(chatId)) {
-      await handleNoPayloadContact(chatId, phone, tgUserId, tgUsername);
+      await handleNoPayloadContact(chatId, phone, tgUserId, tgUsername, message.message_id as number | undefined);
       return;
     }
 
     // Otherwise it's the registration verification flow
-    await handleRegContact(chatId, phone, tgUserId, tgUsername);
+    await handleRegContact(chatId, phone, tgUserId, tgUsername, message.message_id as number | undefined);
     return;
   }
 
@@ -1416,12 +1410,6 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
   const callbackId   = callbackQuery.id as string;
   const chatId       = from.id as number;
 
-  if (callbackData === APP_ENTRY_CALLBACK) {
-    await callTelegram("answerCallbackQuery", { callback_query_id: callbackId });
-    await sendAppEntryLink(chatId, from);
-    return;
-  }
-
   // Always answer the callback to remove the loading spinner
   await callTelegram("answerCallbackQuery", { callback_query_id: callbackId });
 
@@ -1705,11 +1693,12 @@ async function handleRegContact(
   phone: string | null,
   tgUserId: string,
   tgUsername: string | null,
+  contactMessageId?: number,
 ) {
   const userId = pendingVerifications.get(chatId);
   if (!userId) {
     // Map cleared (server restart) — fall back to phone-based identification
-    await handleNoPayloadContact(chatId, phone, tgUserId, tgUsername);
+    await handleNoPayloadContact(chatId, phone, tgUserId, tgUsername, contactMessageId);
     return;
   }
 
@@ -1737,7 +1726,7 @@ async function handleRegContact(
       const pending = await getLivePendingRegistration(userId);
       if (!pending) {
         pendingVerifications.delete(chatId);
-        await handleNoPayloadContact(chatId, phone, tgUserId, tgUsername);
+        await handleNoPayloadContact(chatId, phone, tgUserId, tgUsername, contactMessageId);
         return;
       }
       await createUserFromPending(pending, {
@@ -1749,8 +1738,7 @@ async function handleRegContact(
 
     pendingVerifications.delete(chatId);
     console.log(`[TelegramBot] Reg verified: userId=${userId} ✅`);
-    await deleteRegistrationPrompts(chatId);
-    await sendVerificationSuccess(chatId, userId);
+    await sendVerificationSuccess(chatId, userId, contactMessageId ? [contactMessageId] : []);
   } catch (err) {
     console.error("[TelegramBot] DB update failed:", err);
     await callTelegram("sendMessage", {
@@ -1765,6 +1753,7 @@ async function handleNoPayloadContact(
   phone: string | null,
   tgUserId: string,
   tgUsername: string | null,
+  contactMessageId?: number,
 ) {
   pendingNoPayloadLogins.delete(chatId);
 
@@ -1804,8 +1793,7 @@ async function handleNoPayloadContact(
       .where(eq(usersTable.id, existingUser.id));
 
     console.log(`[TelegramBot] NoPayload re-verified: userId=${existingUser.id} ✅`);
-    await deleteRegistrationPrompts(chatId);
-    await sendVerificationSuccess(chatId, existingUser.id);
+    await sendVerificationSuccess(chatId, existingUser.id, contactMessageId ? [contactMessageId] : []);
     return;
   }
 
@@ -1820,8 +1808,7 @@ async function handleNoPayloadContact(
         telegramUsername: tgUsername,
       });
       console.log(`[TelegramBot] NoPayload pending verified: userId=${created.id} ✅`);
-      await deleteRegistrationPrompts(chatId);
-      await sendVerificationSuccess(chatId, created.id);
+      await sendVerificationSuccess(chatId, created.id, contactMessageId ? [contactMessageId] : []);
     } catch (err) {
       console.error("[TelegramBot] Pending signup save failed:", err);
       await callTelegram("sendMessage", {
