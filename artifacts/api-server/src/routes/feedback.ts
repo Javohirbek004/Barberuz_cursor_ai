@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticate, getUser } from "../lib/auth";
-import { feedbackDestination } from "../lib/feedback-destination";
+import { resolveFeedbackBot } from "../lib/feedback-destination";
 
 const router = Router();
 
@@ -15,10 +15,11 @@ function uzDateTime(): string {
   });
 }
 
-function telegramErrorText(description: string): string {
+function telegramErrorText(description: string, botUsername: string): string {
   const text = description.toLowerCase();
+  const bot = botUsername ? `@${botUsername}` : "feedback botini";
   if (text.includes("bot was blocked")) {
-    return "Xabar ketmadi. Siz feedback botini bloklagansiz. Telegramda o'sha botni oching, blokdan chiqaring va Start ni bosing. Keyin qayta yuboring.";
+    return `Xabar ketmadi. ${bot} sizda bloklangan. Chat ochiq bo'lsa ham, bot profilida "Blokdan chiqarish" ni bosing, keyin Start.`;
   }
   if (text.includes("chat not found") || text.includes("user is deactivated")) {
     return "Xabar ketmadi. Feedback botini ochib Start ni bosing, keyin qayta yuboring.";
@@ -32,6 +33,16 @@ function telegramErrorText(description: string): string {
   return "Yuborishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.";
 }
 
+router.get("/who", async (_req, res) => {
+  const resolved = await resolveFeedbackBot();
+  res.json({
+    wanted: resolved.wanted,
+    chosen: resolved.username,
+    found: resolved.found,
+    hasChat: Boolean(resolved.chatId),
+  });
+});
+
 // POST /api/feedback
 router.post("/", authenticate, async (req, res) => {
   const user = getUser(req);
@@ -42,7 +53,10 @@ router.post("/", authenticate, async (req, res) => {
     return;
   }
 
-  const { token: botToken, chatId } = feedbackDestination();
+  const resolved = await resolveFeedbackBot();
+  const botToken = resolved.token;
+  const chatId = resolved.chatId;
+  const botUsername = resolved.username;
 
   if (!botToken || !chatId) {
     console.warn("[Feedback] Bot token or destination chat is missing — message was not sent");
@@ -92,7 +106,7 @@ router.post("/", authenticate, async (req, res) => {
       console.error("[Feedback] Telegram sendMessage failed:", description || "rejected");
       res.status(502).json({
         error: "telegram_error",
-        message: telegramErrorText(description),
+        message: telegramErrorText(description, botUsername),
       });
       return;
     }
