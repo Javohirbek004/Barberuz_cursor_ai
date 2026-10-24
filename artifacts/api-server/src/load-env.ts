@@ -37,6 +37,6 @@ if (!process.env.FEEDBACKS_BOT?.trim() && feedbackToken) {
   process.env.FEEDBACKS_BOT = feedbackToken;
 }
 
-if (!process.env.ADMIN_TELEGRAM_ID?.trim() && process.env.FEEDBACKS_BOT_USERNAME?.trim()) {
-  process.env.ADMIN_TELEGRAM_ID = process.env.FEEDBACKS_BOT_USERNAME.trim();
+if (!process.env.ADMIN_TELEGRAM_ID?.trim() && process.env.FEEDBACKS_BOT_ID?.trim()) {
+  process.env.ADMIN_TELEGRAM_ID = process.env.FEEDBACKS_BOT_ID.trim();
 }
