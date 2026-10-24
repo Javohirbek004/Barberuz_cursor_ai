@@ -33,38 +33,6 @@ function telegramErrorText(description: string, botUsername: string): string {
   return "Yuborishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.";
 }
 
-router.get("/who", async (_req, res) => {
-  const resolved = await resolveFeedbackBot();
-  const report: Record<string, unknown> = {
-    wanted: resolved.wanted,
-    chosen: resolved.username,
-    found: resolved.found,
-    hasChat: Boolean(resolved.chatId),
-  };
-  if (resolved.token && resolved.chatId) {
-    try {
-      const chat = await fetch(`https://api.telegram.org/bot${resolved.token}/getChat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: resolved.chatId }),
-      }).then((r) => r.json()) as { ok?: boolean; result?: { type?: string; first_name?: string; username?: string } };
-      report.chatType = chat.result?.type || "";
-      report.chatName = chat.result?.first_name || "";
-      report.chatUser = chat.result?.username || "";
-      const action = await fetch(`https://api.telegram.org/bot${resolved.token}/sendChatAction`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: resolved.chatId, action: "typing" }),
-      }).then((r) => r.json()) as { ok?: boolean; description?: string };
-      report.canSend = Boolean(action.ok);
-      if (!action.ok) report.sendError = (action.description || "").slice(0, 160);
-    } catch {
-      report.network = true;
-    }
-  }
-  res.json(report);
-});
-
 // POST /api/feedback
 router.post("/", authenticate, async (req, res) => {
   const user = getUser(req);
