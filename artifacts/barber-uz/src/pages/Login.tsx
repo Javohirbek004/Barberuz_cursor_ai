@@ -45,11 +45,17 @@ function toLoginIdentifier(display: string): string {
   return display.trim();
 }
 
+function phoneFromQuery(): string {
+  const phone = new URLSearchParams(window.location.search).get("phone");
+  if (!phone) return "";
+  return formatUzPhoneMask(phone);
+}
+
 export default function Login() {
   const { t } = useTranslation();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(phoneFromQuery);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
