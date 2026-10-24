@@ -16,6 +16,6 @@ function firstFilled(...values: Array<string | undefined>): string {
 export function feedbackDestination(env: NodeJS.ProcessEnv = process.env): { token: string; chatId: string } {
   return {
     token: firstFilled(env.FEEDBACKS_BOT, env.FEEDBACKS_BOT_TOKEN, env.FEEDBACKS_BOT_TOKE),
-    chatId: firstFilled(env.ADMIN_TELEGRAM_ID, env.FEEDBACKS_BOT_USERNAME),
+    chatId: firstFilled(env.FEEDBACKS_BOT_ID, env.ADMIN_TELEGRAM_ID),
   };
 }
