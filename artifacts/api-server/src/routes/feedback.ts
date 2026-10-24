@@ -29,18 +29,33 @@ function telegramErrorText(description: string): string {
   return "Yuborishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.";
 }
 
-// Shows which setting names the server can see. No secret values.
-router.get("/setup", (_req, res) => {
+router.get("/setup", async (_req, res) => {
   const { token, chatId } = feedbackDestination();
-  const names = Object.keys(process.env)
-    .filter((name) => /feedback|telegram|admin/i.test(name))
-    .sort();
-  res.json({
+  const report: Record<string, unknown> = {
     hasToken: Boolean(token),
     hasChat: Boolean(chatId),
-    chatIsNumber: /^-?\d+$/.test(chatId),
-    names,
-  });
+  };
+  if (!token) {
+    res.json(report);
+    return;
+  }
+  try {
+    const me = await fetch(`https://api.telegram.org/bot${token}/getMe`).then((r) => r.json()) as { ok?: boolean; description?: string };
+    report.tokenOk = Boolean(me.ok);
+    if (!me.ok) report.tokenError = (me.description || "rejected").slice(0, 160);
+    if (me.ok && chatId) {
+      const chat = await fetch(`https://api.telegram.org/bot${token}/getChat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId }),
+      }).then((r) => r.json()) as { ok?: boolean; description?: string };
+      report.chatOk = Boolean(chat.ok);
+      if (!chat.ok) report.chatError = (chat.description || "rejected").slice(0, 160);
+    }
+  } catch {
+    report.network = true;
+  }
+  res.json(report);
 });
 
 // POST /api/feedback
