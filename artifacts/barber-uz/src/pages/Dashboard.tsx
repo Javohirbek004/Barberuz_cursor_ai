@@ -26,6 +26,7 @@ import { BookingDetailModal } from "@/components/BookingDetailModal";
 import { BookingNoteBadge } from "@/components/BookingNoteBadge";
 import { noteFromBooking } from "@/lib/booking-note";
 import { IncomeAnalyticsSheet } from "@/pages/settings/IncomeAnalyticsSheet";
+import { dashboardEmptyCopy } from "@/lib/dashboard-empty";
 import { resolveDaySchedule, type ScheduleSource } from "@/lib/schedule";
 import { APP_ORIGIN } from "@/lib/config";
 import { BookingFlowDialog } from "@/components/BookingFlowDialog";
@@ -531,6 +532,11 @@ function IndividualDashboard() {
   const durationLabel = calcTotalDuration(todayUpcoming);
 
   const hadCompletedToday = bookings.some((b) => reportStatus(b.status) === "completed");
+  const emptyCopy = dashboardEmptyCopy(tashkentClock(now).mins, {
+    enabled: todayHours.enabled,
+    startMins: workStart,
+    endMins: workEnd,
+  });
   const { main: nextMain, sub: nextSub, nextId } = calcNextBookingInfo(upcomingBookings, now, {
     enabled: todayHours.enabled,
     startMins: workStart,
@@ -756,34 +762,36 @@ function IndividualDashboard() {
           )}
 
           {upcomingBookings.length === 0 && reviewBookings.length === 0 && (
-            <div data-testid="dashboard-empty" className="px-1 pt-2 text-center">
+            <div data-testid="dashboard-empty" data-empty-phase={emptyCopy.phase} className="px-1 pt-2 text-center">
               <div className="mx-auto mb-3.5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 text-muted-foreground/70">
                 <Calendar className="h-6 w-6" strokeWidth={1.8} />
               </div>
               <p className="mx-auto max-w-[280px] text-base font-semibold leading-snug text-foreground">
-                Xayrli kun! Bugun hali bronlar mavjud emas
+                {emptyCopy.title}
               </p>
               <p className="mx-auto mt-1.5 max-w-[280px] text-[13px] leading-relaxed text-muted-foreground/70">
-                Mijozlaringizga bron havolasini yuboring yoki qo‘lda bron qo‘shing.
+                {emptyCopy.subtitle}
               </p>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  data-testid="share-booking-link"
-                  onClick={() => { void shareBookingLink(); }}
-                  className="h-11 rounded-xl border border-white/10 bg-white/5 text-[13px] font-semibold text-foreground"
-                >
-                  🔗 Havolani ulashish
-                </button>
-                <button
-                  type="button"
-                  data-testid="empty-add-booking"
-                  onClick={() => setAddOpen(true)}
-                  className="h-11 rounded-xl border border-primary/30 bg-primary/15 text-[13px] font-semibold text-primary"
-                >
-                  ➕ Bron qo‘shish
-                </button>
-              </div>
+              {emptyCopy.showActions && (
+                <div className="mt-4 grid grid-cols-2 gap-2" data-testid="empty-actions">
+                  <button
+                    type="button"
+                    data-testid="share-booking-link"
+                    onClick={() => { void shareBookingLink(); }}
+                    className="h-11 rounded-xl border border-white/10 bg-white/5 text-[13px] font-semibold text-foreground"
+                  >
+                    🔗 Havolani ulashish
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="empty-add-booking"
+                    onClick={() => setAddOpen(true)}
+                    className="h-11 rounded-xl border border-primary/30 bg-primary/15 text-[13px] font-semibold text-primary"
+                  >
+                    ➕ Bron qo'shish
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
