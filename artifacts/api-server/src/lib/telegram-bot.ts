@@ -11,8 +11,9 @@
  * Registration flow:
  *  1. /start reg_{uuid}_{lang}  → look up the waiting signup (or an existing user) → ask phone
  *  2. User shares contact       → create the account if it is still waiting, else mark it verified
- *  3. Send success + "Ilovaga kirish" button
- *  4. Frontend polls /api/auth/telegram-status/:userId → redirects
+ *  3. Send "Raqamingiz tasdiqlandi!" and a persistent "Ilovaga kirish" button
+ *  4. Frontend polls /api/auth/telegram-status/:userId → redirects to /dashboard
+ *  5. "Ilovaga kirish" replies with /dashboard?phone=... (password still required if logged out)
  *
  * Login flow:
  *  1. /start auth_{code}_{lang} → always ask for phone number
@@ -107,6 +108,33 @@ const pendingNoPayloadLogins = new Map<number, Date>();
 /** Customer booking phone verification: chatId → sessionId */
 const pendingBookingVerifications = new Map<number, string>();
 const bookingPromptMessageIds = new Map<number, number[]>();
+
+const APP_ENTRY_BUTTON = "🌐 Ilovaga kirish";
+const APP_ENTRY_CALLBACK = "app_entry";
+const registrationPromptIds = new Map<number, number[]>();
+
+function appEntryKeyboard() {
+  return {
+    keyboard: [[{ text: APP_ENTRY_BUTTON }]],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+function rememberRegistrationPrompt(chatId: number, messageId: number | undefined) {
+  if (!messageId) return;
+  const ids = registrationPromptIds.get(chatId) ?? [];
+  ids.push(messageId);
+  registrationPromptIds.set(chatId, ids);
+}
+
+async function deleteRegistrationPrompts(chatId: number) {
+  const ids = registrationPromptIds.get(chatId) ?? [];
+  registrationPromptIds.delete(chatId);
+  for (const messageId of ids) {
+    await callTelegram("deleteMessage", { chat_id: chatId, message_id: messageId });
+  }
+}
 
 const CLIENT_MENU_BOOKINGS = "📅 Mening bronlarim";
 const CLIENT_MENU_REBOOK = "✂️ Qayta bron";
@@ -545,7 +573,7 @@ function log(
 // ──────────────────────────────────────────────────────────────
 
 async function sendContactRequest(chatId: number, userName: string) {
-  return callTelegram("sendMessage", {
+  const sent = await callTelegram("sendMessage", {
     chat_id: chatId,
     text:
       `Assalomu alaykum, ${userName}! \uD83D\uDC4B\n\n` +
@@ -559,30 +587,50 @@ async function sendContactRequest(chatId: number, userName: string) {
       resize_keyboard: true,
       one_time_keyboard: true,
     },
-  });
+  }) as { result?: { message_id?: number } } | null;
+  rememberRegistrationPrompt(chatId, sent?.result?.message_id);
+  return sent;
 }
 
 async function sendVerificationSuccess(chatId: number, userId: string) {
-  const profileUrl = await buildLoginUrl(userId);
-  if (!profileUrl) {
-    await callTelegram("sendMessage", {
-      chat_id: chatId,
-      text: "Xatolik yuz berdi. Iltimos, ilovaga qo\u02BBlda kiring.",
-      reply_markup: { remove_keyboard: true },
-    });
-    log("reg_verified", { chatId, userId, error: "invalid_url" });
-    return;
-  }
-  log("reg_verified", { chatId, userId, url: profileUrl });
+  log("reg_verified", { chatId, userId });
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Raqamingiz tasdiqlandi! \u2705\n\nProfilingizga o\u02BBtish uchun quyidagi linkni bosing:",
+    text: "Raqamingiz tasdiqlandi! ✅",
     reply_markup: {
-      remove_keyboard: true,
-      inline_keyboard: [
-        [{ text: "\uD83C\uDF10 Ilovaga kirish", url: profileUrl }],
-      ],
+      inline_keyboard: [[{ text: APP_ENTRY_BUTTON, callback_data: APP_ENTRY_CALLBACK }]],
     },
+  });
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: "\u2060",
+    reply_markup: appEntryKeyboard(),
+  });
+}
+
+async function sendAppEntryLink(chatId: number, from: Record<string, unknown> | undefined) {
+  const ids = [from?.id, chatId].filter((id) => id != null).map((id) => String(id));
+  let phone = "";
+  for (const id of ids) {
+    const [user] = await db.select({ phone: usersTable.phone }).from(usersTable).where(eq(usersTable.telegramId, id)).limit(1);
+    if (user?.phone) {
+      phone = user.phone;
+      break;
+    }
+  }
+  if (!phone) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Avval telefon raqamingizni tasdiqlang.",
+      reply_markup: appEntryKeyboard(),
+    });
+    return;
+  }
+  const url = `${getAppUrl()}/dashboard?phone=${encodeURIComponent(phone)}`;
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: url,
+    reply_markup: appEntryKeyboard(),
   });
 }
 
@@ -767,6 +815,7 @@ export async function handleTelegramUpdate(update: unknown) {
     }
     const regParsed = parseRegPayload(payload);
     if (regParsed) {
+      rememberRegistrationPrompt(chatId, message.message_id as number | undefined);
       await handleRegStart(chatId, regParsed.userId, regParsed.lang, from);
       return;
     }
@@ -818,6 +867,11 @@ export async function handleTelegramUpdate(update: unknown) {
   const command = text.trim().split(/\s+/)[0]?.split("@")[0]?.toLowerCase() ?? "";
   if (command === "/eslatma") {
     await sendReminderPreview(chatId);
+    return;
+  }
+
+  if (text.trim() === APP_ENTRY_BUTTON) {
+    await sendAppEntryLink(chatId, from);
     return;
   }
 
@@ -1362,6 +1416,12 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
   const callbackId   = callbackQuery.id as string;
   const chatId       = from.id as number;
 
+  if (callbackData === APP_ENTRY_CALLBACK) {
+    await callTelegram("answerCallbackQuery", { callback_query_id: callbackId });
+    await sendAppEntryLink(chatId, from);
+    return;
+  }
+
   // Always answer the callback to remove the loading spinner
   await callTelegram("answerCallbackQuery", { callback_query_id: callbackId });
 
@@ -1689,6 +1749,7 @@ async function handleRegContact(
 
     pendingVerifications.delete(chatId);
     console.log(`[TelegramBot] Reg verified: userId=${userId} ✅`);
+    await deleteRegistrationPrompts(chatId);
     await sendVerificationSuccess(chatId, userId);
   } catch (err) {
     console.error("[TelegramBot] DB update failed:", err);
@@ -1743,6 +1804,7 @@ async function handleNoPayloadContact(
       .where(eq(usersTable.id, existingUser.id));
 
     console.log(`[TelegramBot] NoPayload re-verified: userId=${existingUser.id} ✅`);
+    await deleteRegistrationPrompts(chatId);
     await sendVerificationSuccess(chatId, existingUser.id);
     return;
   }
@@ -1758,6 +1820,7 @@ async function handleNoPayloadContact(
         telegramUsername: tgUsername,
       });
       console.log(`[TelegramBot] NoPayload pending verified: userId=${created.id} ✅`);
+      await deleteRegistrationPrompts(chatId);
       await sendVerificationSuccess(chatId, created.id);
     } catch (err) {
       console.error("[TelegramBot] Pending signup save failed:", err);
