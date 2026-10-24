@@ -613,9 +613,15 @@ async function sendVerificationSuccess(chatId: number, userId: string, extraDele
     disable_notification: true,
     reply_markup: appEntryKeyboard(),
   }) as { result?: { message_id?: number } } | null;
-  for (const id of extraDeleteIds) rememberRegistrationPrompt(chatId, id);
-  rememberRegistrationPrompt(chatId, keyboardMsg?.result?.message_id);
-  void deleteRegistrationPrompts(chatId);
+  const oldIds = [
+    ...(registrationPromptIds.get(chatId) ?? []),
+    ...extraDeleteIds,
+    keyboardMsg?.result?.message_id,
+  ].filter((id): id is number => typeof id === "number");
+  registrationPromptIds.delete(chatId);
+  void Promise.all(oldIds.map((messageId) =>
+    callTelegram("deleteMessage", { chat_id: chatId, message_id: messageId }),
+  ));
 }
 
 async function sendAppEntryLink(chatId: number, from: Record<string, unknown> | undefined) {
