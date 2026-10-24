@@ -592,8 +592,6 @@ async function sendContactRequest(chatId: number, userName: string) {
 }
 
 async function sendVerificationSuccess(chatId: number, userId: string, extraDeleteIds: number[] = []) {
-  for (const id of extraDeleteIds) rememberRegistrationPrompt(chatId, id);
-  await deleteRegistrationPrompts(chatId);
   log("reg_verified", { chatId, userId });
   const [account] = await db
     .select({ phone: usersTable.phone })
@@ -615,10 +613,9 @@ async function sendVerificationSuccess(chatId: number, userId: string, extraDele
     disable_notification: true,
     reply_markup: appEntryKeyboard(),
   }) as { result?: { message_id?: number } } | null;
-  const keyboardId = keyboardMsg?.result?.message_id;
-  if (keyboardId) {
-    await callTelegram("deleteMessage", { chat_id: chatId, message_id: keyboardId });
-  }
+  for (const id of extraDeleteIds) rememberRegistrationPrompt(chatId, id);
+  rememberRegistrationPrompt(chatId, keyboardMsg?.result?.message_id);
+  void deleteRegistrationPrompts(chatId);
 }
 
 async function sendAppEntryLink(chatId: number, from: Record<string, unknown> | undefined) {
