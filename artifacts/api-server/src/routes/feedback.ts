@@ -17,7 +17,10 @@ function uzDateTime(): string {
 
 function telegramErrorText(description: string): string {
   const text = description.toLowerCase();
-  if (text.includes("chat not found") || text.includes("bot was blocked") || text.includes("user is deactivated")) {
+  if (text.includes("bot was blocked")) {
+    return "Xabar ketmadi. Siz feedback botini bloklagansiz. Telegramda o'sha botni oching, blokdan chiqaring va Start ni bosing. Keyin qayta yuboring.";
+  }
+  if (text.includes("chat not found") || text.includes("user is deactivated")) {
     return "Xabar ketmadi. Feedback botini ochib Start ni bosing, keyin qayta yuboring.";
   }
   if (text.includes("unauthorized") || text.includes("token")) {
@@ -28,44 +31,6 @@ function telegramErrorText(description: string): string {
   }
   return "Yuborishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.";
 }
-
-router.get("/setup", async (_req, res) => {
-  const { token, chatId } = feedbackDestination();
-  const report: Record<string, unknown> = {
-    hasToken: Boolean(token),
-    hasChat: Boolean(chatId),
-  };
-  if (!token) {
-    res.json(report);
-    return;
-  }
-  try {
-    const me = await fetch(`https://api.telegram.org/bot${token}/getMe`).then((r) => r.json()) as { ok?: boolean; description?: string };
-    report.tokenOk = Boolean(me.ok);
-    if (!me.ok) report.tokenError = (me.description || "rejected").slice(0, 160);
-    if (me.ok && chatId) {
-      const chat = await fetch(`https://api.telegram.org/bot${token}/getChat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId }),
-      }).then((r) => r.json()) as { ok?: boolean; description?: string };
-      report.chatOk = Boolean(chat.ok);
-      if (!chat.ok) report.chatError = (chat.description || "rejected").slice(0, 160);
-      if (chat.ok && _req.query.send === "1") {
-        const sent = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: chatId, text: "Sinov. Feedback xabarlari endi shu yerga keladi." }),
-        }).then((r) => r.json()) as { ok?: boolean; description?: string };
-        report.sent = Boolean(sent.ok);
-        if (!sent.ok) report.sendError = (sent.description || "rejected").slice(0, 160);
-      }
-    }
-  } catch {
-    report.network = true;
-  }
-  res.json(report);
-});
 
 // POST /api/feedback
 router.post("/", authenticate, async (req, res) => {
