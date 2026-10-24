@@ -12,10 +12,21 @@ function firstFilled(...values: Array<string | undefined>): string {
   return "";
 }
 
-/** Token and the chat that should receive feedback. Names match the live server settings. */
+function looksLikeBotToken(value: string): boolean {
+  return /^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(value);
+}
+
+function looksLikeChatId(value: string): boolean {
+  return /^-?\d{5,}$/.test(value);
+}
+
+/** Token and the chat that should receive feedback. A username in the token field is ignored. */
 export function feedbackDestination(env: NodeJS.ProcessEnv = process.env): { token: string; chatId: string } {
-  return {
-    token: firstFilled(env.FEEDBACKS_BOT, env.FEEDBACKS_BOT_TOKEN, env.FEEDBACKS_BOT_TOKE),
-    chatId: firstFilled(env.FEEDBACKS_BOT_ID, env.ADMIN_TELEGRAM_ID),
-  };
+  const token = [env.FEEDBACKS_BOT_TOKEN, env.FEEDBACKS_BOT_TOKE, env.FEEDBACKS_BOT]
+    .map((value) => firstFilled(value))
+    .find(looksLikeBotToken) || "";
+  const chatId = [env.FEEDBACKS_BOT_ID, env.ADMIN_TELEGRAM_ID]
+    .map((value) => firstFilled(value))
+    .find(looksLikeChatId) || "";
+  return { token, chatId };
 }
