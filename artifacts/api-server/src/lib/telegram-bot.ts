@@ -130,9 +130,9 @@ function rememberRegistrationPrompt(chatId: number, messageId: number | undefine
 async function deleteRegistrationPrompts(chatId: number) {
   const ids = registrationPromptIds.get(chatId) ?? [];
   registrationPromptIds.delete(chatId);
-  for (const messageId of ids) {
-    await callTelegram("deleteMessage", { chat_id: chatId, message_id: messageId });
-  }
+  await Promise.all(ids.map((messageId) =>
+    callTelegram("deleteMessage", { chat_id: chatId, message_id: messageId }),
+  ));
 }
 
 const CLIENT_MENU_BOOKINGS = "📅 Mening bronlarim";
@@ -592,6 +592,8 @@ async function sendContactRequest(chatId: number, userName: string) {
 }
 
 async function sendVerificationSuccess(chatId: number, userId: string, extraDeleteIds: number[] = []) {
+  for (const id of extraDeleteIds) rememberRegistrationPrompt(chatId, id);
+  await deleteRegistrationPrompts(chatId);
   log("reg_verified", { chatId, userId });
   const [account] = await db
     .select({ phone: usersTable.phone })
@@ -599,24 +601,24 @@ async function sendVerificationSuccess(chatId: number, userId: string, extraDele
     .where(eq(usersTable.id, userId))
     .limit(1);
   const phone = account?.phone || "";
-  const url = phone ? `${getAppUrl()}/dashboard?phone=${encodeURIComponent(phone)}` : "";
-  const sent = await callTelegram("sendMessage", {
+  const url = phone ? `${getAppUrl()}/dashboard?phone=${encodeURIComponent(phone)}` : `${getAppUrl()}/dashboard`;
+  await callTelegram("sendMessage", {
     chat_id: chatId,
     text: "Raqamingiz tasdiqlandi! ✅\nHisobingizga kirish uchun pastdagi tugmani bosing.",
+    reply_markup: {
+      inline_keyboard: [[{ text: APP_ENTRY_BUTTON, url }]],
+    },
+  });
+  const keyboardMsg = await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: "\u2060",
+    disable_notification: true,
     reply_markup: appEntryKeyboard(),
   }) as { result?: { message_id?: number } } | null;
-  const confirmId = sent?.result?.message_id;
-  if (confirmId && url) {
-    await callTelegram("editMessageReplyMarkup", {
-      chat_id: chatId,
-      message_id: confirmId,
-      reply_markup: {
-        inline_keyboard: [[{ text: APP_ENTRY_BUTTON, url }]],
-      },
-    });
+  const keyboardId = keyboardMsg?.result?.message_id;
+  if (keyboardId) {
+    await callTelegram("deleteMessage", { chat_id: chatId, message_id: keyboardId });
   }
-  for (const id of extraDeleteIds) rememberRegistrationPrompt(chatId, id);
-  await deleteRegistrationPrompts(chatId);
 }
 
 async function sendAppEntryLink(chatId: number, from: Record<string, unknown> | undefined) {
@@ -826,6 +828,7 @@ export async function handleTelegramUpdate(update: unknown) {
     }
     const regParsed = parseRegPayload(payload);
     if (regParsed) {
+      rememberRegistrationPrompt(chatId, message.message_id as number | undefined);
       await handleRegStart(chatId, regParsed.userId, regParsed.lang, from);
       return;
     }
