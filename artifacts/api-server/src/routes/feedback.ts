@@ -51,6 +51,15 @@ router.get("/setup", async (_req, res) => {
       }).then((r) => r.json()) as { ok?: boolean; description?: string };
       report.chatOk = Boolean(chat.ok);
       if (!chat.ok) report.chatError = (chat.description || "rejected").slice(0, 160);
+      if (chat.ok && _req.query.send === "1") {
+        const sent = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, text: "Sinov. Feedback xabarlari endi shu yerga keladi." }),
+        }).then((r) => r.json()) as { ok?: boolean; description?: string };
+        report.sent = Boolean(sent.ok);
+        if (!sent.ok) report.sendError = (sent.description || "rejected").slice(0, 160);
+      }
     }
   } catch {
     report.network = true;
