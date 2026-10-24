@@ -15,6 +15,34 @@ function uzDateTime(): string {
   });
 }
 
+function telegramErrorText(description: string): string {
+  const text = description.toLowerCase();
+  if (text.includes("chat not found") || text.includes("bot was blocked") || text.includes("user is deactivated")) {
+    return "Xabar ketmadi. Feedback botini ochib Start ni bosing, keyin qayta yuboring.";
+  }
+  if (text.includes("unauthorized") || text.includes("token")) {
+    return "Xabar ketmadi. Bot kaliti noto'g'ri saqlangan.";
+  }
+  if (text.includes("can't send messages to bots") || text.includes("bots can't")) {
+    return "Xabar ketmadi. Yozilgan raqam botning o'zi. Sizning shaxsiy Telegram raqamingiz kerak.";
+  }
+  return "Yuborishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.";
+}
+
+// Shows which setting names the server can see. No secret values.
+router.get("/setup", (_req, res) => {
+  const { token, chatId } = feedbackDestination();
+  const names = Object.keys(process.env)
+    .filter((name) => /feedback|telegram|admin/i.test(name))
+    .sort();
+  res.json({
+    hasToken: Boolean(token),
+    hasChat: Boolean(chatId),
+    chatIsNumber: /^-?\d+$/.test(chatId),
+    names,
+  });
+});
+
 // POST /api/feedback
 router.post("/", authenticate, async (req, res) => {
   const user = getUser(req);
@@ -29,7 +57,12 @@ router.post("/", authenticate, async (req, res) => {
 
   if (!botToken || !chatId) {
     console.warn("[Feedback] Bot token or destination chat is missing — message was not sent");
-    res.status(503).json({ ok: false, sent: false, error: "bot_not_configured" });
+    res.status(503).json({
+      ok: false,
+      sent: false,
+      error: "bot_not_configured",
+      message: "Xabar ketmadi. Server feedback botini ko'rmayapti.",
+    });
     return;
   }
 
@@ -64,8 +97,14 @@ router.post("/", authenticate, async (req, res) => {
     const tgJson = await tgRes.json() as { ok: boolean };
 
     if (!tgJson.ok) {
-      console.error("[Feedback] Telegram sendMessage failed:", tgJson);
-      res.status(502).json({ error: "telegram_error", detail: tgJson });
+      const description = typeof (tgJson as { description?: unknown }).description === "string"
+        ? (tgJson as { description: string }).description
+        : "";
+      console.error("[Feedback] Telegram sendMessage failed:", description || "rejected");
+      res.status(502).json({
+        error: "telegram_error",
+        message: telegramErrorText(description),
+      });
       return;
     }
 
