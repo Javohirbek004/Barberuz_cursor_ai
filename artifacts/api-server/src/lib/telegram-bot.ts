@@ -592,8 +592,6 @@ async function sendContactRequest(chatId: number, userName: string) {
 }
 
 async function sendVerificationSuccess(chatId: number, userId: string, extraDeleteIds: number[] = []) {
-  for (const id of extraDeleteIds) rememberRegistrationPrompt(chatId, id);
-  await deleteRegistrationPrompts(chatId);
   log("reg_verified", { chatId, userId });
   const [account] = await db
     .select({ phone: usersTable.phone })
@@ -602,26 +600,23 @@ async function sendVerificationSuccess(chatId: number, userId: string, extraDele
     .limit(1);
   const phone = account?.phone || "";
   const url = phone ? `${getAppUrl()}/dashboard?phone=${encodeURIComponent(phone)}` : "";
-  await callTelegram("sendMessage", {
+  const sent = await callTelegram("sendMessage", {
     chat_id: chatId,
     text: "Raqamingiz tasdiqlandi! ✅\nHisobingizga kirish uchun pastdagi tugmani bosing.",
-    reply_markup: {
-      inline_keyboard: url
-        ? [[{ text: APP_ENTRY_BUTTON, url }]]
-        : [],
-    },
-  });
-  const keyboardMsg = await callTelegram("sendMessage", {
-    chat_id: chatId,
-    text: APP_ENTRY_BUTTON,
     reply_markup: appEntryKeyboard(),
   }) as { result?: { message_id?: number } } | null;
-  if (keyboardMsg?.result?.message_id) {
-    await callTelegram("deleteMessage", {
+  const confirmId = sent?.result?.message_id;
+  if (confirmId && url) {
+    await callTelegram("editMessageReplyMarkup", {
       chat_id: chatId,
-      message_id: keyboardMsg.result.message_id,
+      message_id: confirmId,
+      reply_markup: {
+        inline_keyboard: [[{ text: APP_ENTRY_BUTTON, url }]],
+      },
     });
   }
+  for (const id of extraDeleteIds) rememberRegistrationPrompt(chatId, id);
+  await deleteRegistrationPrompts(chatId);
 }
 
 async function sendAppEntryLink(chatId: number, from: Record<string, unknown> | undefined) {
@@ -831,7 +826,6 @@ export async function handleTelegramUpdate(update: unknown) {
     }
     const regParsed = parseRegPayload(payload);
     if (regParsed) {
-      rememberRegistrationPrompt(chatId, message.message_id as number | undefined);
       await handleRegStart(chatId, regParsed.userId, regParsed.lang, from);
       return;
     }
