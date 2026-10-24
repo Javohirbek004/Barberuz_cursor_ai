@@ -1,6 +1,12 @@
 function firstFilled(...values: Array<string | undefined>): string {
   for (const value of values) {
-    const trimmed = value?.trim();
+    let trimmed = value?.trim() ?? "";
+    if (
+      (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+      trimmed = trimmed.slice(1, -1).trim();
+    }
     if (trimmed) return trimmed;
   }
   return "";
