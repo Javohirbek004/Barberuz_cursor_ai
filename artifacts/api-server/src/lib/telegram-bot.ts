@@ -626,6 +626,11 @@ async function sendVerificationSuccess(chatId: number, userId: string, extraDele
     await new Promise((resolve) => setTimeout(resolve, 120));
     await callTelegram("deleteMessage", { chat_id: chatId, message_id: greetingId });
   }
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: APP_ENTRY_BUTTON,
+    reply_markup: appEntryKeyboard(),
+  });
 }
 
 async function sendAppEntryLink(chatId: number, from: Record<string, unknown> | undefined) {
