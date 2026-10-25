@@ -26,7 +26,8 @@ import { BookingDetailModal } from "@/components/BookingDetailModal";
 import { BookingNoteBadge } from "@/components/BookingNoteBadge";
 import { noteFromBooking } from "@/lib/booking-note";
 import { IncomeAnalyticsSheet } from "@/pages/settings/IncomeAnalyticsSheet";
-import { resolveDaySchedule, type ScheduleSource } from "@/lib/schedule";
+import { SlotPeriodTabs } from "@/components/SlotPeriodTabs";
+import { resolveDaySchedule, filterSlotsByPeriod, type ScheduleSource, type SlotPeriod } from "@/lib/schedule";
 import { APP_ORIGIN } from "@/lib/config";
 import { BookingFlowDialog } from "@/components/BookingFlowDialog";
 
@@ -369,44 +370,68 @@ function TodayStatsModal({ open, onClose, total, completed, remaining, cancelled
 }
 
 // ── Free Slot Modal ───────────────────────────────────────────────────────────
+function freeSlotTimes(windows: { start: number; end: number }[]): string[] {
+  const times: string[] = [];
+  for (const w of windows) {
+    for (let t = w.start; t + 30 <= w.end; t += 30) times.push(fmtTimeMins(t));
+  }
+  return times;
+}
+
 function FreeSlotModal({ open, onClose, freeWindows, totalFreeSlots }: {
   open: boolean; onClose: () => void;
   freeWindows: { start: number; end: number }[];
   totalFreeSlots: number;
 }) {
+  const [period, setPeriod] = useState<SlotPeriod>("all");
+  const [picked, setPicked] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    setPeriod("all");
+    setPicked(null);
+  }, [open]);
+
+  const allSlots = freeSlotTimes(freeWindows);
+  const visible = filterSlotsByPeriod(allSlots, period);
+  const shownCount = period === "all" ? totalFreeSlots : visible.length;
+
   return (
     <BottomSheet open={open} onClose={onClose}>
-      <div className="overflow-y-auto px-5 pb-8 pt-2">
+      <div className="overflow-y-auto px-5 pb-28 pt-2" data-testid="free-slots-modal">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-base font-bold text-foreground">⏱ Bugungi bo'sh vaqtlar</h2>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/8 text-muted-foreground transition-colors text-lg">✖</button>
         </div>
-        <p className="text-xs text-muted-foreground mb-5">Jami {totalFreeSlots} ta bo'sh slot mavjud</p>
-        {freeWindows.length === 0 ? (
+        <p className="text-xs text-muted-foreground mb-4" data-testid="free-slot-count">
+          Jami {shownCount} ta bo'sh slot mavjud
+        </p>
+        {allSlots.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground text-sm">Hozircha bo'sh vaqt yo'q 😔</div>
         ) : (
-          <div>
-            {freeWindows.map((w, i) => {
-              const dMins = w.end - w.start;
-              const dh = Math.floor(dMins / 60);
-              const dm = dMins % 60;
-              const durStr = dh > 0 ? (dm > 0 ? `${dh} soat ${dm} daq` : `${dh} soat`) : `${dm} daq`;
-              return (
-                <div key={i}>
-                  {i > 0 && <div className="h-px bg-white/6 my-1" />}
-                  <div className="flex items-center gap-3 py-3">
-                    <span className="text-lg shrink-0">🟢</span>
-                    <div>
-                      <div className="font-semibold text-foreground text-sm">
-                        {fmtTimeMins(w.start)} — {fmtTimeMins(w.end)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">{durStr} bo'sh</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <>
+            <SlotPeriodTabs value={period} onChange={setPeriod} />
+            {visible.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">Bu vaqt oralig'ida bo'sh joy yo'q</p>
+            ) : (
+              <div className="flex flex-wrap gap-2" data-testid="free-slot-grid">
+                {visible.map((slot) => (
+                  <button
+                    key={slot}
+                    type="button"
+                    data-testid={`free-slot-${slot}`}
+                    onClick={() => setPicked(slot)}
+                    className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-all tabular-nums ${
+                      picked === slot
+                        ? "border-primary/60 bg-primary/15 text-primary"
+                        : "border-white/10 bg-background/40 text-muted-foreground hover:bg-white/5"
+                    }`}
+                  >
+                    {slot}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
         <div className="mt-5">
           <button onClick={onClose} className="w-full py-3.5 rounded-2xl bg-primary/15 border border-primary/20 text-primary font-semibold text-sm">
