@@ -600,21 +600,13 @@ async function sendVerificationSuccess(chatId: number, userId: string, extraDele
     .limit(1);
   const phone = account?.phone || "";
   const url = phone ? `${getAppUrl()}/dashboard?phone=${encodeURIComponent(phone)}` : `${getAppUrl()}/dashboard`;
-  const sent = await callTelegram("sendMessage", {
+  await callTelegram("sendMessage", {
     chat_id: chatId,
     text: "Raqamingiz tasdiqlandi! ✅\nHisobingizga kirish uchun pastdagi tugmani bosing.",
-    reply_markup: appEntryKeyboard(),
-  }) as { result?: { message_id?: number } } | null;
-  const confirmId = sent?.result?.message_id;
-  if (confirmId) {
-    await callTelegram("editMessageReplyMarkup", {
-      chat_id: chatId,
-      message_id: confirmId,
-      reply_markup: {
-        inline_keyboard: [[{ text: APP_ENTRY_BUTTON, url }]],
-      },
-    });
-  }
+    reply_markup: {
+      inline_keyboard: [[{ text: APP_ENTRY_BUTTON, url }]],
+    },
+  });
   const prompts = registrationPromptIds.get(chatId) ?? [];
   registrationPromptIds.delete(chatId);
   const greetingId = prompts[prompts.length - 1];
