@@ -618,16 +618,12 @@ async function sendVerificationSuccess(chatId: number, userId: string, extraDele
     await new Promise((resolve) => setTimeout(resolve, 120));
     await callTelegram("deleteMessage", { chat_id: chatId, message_id: greetingId });
   }
-  const keyboardMsg = await callTelegram("sendMessage", {
+  await callTelegram("sendMessage", {
     chat_id: chatId,
     text: "\u2060",
     disable_notification: true,
     reply_markup: appEntryKeyboard(),
-  }) as { result?: { message_id?: number } } | null;
-  const keyboardId = keyboardMsg?.result?.message_id;
-  if (keyboardId) {
-    await callTelegram("deleteMessage", { chat_id: chatId, message_id: keyboardId });
-  }
+  });
 }
 
 async function sendAppEntryLink(chatId: number, from: Record<string, unknown> | undefined) {
