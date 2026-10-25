@@ -931,7 +931,7 @@ export async function handleTelegramUpdate(update: unknown) {
     }
 
     const resetTyping = getPasswordReset(chatId);
-    if (resetTyping) {
+    if (resetTyping && !pendingVerifications.has(chatId)) {
       await callTelegram("sendMessage", {
         chat_id: chatId,
         text: "Iltimos, yangi parolni yozib yuboring.",
@@ -1262,9 +1262,11 @@ async function handleRegStart(chatId: number, userId: string, _lang: string, fro
     return;
   }
 
-  // Clear any stale state so phone share routes to reg flow
+  // Clear any stale state so phone share routes to reg flow.
+  // A half-finished password change must not swallow this signup's contact.
   pendingAuthLogins.delete(chatId);
   pendingNoPayloadLogins.delete(chatId);
+  pendingPasswordResets.delete(chatId);
 
   pendingVerifications.set(chatId, userId);
   if (pending) {
