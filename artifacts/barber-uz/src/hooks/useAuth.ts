@@ -55,7 +55,8 @@ export function useAuth(requireAuth = true) {
       // Clear stale token so Login page does not redirect back to dashboard in a loop
       localStorage.removeItem('barber_token');
       localStorage.removeItem('barber_user');
-      navigate('/login');
+      const phone = new URLSearchParams(window.location.search).get('phone');
+      navigate(phone ? `/login?phone=${encodeURIComponent(phone)}` : '/login');
     }
   }, [apiUser, apiLoading, error, requireAuth, navigate, isBarberMember]);
 

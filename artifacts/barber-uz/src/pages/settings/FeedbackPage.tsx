@@ -56,8 +56,9 @@ export default function FeedbackPage() {
         body: JSON.stringify({ text: text.trim(), category }),
       });
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+      const body = await res.json().catch(() => null) as { message?: string; sent?: boolean } | null;
+      if (!res.ok || body?.sent === false) {
+        throw new Error(body?.message || "Yuborishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.");
       }
 
       // Success
@@ -67,7 +68,7 @@ export default function FeedbackPage() {
       setTimeout(() => setShowToast(false), 3500);
     } catch (err) {
       console.error("[Feedback] submit error:", err);
-      setError("Yuborishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.");
+      setError(err instanceof Error ? err.message : "Yuborishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.");
     } finally {
       setLoading(false);
     }

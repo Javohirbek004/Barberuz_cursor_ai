@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate, getUser } from "../lib/auth";
+import { resolveFeedbackBot } from "../lib/feedback-destination";
 
 const router = Router();
 
@@ -14,6 +15,24 @@ function uzDateTime(): string {
   });
 }
 
+function telegramErrorText(description: string, botUsername: string): string {
+  const text = description.toLowerCase();
+  const bot = botUsername ? `@${botUsername}` : "feedback botini";
+  if (text.includes("bot was blocked")) {
+    return `Xabar ketmadi. ${bot} sizda bloklangan. Chat ochiq bo'lsa ham, bot profilida "Blokdan chiqarish" ni bosing, keyin Start.`;
+  }
+  if (text.includes("chat not found") || text.includes("user is deactivated")) {
+    return "Xabar ketmadi. Feedback botini ochib Start ni bosing, keyin qayta yuboring.";
+  }
+  if (text.includes("unauthorized") || text.includes("token")) {
+    return "Xabar ketmadi. Bot kaliti noto'g'ri saqlangan.";
+  }
+  if (text.includes("can't send messages to bots") || text.includes("bots can't")) {
+    return "Xabar ketmadi. Yozilgan raqam botning o'zi. Sizning shaxsiy Telegram raqamingiz kerak.";
+  }
+  return "Yuborishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.";
+}
+
 // POST /api/feedback
 router.post("/", authenticate, async (req, res) => {
   const user = getUser(req);
@@ -24,12 +43,19 @@ router.post("/", authenticate, async (req, res) => {
     return;
   }
 
-  const botToken = process.env.FEEDBACKS_BOT;
-  const chatId   = process.env.ADMIN_TELEGRAM_ID;
+  const resolved = await resolveFeedbackBot();
+  const botToken = resolved.token;
+  const chatId = resolved.chatId;
+  const botUsername = resolved.username;
 
   if (!botToken || !chatId) {
-    console.warn("[Feedback] FEEDBACKS_BOT or ADMIN_TELEGRAM_ID not set — skipping Telegram send");
-    res.json({ ok: true, sent: false, reason: "bot_not_configured" });
+    console.warn("[Feedback] Bot token or destination chat is missing — message was not sent");
+    res.status(503).json({
+      ok: false,
+      sent: false,
+      error: "bot_not_configured",
+      message: "Xabar ketmadi. Server feedback botini ko'rmayapti.",
+    });
     return;
   }
 
@@ -64,8 +90,14 @@ router.post("/", authenticate, async (req, res) => {
     const tgJson = await tgRes.json() as { ok: boolean };
 
     if (!tgJson.ok) {
-      console.error("[Feedback] Telegram sendMessage failed:", tgJson);
-      res.status(502).json({ error: "telegram_error", detail: tgJson });
+      const description = typeof (tgJson as { description?: unknown }).description === "string"
+        ? (tgJson as { description: string }).description
+        : "";
+      console.error("[Feedback] Telegram sendMessage failed:", description || "rejected");
+      res.status(502).json({
+        error: "telegram_error",
+        message: telegramErrorText(description, botUsername),
+      });
       return;
     }
 
