@@ -586,7 +586,7 @@ async function sendContactRequest(chatId: number, userName: string) {
 async function sendVerificationSuccess(chatId: number, userId: string, extraDeleteIds: number[] = []) {
   log("reg_verified", { chatId, userId });
   const confirmedText = "Raqamingiz tasdiqlandi! ✅\nHisobingizga kirish uchun pastdagi tugmani bosing.";
-  const entryUrl = `${getAppUrl()}/login?entry=${encodeURIComponent(signAppEntry(userId))}`;
+  const entryUrl = `${getAppUrl()}/dashboard?entry=${encodeURIComponent(signAppEntry(userId))}`;
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text: confirmedText,

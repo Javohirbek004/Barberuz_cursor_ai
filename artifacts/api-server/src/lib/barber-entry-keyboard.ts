@@ -45,7 +45,7 @@ export async function barberEntryMarkup(telegramId: string) {
   }
   if (count < 3) return null;
 
-  const url = `${appBase()}/login?entry=${encodeURIComponent(signAppEntry(row.userId))}`;
+  const url = `${appBase()}/dashboard?entry=${encodeURIComponent(signAppEntry(row.userId))}`;
   return {
     keyboard: [[{ text: BARBER_ENTRY_BUTTON, web_app: { url } }]],
     resize_keyboard: true,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, Redirect, useLocation } from "wouter";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { useLoginUser } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -61,32 +61,6 @@ export default function Login() {
   const [forgotOpen, setForgotOpen] = useState(false);
   const resetSuccess = new URLSearchParams(window.location.search).get("reset") === "success";
   const entryCode = new URLSearchParams(window.location.search).get("entry");
-  const [openingProfile, setOpeningProfile] = useState(!!entryCode);
-
-  useEffect(() => {
-    if (!entryCode) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/auth/entry", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ entry: entryCode }),
-        });
-        if (!res.ok) throw new Error("entry");
-        const data = await res.json();
-        if (cancelled || !data?.token || !data?.user) throw new Error("entry");
-        localStorage.setItem("barber_token", data.token);
-        localStorage.setItem("barber_user", JSON.stringify(data.user));
-        navigate("/dashboard");
-      } catch {
-        if (!cancelled) setOpeningProfile(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [entryCode, navigate]);
 
   useEffect(() => {
     if (entryCode) return;
@@ -128,12 +102,8 @@ export default function Login() {
     loginMutation.mutate({ data: { username: toLoginIdentifier(username), password } });
   };
 
-  if (openingProfile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6 text-center">
-        <p className="text-lg text-foreground">Hisobingiz ochilmoqda...</p>
-      </div>
-    );
+  if (entryCode) {
+    return <Redirect to={`/dashboard?entry=${encodeURIComponent(entryCode)}`} />;
   }
 
   return (

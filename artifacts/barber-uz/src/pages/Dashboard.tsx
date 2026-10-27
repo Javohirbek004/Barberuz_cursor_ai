@@ -999,8 +999,50 @@ function TeamDashboard() {
   );
 }
 
+function ProfileEntry({ entry, onDone }: { entry: string; onDone: () => void }) {
+  const [, navigate] = useLocation();
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/entry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ entry }),
+        });
+        if (!res.ok) throw new Error("entry");
+        const data = await res.json();
+        if (cancelled || !data?.token || !data?.user) throw new Error("entry");
+        localStorage.setItem("barber_token", data.token);
+        localStorage.setItem("barber_user", JSON.stringify(data.user));
+        window.history.replaceState({}, "", "/dashboard");
+        onDone();
+      } catch {
+        if (!cancelled) navigate("/login");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [entry, navigate]); // onDone is only used after a successful open
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard() {
+  const entry = new URLSearchParams(window.location.search).get("entry");
+  const [opened, setOpened] = useState(!entry);
+  if (!opened && entry) {
+    return <ProfileEntry entry={entry} onDone={() => setOpened(true)} />;
+  }
+  return <DashboardScreen />;
+}
+
+function DashboardScreen() {
   const { t, lang } = useTranslation();
   const { user, isLoading } = useAuth();
 
