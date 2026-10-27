@@ -167,6 +167,33 @@ function b64urlJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
+/** A signed door key for the confirmation button. It does not expire on its own. */
+export function signAppEntry(userId: string): string {
+  const payload = b64urlJson({ sub: userId });
+  const sig = crypto.createHmac("sha256", jwtSecret()).update(`entry.${payload}`).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+export function readAppEntry(entry: string): string | null {
+  if (!entry || entry.length > 500) return null;
+  const dot = entry.lastIndexOf(".");
+  if (dot <= 0) return null;
+  const payload = entry.slice(0, dot);
+  const sig = entry.slice(dot + 1);
+  if (!payload || !sig) return null;
+  const expected = crypto.createHmac("sha256", jwtSecret()).update(`entry.${payload}`).digest("base64url");
+  const left = Buffer.from(sig);
+  const right = Buffer.from(expected);
+  if (left.length !== right.length || !crypto.timingSafeEqual(left, right)) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { sub?: unknown };
+    if (typeof claims.sub !== "string" || !/^[0-9a-f-]{36}$/i.test(claims.sub)) return null;
+    return claims.sub;
+  } catch {
+    return null;
+  }
+}
+
 export function generateToken(userId: string, ttlSeconds: number = SESSION_TTL_SEC, sessionEpoch = 0): string {
   const now = Math.floor(Date.now() / 1000);
   const header = b64urlJson({ alg: "HS256", typ: "JWT" });

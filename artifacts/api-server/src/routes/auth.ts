@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { randomBytes } from "crypto";
 import { db, usersTable } from "@workspace/db";
-import { eq, ilike, or, sql } from "drizzle-orm";
-import { makePasswordHash, verifyPassword, generateToken, authenticate, getUser, secretsEqual } from "../lib/auth";
+import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { makePasswordHash, verifyPassword, generateToken, authenticate, getUser, secretsEqual, readAppEntry } from "../lib/auth";
 import { clearRateLimit, clientIp, consumeRateLimit } from "../lib/rate-limit";
 import { getTelegramLoginResult, storeLoginToken } from "../lib/telegram-bot";
 import { getLivePendingRegistration, savePendingRegistration } from "../lib/pending-registration";
@@ -139,6 +139,38 @@ router.post("/login", async (req, res) => {
 
 router.post("/logout", (_req, res) => {
   res.json({ success: true, message: "Logged out" });
+});
+
+/** The confirmation button opens this. The stay lasts until the person logs out. */
+const ENTRY_STAY_SEC = 10 * 365 * 24 * 60 * 60;
+
+router.post("/entry", async (req, res) => {
+  try {
+    if (!consumeRateLimit(`entry:${clientIp(req)}`, 20, 10 * 60 * 1000)) {
+      res.status(429).json({ error: "too_many", message: "Ko'p urinish. Biroz kuting." });
+      return;
+    }
+    const raw = typeof req.body?.entry === "string" ? req.body.entry : "";
+    const userId = readAppEntry(raw);
+    if (!userId) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(and(eq(usersTable.id, userId), isNull(usersTable.deletedAt)))
+      .limit(1);
+    if (!user) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const token = generateToken(user.id, ENTRY_STAY_SEC, user.sessionEpoch ?? 0);
+    res.json({ token, user: formatUser(user) });
+  } catch (err) {
+    console.error("[Auth] entry error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
 });
 
 router.get("/me", authenticate, async (req, res) => {
