@@ -7,6 +7,7 @@
 import { db, bookingsTable, bookingSessionsTable, clientsTable, usersTable } from "@workspace/db";
 import { syncClientMetrics } from "./client-metrics";
 import { getTelegramBotToken } from "./telegram-token";
+import { barberEntryKeyboard, claimBarberEntryKeyboard, rememberBarberEntryKeyboard } from "./barber-entry-keyboard";
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -348,6 +349,13 @@ async function telegram(method: string, body: Record<string, unknown>): Promise<
   }
 }
 
+async function sendToBarber(chatId: string, text: string): Promise<boolean> {
+  const showEntry = await claimBarberEntryKeyboard(chatId);
+  const ok = await send(chatId, text, showEntry ? { reply_markup: barberEntryKeyboard() } : {});
+  if (ok && showEntry) await rememberBarberEntryKeyboard(chatId);
+  return ok;
+}
+
 async function send(chatId: string, text: string, extra: Record<string, unknown> = {}): Promise<boolean> {
   return telegram("sendMessage", {
     chat_id: chatId,
@@ -557,7 +565,7 @@ export async function handleClientCancel(
         .limit(1);
       phone = client?.phone ?? null;
     }
-    await send(
+    await sendToBarber(
       barber.telegramId,
       clientCancelledBarberText(
         booking.clientName,
@@ -629,7 +637,7 @@ async function cancelUnconfirmed(booking: BookingCard, barber: BarberCard): Prom
     await send(booking.clientTelegramId, autoClientText());
   }
   if (barber.telegramId) {
-    await send(barber.telegramId, autoBarberText(booking.startTime.slice(0, 5), booking.clientName));
+    await sendToBarber(barber.telegramId, autoBarberText(booking.startTime.slice(0, 5), booking.clientName));
   }
   console.log(`[ClientNotify] auto-cancelled ${booking.id}`);
 }

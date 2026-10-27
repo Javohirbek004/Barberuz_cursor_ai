@@ -51,6 +51,10 @@ export const usersTable = pgTable(
     sessionEpoch: integer("session_epoch").notNull().default(0),
     /** Whether this barber asked for a PIN or fingerprint on this account. */
     quickLogin: boolean("quick_login").notNull().default(false),
+    /** Messages sent to this barber after signup. The lasting app button starts at 3. */
+    botNoticeCount: integer("bot_notice_count").notNull().default(0),
+    /** The lasting bottom app button has already been shown in this chat. */
+    botEntryButton: boolean("bot_entry_button").notNull().default(false),
     slugChangedAt: timestamp("slug_changed_at", { withTimezone: true }),
     slugChangeCount: integer("slug_change_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

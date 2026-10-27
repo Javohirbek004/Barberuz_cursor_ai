@@ -29,6 +29,7 @@ import { syncClientMetrics } from "./client-metrics";
 import { findClientByPhone } from "./client-lookup";
 import { normalizePhone, phoneKey } from "./phone";
 import { generateToken, makePasswordHash, signAppEntry } from "./auth";
+import { barberEntryKeyboard, claimBarberEntryKeyboard, rememberBarberEntryKeyboard } from "./barber-entry-keyboard";
 import { bumpSessionEpoch } from "./session-epoch";
 import { consumeRateLimit } from "./rate-limit";
 import {
@@ -2010,7 +2011,8 @@ async function handleCustomerConfirmCancel(chatId: number, sessionId: string) {
     const clientFirstName = session.clientName?.split(" ")[0] || "Mijoz";
     const clientPhone     = session.clientPhone ? `\n\uD83D\uDCDE ${session.clientPhone}` : "";
     const serviceNames    = data.services.map(s => s.name).join(", ");
-    await callTelegram("sendMessage", {
+    const showEntry = await claimBarberEntryKeyboard(barber.telegramId);
+    const sent = await callTelegram("sendMessage", {
       chat_id: Number(barber.telegramId),
       text:
         `\u26A0\uFE0F <b>Bron bekor qilindi!</b>\n\n` +
@@ -2019,7 +2021,9 @@ async function handleCustomerConfirmCancel(chatId: number, sessionId: string) {
         `\u2702\uFE0F Xizmat: ${serviceNames}\n\n` +
         `Ushbu vaqt slot kalendaringizda avtomatik bo\u02BBshatildi.`,
       parse_mode: "HTML",
-    }).catch(() => {});
+      ...(showEntry ? { reply_markup: barberEntryKeyboard() } : {}),
+    }) as { ok?: boolean } | null;
+    if (sent?.ok && showEntry) await rememberBarberEntryKeyboard(barber.telegramId);
   }
 }
 
@@ -2087,17 +2091,30 @@ export async function sendBarberBookingNotification(
       `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
       `\uD83C\uDF10 <i>Ushbu bron mijoz tomonidan web-sahifa orqali band qilindi va CRM kalendaringizga qo\u02BBshildi.</i>`;
 
+    const showEntry = await claimBarberEntryKeyboard(barber.telegramId);
+    const cancelButton = {
+      inline_keyboard: [[
+        { text: "\u274C Bekor qilish", callback_data: `cancel_booking_${sessionId}` },
+      ]],
+    };
     const sent = await callTelegram("sendMessage", {
       chat_id: Number(barber.telegramId),
       text,
       parse_mode: "HTML",
-      reply_markup: {
-        inline_keyboard: [[
-          { text: "\u274C Bekor qilish", callback_data: `cancel_booking_${sessionId}` },
-        ]],
-      },
-    }) as { ok?: boolean } | null;
+      reply_markup: showEntry ? barberEntryKeyboard() : cancelButton,
+    }) as { ok?: boolean; result?: { message_id?: number } } | null;
     if (!sent?.ok) return;
+    if (showEntry) {
+      const messageId = sent.result?.message_id;
+      if (messageId) {
+        await callTelegram("editMessageReplyMarkup", {
+          chat_id: Number(barber.telegramId),
+          message_id: messageId,
+          reply_markup: cancelButton,
+        });
+      }
+      await rememberBarberEntryKeyboard(barber.telegramId);
+    }
 
     await db
       .update(bookingSessionsTable)
@@ -2154,11 +2171,14 @@ export async function sendDirectBookingNotification(params: {
       `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
       `\uD83D\uDCA1 Ushbu bron avtomatik tarzda CRM kalendaringizga qo\u02BBshildi.`;
 
-    await callTelegram("sendMessage", {
+    const showEntry = await claimBarberEntryKeyboard(String(barber.telegramId));
+    const sent = await callTelegram("sendMessage", {
       chat_id: Number(barber.telegramId),
       text,
       parse_mode: "HTML",
-    });
+      ...(showEntry ? { reply_markup: barberEntryKeyboard() } : {}),
+    }) as { ok?: boolean } | null;
+    if (sent?.ok && showEntry) await rememberBarberEntryKeyboard(String(barber.telegramId));
 
     log("direct_booking_notified", { barberId: params.barberId, telegramUserId: String(barber.telegramId) });
   } catch (err) {

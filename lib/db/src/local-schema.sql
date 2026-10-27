@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS users (
   notif_client_auto_cancel boolean NOT NULL DEFAULT true,
   session_epoch integer NOT NULL DEFAULT 0,
   quick_login boolean NOT NULL DEFAULT false,
+  bot_notice_count integer NOT NULL DEFAULT 0,
+  bot_entry_button boolean NOT NULL DEFAULT false,
   slug_changed_at timestamptz,
   slug_change_count integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -52,6 +54,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_client_quick boolean NOT NULL D
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_client_auto_cancel boolean NOT NULL DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS session_epoch integer NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS quick_login boolean NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_notice_count integer NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_entry_button boolean NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS login_devices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

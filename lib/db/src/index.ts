@@ -127,6 +127,8 @@ const ENSURE_SCHEMA_SQL = [
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notif_client_auto_cancel" boolean DEFAULT true NOT NULL`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "session_epoch" integer DEFAULT 0 NOT NULL`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "quick_login" boolean DEFAULT false NOT NULL`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "bot_notice_count" integer DEFAULT 0 NOT NULL`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "bot_entry_button" boolean DEFAULT false NOT NULL`,
   `CREATE TABLE IF NOT EXISTS "login_devices" (
     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
