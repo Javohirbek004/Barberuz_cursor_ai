@@ -594,22 +594,13 @@ async function sendVerificationSuccess(chatId: number, userId: string, extraDele
   log("reg_verified", { chatId, userId });
   const confirmedText = "Raqamingiz tasdiqlandi! ✅\nHisobingizga kirish uchun pastdagi tugmani bosing.";
   const entryUrl = `${getAppUrl()}/login?entry=${encodeURIComponent(signAppEntry(userId))}`;
-  const sent = await callTelegram("sendMessage", {
+  await callTelegram("sendMessage", {
     chat_id: chatId,
     text: confirmedText,
-    reply_markup: { remove_keyboard: true },
-  }) as { result?: { message_id?: number } } | null;
-  const messageId = sent?.result?.message_id;
-  if (messageId) {
-    await callTelegram("editMessageText", {
-      chat_id: chatId,
-      message_id: messageId,
-      text: confirmedText,
-      reply_markup: {
-        inline_keyboard: [[{ text: APP_ENTRY_BUTTON, url: entryUrl }]],
-      },
-    });
-  }
+    reply_markup: {
+      inline_keyboard: [[{ text: APP_ENTRY_BUTTON, url: entryUrl }]],
+    },
+  });
   const prompts = registrationPromptIds.get(chatId) ?? [];
   registrationPromptIds.delete(chatId);
   const greetingId = prompts[prompts.length - 1];
