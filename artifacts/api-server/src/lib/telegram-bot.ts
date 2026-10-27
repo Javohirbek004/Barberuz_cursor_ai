@@ -11,9 +11,8 @@
  * Registration flow:
  *  1. /start reg_{uuid}_{lang}  → look up the waiting signup (or an existing user) → ask phone
  *  2. User shares contact       → create the account if it is still waiting, else mark it verified
- *  3. Send "Raqamingiz tasdiqlandi!" and a persistent "Ilovaga kirish" button
+ *  3. Send "Raqamingiz tasdiqlandi!" with the inline "Ilovaga kirish" button only
  *  4. Frontend polls /api/auth/telegram-status/:userId → redirects to /dashboard
- *  5. "Ilovaga kirish" replies with /dashboard?phone=... (password still required if logged out)
  *
  * Login flow:
  *  1. /start auth_{code}_{lang} → always ask for phone number
@@ -622,7 +621,7 @@ async function sendVerificationSuccess(chatId: number, userId: string, extraDele
     chat_id: chatId,
     text: "\u2060",
     disable_notification: true,
-    reply_markup: appEntryKeyboard(),
+    reply_markup: { remove_keyboard: true },
   });
 }
 
