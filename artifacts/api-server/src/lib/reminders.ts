@@ -19,7 +19,7 @@ import { eq, and, inArray, isNull } from "drizzle-orm";
 import { expirePendingHolds } from "./booking-conflicts";
 import { runClientNotificationCycle } from "./client-notifications";
 import { getTelegramBotToken } from "./telegram-token";
-import { barberEntryKeyboard, claimBarberEntryKeyboard, rememberBarberEntryKeyboard } from "./barber-entry-keyboard";
+import { barberEntryMarkup } from "./barber-entry-keyboard";
 
 const TELEGRAM_API = "https://api.telegram.org";
 const TASHKENT_UTC_OFFSET_MS = 5 * 60 * 60 * 1000; // UTC+5
@@ -35,9 +35,9 @@ async function sendTelegramMessage(
 ): Promise<void> {
   const token = getToken();
   if (!token) return;
-  const showEntry = extra.reply_markup ? false : await claimBarberEntryKeyboard(chatId);
+  const entryMarkup = extra.reply_markup ? null : await barberEntryMarkup(chatId);
   try {
-    const res = await fetch(`${TELEGRAM_API}/bot${token}/sendMessage`, {
+    await fetch(`${TELEGRAM_API}/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -45,11 +45,9 @@ async function sendTelegramMessage(
         text,
         parse_mode: "HTML",
         ...extra,
-        ...(showEntry ? { reply_markup: barberEntryKeyboard() } : {}),
+        ...(entryMarkup ? { reply_markup: entryMarkup } : {}),
       }),
     });
-    const json = await res.json() as { ok?: boolean };
-    if (json.ok && showEntry) await rememberBarberEntryKeyboard(chatId);
   } catch (err) {
     console.error("[Reminders] sendTelegramMessage failed:", err);
   }

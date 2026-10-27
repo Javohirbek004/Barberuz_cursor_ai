@@ -7,7 +7,7 @@
 import { db, bookingsTable, bookingSessionsTable, clientsTable, usersTable } from "@workspace/db";
 import { syncClientMetrics } from "./client-metrics";
 import { getTelegramBotToken } from "./telegram-token";
-import { barberEntryKeyboard, claimBarberEntryKeyboard, rememberBarberEntryKeyboard } from "./barber-entry-keyboard";
+import { barberEntryMarkup } from "./barber-entry-keyboard";
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -350,10 +350,8 @@ async function telegram(method: string, body: Record<string, unknown>): Promise<
 }
 
 async function sendToBarber(chatId: string, text: string): Promise<boolean> {
-  const showEntry = await claimBarberEntryKeyboard(chatId);
-  const ok = await send(chatId, text, showEntry ? { reply_markup: barberEntryKeyboard() } : {});
-  if (ok && showEntry) await rememberBarberEntryKeyboard(chatId);
-  return ok;
+  const entryMarkup = await barberEntryMarkup(chatId);
+  return send(chatId, text, entryMarkup ? { reply_markup: entryMarkup } : {});
 }
 
 async function send(chatId: string, text: string, extra: Record<string, unknown> = {}): Promise<boolean> {
