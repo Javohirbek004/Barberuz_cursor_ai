@@ -154,6 +154,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   reminded_24h boolean NOT NULL DEFAULT false,
   reminded_1h boolean NOT NULL DEFAULT false,
   reminded_followup boolean NOT NULL DEFAULT false,
+  barber_notice_message_id text,
   notes text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),

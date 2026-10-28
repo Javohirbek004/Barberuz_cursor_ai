@@ -111,6 +111,7 @@ const ENSURE_SCHEMA_SQL = [
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_24h" boolean DEFAULT false NOT NULL`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_1h" boolean DEFAULT false NOT NULL`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_followup" boolean DEFAULT false NOT NULL`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "barber_notice_message_id" text`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "qr_cta" text`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "qr_logo" text`,
   `ALTER TABLE "slug_redirects" ADD COLUMN IF NOT EXISTS "new_slug" text`,

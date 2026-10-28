@@ -29,6 +29,8 @@ export const bookingsTable = pgTable(
     reminded1h: boolean("reminded_1h").notNull().default(false),
     remindedFollowup: boolean("reminded_followup").notNull().default(false),
     notes: text("notes"),
+    /** Telegram message of the barber's "new booking" notice, so the app can update it. */
+    barberNoticeMessageId: text("barber_notice_message_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
