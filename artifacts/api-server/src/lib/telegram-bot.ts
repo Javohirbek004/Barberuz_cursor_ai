@@ -2055,7 +2055,7 @@ async function handleCustomerConfirmCancel(chatId: number, sessionId: string) {
 
   // Notify barber with full details
   const [barber] = await db.select().from(usersTable).where(eq(usersTable.id, session.barberId)).limit(1);
-  if (barber?.telegramId) {
+  if (barber?.telegramId && barber.notifCancellation !== false) {
     const clientFirstName = session.clientName?.split(" ")[0] || "Mijoz";
     const clientPhone     = session.clientPhone ? `\n\uD83D\uDCDE ${session.clientPhone}` : "";
     const serviceNames    = data.services.map(s => s.name).join(", ");
@@ -2198,6 +2198,11 @@ export async function sendBarberBookingNotification(
 
     if (!barber?.telegramId) {
       log("barber_no_telegram", { barberId, sessionId });
+      return;
+    }
+
+    if (barber.notifNewBooking === false) {
+      log("barber_new_booking_muted", { barberId, sessionId });
       return;
     }
 
