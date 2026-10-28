@@ -2107,6 +2107,50 @@ export async function eraseBookingAndFreeSlot(bookingId: string): Promise<boolea
   return true;
 }
 
+function cancelledBookingText(clientName: string, date: string, time: string): string {
+  return [
+    "🚫 Bron bekor qilindi!",
+    "",
+    `👤 Mijoz: ${clientName}`,
+    `📅 Vaqt: ${formatDateLabel(date)}, ${time}`,
+    "",
+    "Ushbu bron bekor qilindi va vaqt yana bo'shatildi.",
+  ].join("\n");
+}
+
+async function rememberBarberNotice(bookingId: string | null | undefined, sent: unknown) {
+  const messageId = (sent as { ok?: boolean; result?: { message_id?: number } } | null)?.result?.message_id;
+  const ok = (sent as { ok?: boolean } | null)?.ok;
+  if (!bookingId || !ok || typeof messageId !== "number") return;
+  await db.update(bookingsTable)
+    .set({ barberNoticeMessageId: String(messageId) })
+    .where(eq(bookingsTable.id, bookingId))
+    .catch(() => undefined);
+}
+
+export async function editBarberBookingCancelled(booking: {
+  id: string;
+  barberId: string;
+  clientName: string;
+  date: string;
+  startTime: string;
+  barberNoticeMessageId: string | null;
+}): Promise<void> {
+  if (!booking.barberNoticeMessageId) return;
+  const [barber] = await db
+    .select({ telegramId: usersTable.telegramId })
+    .from(usersTable)
+    .where(eq(usersTable.id, booking.barberId))
+    .limit(1);
+  if (!barber?.telegramId) return;
+  await callTelegram("editMessageText", {
+    chat_id: Number(barber.telegramId),
+    message_id: Number(booking.barberNoticeMessageId),
+    text: cancelledBookingText(booking.clientName, booking.date, booking.startTime.slice(0, 5)),
+    reply_markup: { inline_keyboard: [] },
+  });
+}
+
 export async function notifyBarberSelfCancel(barberId: string): Promise<void> {
   const [barber] = await db
     .select({ telegramId: usersTable.telegramId })
@@ -2195,6 +2239,7 @@ export async function sendBarberBookingNotification(
       reply_markup: cancelButton,
     }) as { ok?: boolean } | null;
     if (!sent?.ok) return;
+    await rememberBarberNotice(session?.bookingId, sent);
 
     await db
       .update(bookingSessionsTable)
@@ -2253,12 +2298,13 @@ export async function sendDirectBookingNotification(params: {
       `Ushbu bron sartarosh tomonidan ilova orqali qo\u2018shildi.`;
 
     await barberEntryMarkup(String(barber.telegramId));
-    await callTelegram("sendMessage", {
+    const sent = await callTelegram("sendMessage", {
       chat_id: Number(barber.telegramId),
       text,
       parse_mode: "HTML",
       reply_markup: barberCancelKeyboard(params.bookingId),
     });
+    await rememberBarberNotice(params.bookingId, sent);
 
     log("direct_booking_notified", { barberId: params.barberId, telegramUserId: String(barber.telegramId) });
   } catch (err) {

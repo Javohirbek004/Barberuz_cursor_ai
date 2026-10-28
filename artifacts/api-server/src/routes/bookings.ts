@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { db, bookingsTable, bookingSessionsTable, servicesTable, clientsTable } from "@workspace/db";
 import { eq, and, gte, lt, lte, inArray, isNull } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
-import { eraseBookingAndFreeSlot, notifyBarberSelfCancel, sendDirectBookingNotification } from "../lib/telegram-bot";
+import { editBarberBookingCancelled, eraseBookingAndFreeSlot, sendDirectBookingNotification } from "../lib/telegram-bot";
 import { deliverBookingReceipt, notifyClientOfBarberChange } from "../lib/client-notifications";
 import { syncClientMetrics } from "../lib/client-metrics";
 import { findOrCreateClientByPhone } from "../lib/client-lookup";
@@ -366,9 +366,9 @@ async function updateBooking(req: Request, res: Response) {
     if (wasOpen && booking.status === "cancelled") {
       await notifyClientOfBarberChange(before.id, { kind: "cancelled" }).catch((err) =>
         console.warn("[Bookings] cancel notice failed:", (err as Error).message));
+      await editBarberBookingCancelled(before).catch((err) =>
+        console.warn("[Bookings] barber cancel edit failed:", (err as Error).message));
       await eraseBookingAndFreeSlot(before.id);
-      notifyBarberSelfCancel(user.id).catch((err) =>
-        console.warn("[Bookings] barber cancel notice failed:", (err as Error).message));
       res.json(formatBooking({ ...before, status: "cancelled", updatedAt: new Date() }, await readClientNotes(before.clientId)));
       return;
     } else if (wasOpen && isOpenStatus(booking.status) && timeMoved) {
