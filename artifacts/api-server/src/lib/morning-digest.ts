@@ -33,6 +33,76 @@ export function clockTime(raw: string): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`.slice(0, 5);
 }
 
+const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+type DayKey = (typeof DAY_KEYS)[number];
+const SHORT_DAY: Record<DayKey, string> = {
+  sunday: "sun", monday: "mon", tuesday: "tue", wednesday: "wed",
+  thursday: "thu", friday: "fri", saturday: "sat",
+};
+
+function weekdayKey(isoDate: string): DayKey {
+  const [y = 1970, m = 1, d = 1] = isoDate.split("-").map(Number);
+  return DAY_KEYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()] ?? "monday";
+}
+
+function parseClock(value: unknown, fallback: string): string {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value ?? "").trim());
+  if (!match) return fallback;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return fallback;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function toMinutes(hhmm: string): number {
+  const [h = 0, m = 0] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/** That day's opening time, or null when the barber marked the day closed. */
+export function dayWorkStartMinutes(
+  isoDate: string,
+  workingHoursStart: string | null,
+  scheduleJson: string | null,
+): number | null {
+  const globalStart = parseClock(workingHoursStart, "09:00");
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    parsed = scheduleJson ? JSON.parse(scheduleJson) as Record<string, unknown> : null;
+  } catch {
+    parsed = null;
+  }
+
+  const key = weekdayKey(isoDate);
+  const grid = !!parsed && DAY_KEYS.some((day) => parsed?.[day] && typeof parsed[day] === "object");
+  const workDays = parsed && Array.isArray(parsed.workDays)
+    ? parsed.workDays.filter((day): day is string => typeof day === "string")
+    : null;
+
+  let enabled = true;
+  let start = globalStart;
+  if (grid && parsed) {
+    const entry = parsed[key];
+    if (entry && typeof entry === "object") {
+      const day = entry as { enabled?: unknown; start?: unknown };
+      enabled = Boolean(day.enabled);
+      start = parseClock(day.start, globalStart);
+    } else {
+      enabled = workDays ? workDays.includes(SHORT_DAY[key]) : false;
+    }
+  } else if (workDays && workDays.length > 0) {
+    enabled = workDays.includes(SHORT_DAY[key]);
+  }
+
+  return enabled ? toMinutes(start) : null;
+}
+
+/** The check runs every minute, so the send stays open for five minutes. */
+export function isHourBeforeWork(nowMinutes: number, workStartMinutes: number): boolean {
+  const sendAt = Math.max(0, workStartMinutes - 60);
+  return nowMinutes >= sendAt && nowMinutes <= sendAt + 4;
+}
+
 export function buildBarberMorningSummary(dateLabel: string, bookings: MorningBooking[]): string {
   if (bookings.length === 0) {
     return "☀️ Xayrli tong!\n\n🌿 Bugun uchun hech qanday bron yo‘q. Yaxshilab dam oling!";

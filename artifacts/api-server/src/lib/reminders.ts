@@ -4,7 +4,7 @@
  * Runs every 60 seconds and dispatches:
  *
  *  BARBER:
- *   — Morning digest at 08:30 Tashkent time with today's full schedule
+ *   — Today's schedule, one hour before that day's opening time
  *
  *  CLIENT:
  *   Handled in client-notifications.ts (receipt, 20:00 reminder, follow-up, 1h).
@@ -19,7 +19,7 @@ import { expirePendingHolds } from "./booking-conflicts";
 import { runClientNotificationCycle } from "./client-notifications";
 import { getTelegramBotToken } from "./telegram-token";
 import { barberEntryMarkup } from "./barber-entry-keyboard";
-import { buildBarberMorningSummary, uzDateLabel } from "./morning-digest";
+import { buildBarberMorningSummary, dayWorkStartMinutes, isHourBeforeWork, uzDateLabel } from "./morning-digest";
 
 const TELEGRAM_API = "https://api.telegram.org";
 const TASHKENT_UTC_OFFSET_MS = 5 * 60 * 60 * 1000; // UTC+5
@@ -78,74 +78,120 @@ async function checkAndSendReminders(): Promise<void> {
     await expirePendingHolds();
     await runClientNotificationCycle(nowMs);
 
-    // ── Barber morning summary (08:30–08:34 Tashkent) ────────────────────────
-    if (hour === 8 && minute >= 30 && minute <= 34) {
-      const todayBookings = await db
-        .select()
-        .from(bookingsTable)
-        .where(and(
-          eq(bookingsTable.date, todayStr),
-          inArray(bookingsTable.status, ["confirmed", "pending"]),
-          isNull(bookingsTable.deletedAt),
-        ));
-
-      const byBarber = new Map<string, typeof todayBookings>();
-      for (const bk of todayBookings) {
-        if (!byBarber.has(bk.barberId)) byBarber.set(bk.barberId, []);
-        byBarber.get(bk.barberId)!.push(bk);
-      }
-
-      // Also include barbers who have telegramId but no bookings today
-      // Query all barbers with telegramId
-      const allBarbers = await db
-        .select({
-          id: usersTable.id,
-          telegramId: usersTable.telegramId,
-          morningDigestOn: usersTable.morningDigestOn,
-        })
-        .from(usersTable)
-        .where(and(
-          eq(usersTable.role, "barber"),
-          isNull(usersTable.deletedAt),
-        ));
-
-      const dateLabel = uzDateLabel(todayStr);
-      for (const barberUser of allBarbers) {
-        if (!barberUser.telegramId) continue;
-        const summaryKey = `morning_${todayStr}_${barberUser.id}`;
-        if (sentReminders.has(summaryKey) || barberUser.morningDigestOn === todayStr) continue;
-
-        const claimed = await db
-          .update(usersTable)
-          .set({ morningDigestOn: todayStr })
-          .where(and(
-            eq(usersTable.id, barberUser.id),
-            eq(usersTable.role, "barber"),
-            or(isNull(usersTable.morningDigestOn), ne(usersTable.morningDigestOn, todayStr)),
-          ))
-          .returning({ id: usersTable.id });
-        if (!claimed.length) continue;
-        sentReminders.add(summaryKey);
-
-        const barberBookings = byBarber.get(barberUser.id) ?? [];
-        const text = buildBarberMorningSummary(dateLabel, barberBookings.map(bk => ({
-          time:        bk.startTime,
-          clientName:  bk.clientName,
-          serviceName: bk.serviceName ?? null,
-        })));
-        const sent = await sendTelegramMessage(barberUser.telegramId, text);
-        if (!sent) {
-          sentReminders.delete(summaryKey);
-          await db.update(usersTable)
-            .set({ morningDigestOn: null })
-            .where(and(eq(usersTable.id, barberUser.id), eq(usersTable.morningDigestOn, todayStr)));
-          continue;
-        }
-        console.log(`[Reminders] morning_summary sent: barberId=${barberUser.id}`);
-      }
-    }
+    await sendDueMorningDigests(todayStr, hour * 60 + minute);
   } catch (err) {
     console.error("[Reminders] checkAndSendReminders error:", err);
+  }
+}
+
+async function sendDueMorningDigests(todayStr: string, nowMinutes: number): Promise<void> {
+  const allBarbers = await db
+    .select({
+      id: usersTable.id,
+      telegramId: usersTable.telegramId,
+      morningDigestOn: usersTable.morningDigestOn,
+      workingHoursStart: usersTable.workingHoursStart,
+      scheduleJson: usersTable.scheduleJson,
+    })
+    .from(usersTable)
+    .where(and(
+      eq(usersTable.role, "barber"),
+      isNull(usersTable.deletedAt),
+    ));
+
+  const due = allBarbers.filter((barberUser) => {
+    if (!barberUser.telegramId) return false;
+    const summaryKey = `morning_${todayStr}_${barberUser.id}`;
+    if (sentReminders.has(summaryKey) || barberUser.morningDigestOn === todayStr) return false;
+    const start = dayWorkStartMinutes(todayStr, barberUser.workingHoursStart, barberUser.scheduleJson);
+    return start != null && isHourBeforeWork(nowMinutes, start);
+  });
+  if (!due.length) return;
+
+  const todayBookings = await db
+    .select()
+    .from(bookingsTable)
+    .where(and(
+      eq(bookingsTable.date, todayStr),
+      inArray(bookingsTable.status, ["confirmed", "pending"]),
+      isNull(bookingsTable.deletedAt),
+    ));
+
+  const byBarber = new Map<string, typeof todayBookings>();
+  for (const bk of todayBookings) {
+    if (!byBarber.has(bk.barberId)) byBarber.set(bk.barberId, []);
+    byBarber.get(bk.barberId)!.push(bk);
+  }
+
+  const dateLabel = uzDateLabel(todayStr);
+  for (const barberUser of due) {
+    const summaryKey = `morning_${todayStr}_${barberUser.id}`;
+    const claimed = await db
+      .update(usersTable)
+      .set({ morningDigestOn: todayStr })
+      .where(and(
+        eq(usersTable.id, barberUser.id),
+        eq(usersTable.role, "barber"),
+        or(isNull(usersTable.morningDigestOn), ne(usersTable.morningDigestOn, todayStr)),
+      ))
+      .returning({ id: usersTable.id });
+    if (!claimed.length) continue;
+    sentReminders.add(summaryKey);
+
+    const text = buildBarberMorningSummary(dateLabel, (byBarber.get(barberUser.id) ?? []).map(bk => ({
+      time: bk.startTime,
+      clientName: bk.clientName,
+      serviceName: bk.serviceName ?? null,
+    })));
+    const sent = await sendTelegramMessage(barberUser.telegramId!, text);
+    if (!sent) {
+      sentReminders.delete(summaryKey);
+      await db.update(usersTable)
+        .set({ morningDigestOn: null })
+        .where(and(eq(usersTable.id, barberUser.id), eq(usersTable.morningDigestOn, todayStr)));
+      continue;
+    }
+    console.log(`[Reminders] morning_summary sent: barberId=${barberUser.id}`);
+  }
+}
+
+/** One preview so the barber can see the layout. Not counted as today's real schedule. */
+async function sendMorningPreviewOnce(): Promise<void> {
+  if (!getToken()) return;
+  const todayStr = nowInTashkent().dateStr;
+  const text = [
+    "<i>Namuna. Haqiqiy xabar ish vaqtingizdan 1 soat oldin shu ko‘rinishda keladi.</i>",
+    "",
+    buildBarberMorningSummary(uzDateLabel(todayStr), [
+      { time: "10:00", clientName: "Ali", serviceName: "Soch olish" },
+      { time: "12:30", clientName: "Vali", serviceName: "Soqol" },
+    ]),
+  ].join("\n");
+
+  const barbers = await db
+    .select({ id: usersTable.id, telegramId: usersTable.telegramId, morningSampleSent: usersTable.morningSampleSent })
+    .from(usersTable)
+    .where(and(eq(usersTable.role, "barber"), isNull(usersTable.deletedAt)));
+
+  for (const barberUser of barbers) {
+    if (!barberUser.telegramId || barberUser.morningSampleSent) continue;
+    const claimed = await db
+      .update(usersTable)
+      .set({ morningSampleSent: true })
+      .where(and(
+        eq(usersTable.id, barberUser.id),
+        eq(usersTable.morningSampleSent, false),
+      ))
+      .returning({ id: usersTable.id });
+    if (!claimed.length) continue;
+    const sent = await sendTelegramMessage(barberUser.telegramId, text);
+    if (!sent) {
+      await db.update(usersTable)
+        .set({ morningSampleSent: false })
+        .where(eq(usersTable.id, barberUser.id));
+      continue;
+    }
+    console.log(`[Reminders] morning_sample sent: barberId=${barberUser.id}`);
   }
 }
 
@@ -160,6 +206,9 @@ export function startReminderJob(): void {
     );
   }, 60 * 1000);
   checkAndSendReminders().catch(() => {});
+  sendMorningPreviewOnce().catch(err =>
+    console.error("[Reminders] morning sample failed:", err),
+  );
 }
 
 export function stopReminderJob(): void {
