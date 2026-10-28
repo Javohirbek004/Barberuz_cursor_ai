@@ -281,22 +281,57 @@ function InteractiveCard({
 }
 
 // ── Bottom Sheet ──────────────────────────────────────────────────────────────
+const openDashSheets = new Set<number>();
+let nextDashSheetId = 0;
+
+function syncDashNav() {
+  const nav = document.getElementById("bottom-nav-root");
+  if (!nav) return;
+  nav.style.visibility = openDashSheets.size > 0 ? "hidden" : "";
+}
+
 function BottomSheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  const sheetId = useRef(0);
+  if (sheetId.current === 0) sheetId.current = ++nextDashSheetId;
+
   useEffect(() => {
+    if (!open) return;
+    openDashSheets.add(sheetId.current);
+    syncDashNav();
+    return () => {
+      // Stay hidden while the sheet slides away. onExitComplete releases it.
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    if (open) document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  useEffect(() => () => {
+    openDashSheets.delete(sheetId.current);
+    syncDashNav();
+  }, []);
+
+  function releaseNav() {
+    openDashSheets.delete(sheetId.current);
+    syncDashNav();
+  }
+
   return (
-    <AnimatePresence>
+    <AnimatePresence onExitComplete={releaseNav}>
       {open && (
         <>
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm" onClick={onClose} />
+            data-testid="dash-sheet-backdrop"
+            className="fixed inset-0 bg-black/70 z-[60] backdrop-blur-sm" onClick={onClose} />
           <motion.div
             initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 32, stiffness: 320 }}
-            className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-white/8 rounded-t-3xl max-h-[85vh] overflow-hidden flex flex-col"
+            data-testid="dash-bottom-sheet"
+            className="fixed bottom-0 left-0 right-0 z-[61] bg-card border-t border-white/8 rounded-t-3xl max-h-[85vh] overflow-hidden flex flex-col"
           >
             <div className="flex justify-center pt-3 pb-1 shrink-0">
               <div className="w-10 h-1 rounded-full bg-white/20" />
