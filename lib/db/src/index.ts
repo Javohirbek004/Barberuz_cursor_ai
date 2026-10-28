@@ -130,6 +130,7 @@ const ENSURE_SCHEMA_SQL = [
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "quick_login" boolean DEFAULT false NOT NULL`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "bot_notice_count" integer DEFAULT 0 NOT NULL`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "bot_entry_button" boolean DEFAULT false NOT NULL`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "morning_digest_on" text`,
   `CREATE TABLE IF NOT EXISTS "login_devices" (
     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
