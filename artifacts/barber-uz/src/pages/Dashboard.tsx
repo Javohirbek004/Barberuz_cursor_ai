@@ -433,7 +433,7 @@ function FreeSlotModal({ open, onClose, freeWindows, totalFreeSlots }: {
 
   return (
     <BottomSheet open={open} onClose={onClose}>
-      <div className="overflow-y-auto px-5 pb-28 pt-2" data-testid="free-slots-modal">
+      <div className="overflow-y-auto px-5 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]" data-testid="free-slots-modal">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-base font-bold text-foreground">⏱ Bugungi bo'sh vaqtlar</h2>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/8 text-muted-foreground transition-colors text-lg">✖</button>
