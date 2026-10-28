@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { ChevronLeft, BellRing, BellOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-type ClientOff = "quick" | "auto";
+type ClientOff = "newBooking" | "cancellation" | "quick" | "auto";
 
 type FormState = {
   newBooking: boolean;
@@ -27,6 +27,14 @@ type FormState = {
 };
 
 const CONFIRM_COPY: Record<ClientOff, { title: string; body: string }> = {
+  newBooking: {
+    title: "⚠️ Ogohlantirish",
+    body: "Siz haqiqatan ham \"Yangi bron\" bildirishnomalarini o‘chirmoqchimisiz? Agar o‘chirsangiz, yangi mijozlar yozilganda Telegram botdan xabar kelmaydi.",
+  },
+  cancellation: {
+    title: "⚠️ Ogohlantirish",
+    body: "Siz haqiqatan ham \"Bekor qilish\" bildirishnomalarini o‘chirmoqchimisiz? Agar o‘chirsangiz, mijoz bronni bekor qilsa Telegram botdan xabar kelmaydi.",
+  },
   quick: {
     title: "⚠️ Tezkor eslatmani o'chirasizmi?",
     body: "Xizmatga 1-3 soat qolganda mijozlarga qayta eslatma bormaydi. Bu mijoz navbatini unutib qo'yishi va kelmay qolishi xavfini oshiradi.",
@@ -93,13 +101,13 @@ export default function NotificationSettings() {
     if (notice) toast({ title: notice });
   };
 
-  const handleChange = (key: keyof FormState, value: boolean | number) => {
-    save({ ...formData, [key]: value });
-  };
-
   const applyOff = () => {
     if (!confirmOff) return;
-    const key = confirmOff === "quick" ? "quickReminder" : "autoCancel";
+    const key = confirmOff === "quick"
+      ? "quickReminder"
+      : confirmOff === "auto"
+        ? "autoCancel"
+        : confirmOff;
     setConfirmOff(null);
     save({ ...formData, [key]: false });
   };
@@ -108,6 +116,7 @@ export default function NotificationSettings() {
     return <Layout><div className="py-20 text-center">{t("loading")}</div></Layout>;
 
   const copy = confirmOff ? CONFIRM_COPY[confirmOff] : null;
+  const bookingWarning = confirmOff === "newBooking" || confirmOff === "cancellation";
 
   return (
     <Layout>
@@ -131,14 +140,28 @@ export default function NotificationSettings() {
               title={t("notif.new_booking")}
               desc={t("notif.new_booking_desc")}
               checked={formData.newBooking}
-              onChange={v => handleChange("newBooking", v)}
+              testId="booking-new"
+              onChange={v => {
+                if (!v) {
+                  setConfirmOff("newBooking");
+                  return;
+                }
+                save({ ...formData, newBooking: true });
+              }}
             />
             <SwitchRow
               icon={<BellOff className="w-4 h-4 text-red-400" />}
               title={t("notif.cancellation")}
               desc={t("notif.cancellation_desc")}
               checked={formData.cancellation}
-              onChange={v => handleChange("cancellation", v)}
+              testId="booking-cancel"
+              onChange={v => {
+                if (!v) {
+                  setConfirmOff("cancellation");
+                  return;
+                }
+                save({ ...formData, cancellation: true });
+              }}
             />
           </div>
         </section>
@@ -191,22 +214,45 @@ export default function NotificationSettings() {
             <h2 className="text-lg font-bold text-foreground text-center mb-2">{copy.title}</h2>
             <p className="text-sm text-muted-foreground text-center leading-relaxed mb-6">{copy.body}</p>
             <div className="flex gap-3">
-              <button
-                type="button"
-                data-testid="client-off-back"
-                onClick={() => setConfirmOff(null)}
-                className="flex-1 py-3 rounded-2xl bg-white/6 border border-white/10 text-foreground font-semibold text-sm"
-              >
-                Ortga
-              </button>
-              <button
-                type="button"
-                data-testid="client-off-submit"
-                onClick={applyOff}
-                className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm"
-              >
-                Ha, o'chirilsin
-              </button>
+              {bookingWarning ? (
+                <>
+                  <button
+                    type="button"
+                    data-testid="booking-off-submit"
+                    onClick={applyOff}
+                    className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm"
+                  >
+                    Ha, o‘chirish
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="booking-off-keep"
+                    onClick={() => setConfirmOff(null)}
+                    className="flex-1 py-3 rounded-2xl bg-white/6 border border-white/10 text-foreground font-semibold text-sm"
+                  >
+                    Yo‘q, qoldirish
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    data-testid="client-off-back"
+                    onClick={() => setConfirmOff(null)}
+                    className="flex-1 py-3 rounded-2xl bg-white/6 border border-white/10 text-foreground font-semibold text-sm"
+                  >
+                    Ortga
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="client-off-submit"
+                    onClick={applyOff}
+                    className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm"
+                  >
+                    Ha, o'chirilsin
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>,
