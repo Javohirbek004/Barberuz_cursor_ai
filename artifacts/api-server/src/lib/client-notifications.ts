@@ -186,7 +186,7 @@ export function receiptText(barber: BarberCard, service: string, date: string, t
     `⏰ Vaqt: ${esc(time)}`,
     addressLine(resolveMapUrl(barber), barber.address || ""),
     "",
-    "⚠️ Iltimos, kelishingizni tasdiqlang! Agar eslatmalarga javob berilmasa, broningiz avtomatik bekor qilinishi mumkin.",
+    "⚠️ Iltimos, kelishingizni tasdiqlang.",
   );
 }
 
@@ -226,7 +226,7 @@ export function reminder24Text(barber: BarberCard, service: string, date: string
 export function followupText(): string {
   return [
     "⏳ Sizning navbatingizga oz vaqt qoldi.",
-    "Iltimos, kelishingizni tasdiqlang! Javob berilmasa, broningiz avtomatik bekor qilinadi.",
+    "Iltimos, kelishingizni tasdiqlang.",
   ].join("\n");
 }
 
@@ -318,14 +318,6 @@ function clientCancelledBarberText(clientName: string, phone: string | null, ser
     "",
     "Mijoz botdan bekor qildi. Bu vaqt kalendaringizda bo'shatildi.",
   );
-}
-
-function autoClientText(): string {
-  return "🗑️ Tasdiqlanmagani sababli navbatingiz avtomatik bekor qilindi.";
-}
-
-function autoBarberText(time: string, clientName: string): string {
-  return `⚠️ Soat ${esc(time)} dagi ${esc(clientName)} broni tasdiqlanmagani uchun avtomatik bekor qilindi va vaqt bo'shatildi.`;
 }
 
 async function telegram(method: string, body: Record<string, unknown>): Promise<boolean> {
@@ -617,29 +609,6 @@ export async function notifyClientOfBarberChange(bookingId: string, change: Barb
   );
 }
 
-async function cancelUnconfirmed(booking: BookingCard, barber: BarberCard): Promise<void> {
-  const updated = await db.update(bookingsTable).set({
-    status: "auto_cancelled",
-    updatedAt: new Date(),
-  }).where(and(
-    eq(bookingsTable.id, booking.id),
-    eq(bookingsTable.clientConfirmed, false),
-    inArray(bookingsTable.status, [...OPEN_STATUSES]),
-  )).returning();
-  if (!updated.length) return;
-  await syncClientMetrics(booking.clientId, booking.barberId);
-  await db.update(bookingSessionsTable).set({ status: "cancelled" })
-    .where(eq(bookingSessionsTable.bookingId, booking.id));
-
-  if (booking.clientTelegramId) {
-    await send(booking.clientTelegramId, autoClientText());
-  }
-  if (barber.telegramId) {
-    await sendToBarber(barber.telegramId, autoBarberText(booking.startTime.slice(0, 5), booking.clientName));
-  }
-  console.log(`[ClientNotify] auto-cancelled ${booking.id}`);
-}
-
 export async function runClientNotificationCycle(now = Date.now()): Promise<void> {
   if (!token()) return;
   const clock = tashkentNow(now);
@@ -665,17 +634,6 @@ export async function runClientNotificationCycle(now = Date.now()): Promise<void
     const time = booking.startTime.slice(0, 5);
     const minutesLeft = (appointmentMs(booking.date, time) - now) / 60000;
     const ageMin = (now - new Date(booking.createdAt).getTime()) / 60000;
-
-    if (
-      barber.autoCancel !== false &&
-      !booking.clientConfirmed &&
-      minutesLeft <= 60 &&
-      minutesLeft > -180 &&
-      ageMin >= 5
-    ) {
-      await cancelUnconfirmed(booking, barber);
-      continue;
-    }
 
     if (
       barber.eveningConfirm !== false &&
