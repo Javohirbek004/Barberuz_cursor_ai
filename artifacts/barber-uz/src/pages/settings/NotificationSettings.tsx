@@ -175,20 +175,6 @@ export default function NotificationSettings() {
                 save({ ...formData, quickReminder: true });
               }}
             />
-            <SwitchRow
-              testId="client-auto"
-              icon={<span className="text-base leading-none">🚫</span>}
-              title="Tasdiqlanmagan bronlarni avto-bekor qilish"
-              desc="Navbatga 1 soat qolganda ham tasdiqlanmagan bronlar avtomatik bekor qilinadi"
-              checked={formData.autoCancel}
-              onChange={v => {
-                if (!v) {
-                  setConfirmOff("auto");
-                  return;
-                }
-                save({ ...formData, autoCancel: true });
-              }}
-            />
           </div>
         </section>
       </div>

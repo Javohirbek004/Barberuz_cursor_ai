@@ -4,17 +4,16 @@
  * Runs every 60 seconds and dispatches:
  *
  *  BARBER:
- *   — 15-min upcoming-client alert (replaces old 30-min)
  *   — Morning digest at 08:30 Tashkent time with today's full schedule
  *
  *  CLIENT:
- *   Handled in client-notifications.ts (receipt, 20:00 reminder, follow-up, 1h, auto-cancel).
+ *   Handled in client-notifications.ts (receipt, 20:00 reminder, follow-up, 1h).
  *
  * Reminder state is tracked in-memory via sentReminders Set (key = sessionId:window).
  * Server restarts clear the set; reminders won't re-fire within the same time window.
  */
 
-import { db, bookingSessionsTable, bookingsTable, usersTable } from "@workspace/db";
+import { db, bookingsTable, usersTable } from "@workspace/db";
 import { eq, and, inArray, isNull } from "drizzle-orm";
 import { expirePendingHolds } from "./booking-conflicts";
 import { runClientNotificationCycle } from "./client-notifications";
@@ -55,39 +54,6 @@ async function sendTelegramMessage(
 
 const sentReminders = new Set<string>();
 
-interface BookingData {
-  barberName:     string;
-  barberAddress:  string;
-  mapLink:        string;
-  barberPageLink: string;
-  isTeam:         boolean;
-  teamBarberName: string | null;
-  date:           string;
-  time:           string;
-  totalPrice:     number;
-  services:       { name: string; price: number; duration: number }[];
-}
-
-function parseBookingDateTime(data: BookingData): Date | null {
-  try {
-    let dateStr = data.date;
-    if (dateStr === "today" || dateStr === "bugun") {
-      dateStr = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
-    } else if (dateStr === "tomorrow" || dateStr === "ertaga") {
-      const d = new Date();
-      d.setDate(d.getDate() + 1);
-      dateStr = d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
-    }
-    const [hours, minutes] = data.time.split(":").map(Number);
-    const dt = new Date(
-      `${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00+05:00`,
-    );
-    return isNaN(dt.getTime()) ? null : dt;
-  } catch {
-    return null;
-  }
-}
-
 function nowInTashkent(): { hour: number; minute: number; dateStr: string } {
   const tashkent = new Date(Date.now() + TASHKENT_UTC_OFFSET_MS);
   return {
@@ -95,29 +61,6 @@ function nowInTashkent(): { hour: number; minute: number; dateStr: string } {
     minute:  tashkent.getUTCMinutes(),
     dateStr: tashkent.toISOString().split("T")[0]!,
   };
-}
-
-function remainingMinutesFromDiff(diffMinutes: number): number {
-  return Math.min(15, Math.max(1, Math.round(diffMinutes)));
-}
-
-function buildBarber15MinText(
-  clientName: string,
-  clientPhone: string | null,
-  data: BookingData,
-  remainingMinutes: number,
-  notes?: string | null,
-): string {
-  const serviceNames = data.services.map(s => s.name).join(", ");
-  const phoneLine    = clientPhone ? `\n\uD83D\uDCDE ${clientPhone}` : "";
-  const notesLine    = notes       ? `\n\uD83D\uDCDD Eslatma: ${notes}` : "";
-  return (
-    `\u26A1\uFE0F <b>Keyingi mijozingizga ${remainingMinutes} daqiqa qoldi!</b>\n\n` +
-    `\uD83D\uDC64 Mijoz: ${clientName}${phoneLine}\n` +
-    `\u2702\uFE0F Xizmat: ${serviceNames}\n` +
-    `\uD83D\uDD50 Vaqt: <b>${data.time}</b>` +
-    notesLine
-  );
 }
 
 function buildBarberMorningSummary(
@@ -142,57 +85,6 @@ function buildBarberMorningSummary(
   );
 }
 
-async function sendDueBarber15MinReminders(nowMs = Date.now()): Promise<void> {
-  const sessions = await db
-    .select()
-    .from(bookingSessionsTable)
-    .where(eq(bookingSessionsTable.status, "confirmed"));
-
-  const barberIds = [...new Set(sessions.map(s => s.barberId))];
-  const barberMap = new Map<string, { telegramId: string | null; name: string; phone: string | null }>();
-  for (const barberId of barberIds) {
-    try {
-      const [b] = await db
-        .select({ telegramId: usersTable.telegramId, name: usersTable.name, phone: usersTable.phone })
-        .from(usersTable)
-        .where(eq(usersTable.id, barberId))
-        .limit(1);
-      barberMap.set(barberId, {
-        telegramId: b?.telegramId ?? null,
-        name:       b?.name ?? "Barber",
-        phone:      b?.phone ?? null,
-      });
-    } catch {
-      barberMap.set(barberId, { telegramId: null, name: "Barber", phone: null });
-    }
-  }
-
-  for (const session of sessions) {
-    const barber = barberMap.get(session.barberId);
-
-    let data: BookingData;
-    try { data = JSON.parse(session.bookingData) as BookingData; } catch { continue; }
-
-    const appointmentDt = parseBookingDateTime(data);
-    if (!appointmentDt) continue;
-
-    const diffMinutes = (appointmentDt.getTime() - nowMs) / 60000;
-
-    // A booking made only a few minutes ahead still gets one reminder with the real time left.
-    if (barber?.telegramId) {
-      const key = `${session.sessionId}:barber_15`;
-      if (!sentReminders.has(key) && diffMinutes <= 15 && diffMinutes > 0) {
-        const clientName = session.clientName?.split(" ")[0] || "Mijoz";
-        const remainingMinutes = remainingMinutesFromDiff(diffMinutes);
-        const text = buildBarber15MinText(clientName, session.clientPhone ?? null, data, remainingMinutes);
-        await sendTelegramMessage(barber.telegramId, text);
-        sentReminders.add(key);
-        console.log(`[Reminders] barber_15min sent: ${session.sessionId}`);
-      }
-    }
-  }
-}
-
 async function checkAndSendReminders(): Promise<void> {
   const token = getToken();
   if (!token) return;
@@ -203,7 +95,6 @@ async function checkAndSendReminders(): Promise<void> {
   try {
     await expirePendingHolds();
     await runClientNotificationCycle(nowMs);
-    await sendDueBarber15MinReminders(nowMs);
 
     // ── Barber morning summary (08:30–08:34 Tashkent) ────────────────────────
     if (hour === 8 && minute >= 30 && minute <= 34) {
