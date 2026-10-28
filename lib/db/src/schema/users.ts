@@ -55,6 +55,8 @@ export const usersTable = pgTable(
     botNoticeCount: integer("bot_notice_count").notNull().default(0),
     /** The lasting bottom app button has already been shown in this chat. */
     botEntryButton: boolean("bot_entry_button").notNull().default(false),
+    /** Tashkent date (YYYY-MM-DD) when this barber already got today's morning schedule. */
+    morningDigestOn: text("morning_digest_on"),
     slugChangedAt: timestamp("slug_changed_at", { withTimezone: true }),
     slugChangeCount: integer("slug_change_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

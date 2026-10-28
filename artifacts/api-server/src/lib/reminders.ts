@@ -9,16 +9,17 @@
  *  CLIENT:
  *   Handled in client-notifications.ts (receipt, 20:00 reminder, follow-up, 1h).
  *
- * Reminder state is tracked in-memory via sentReminders Set (key = sessionId:window).
- * Server restarts clear the set; reminders won't re-fire within the same time window.
+ * The morning schedule is stored on the barber, so a restart does not send it twice.
+ * It goes only to that barber's Telegram chat, never to a client.
  */
 
 import { db, bookingsTable, usersTable } from "@workspace/db";
-import { eq, and, inArray, isNull } from "drizzle-orm";
+import { eq, and, inArray, isNull, or, ne } from "drizzle-orm";
 import { expirePendingHolds } from "./booking-conflicts";
 import { runClientNotificationCycle } from "./client-notifications";
 import { getTelegramBotToken } from "./telegram-token";
 import { barberEntryMarkup } from "./barber-entry-keyboard";
+import { buildBarberMorningSummary, uzDateLabel } from "./morning-digest";
 
 const TELEGRAM_API = "https://api.telegram.org";
 const TASHKENT_UTC_OFFSET_MS = 5 * 60 * 60 * 1000; // UTC+5
@@ -31,12 +32,12 @@ async function sendTelegramMessage(
   chatId: string,
   text: string,
   extra: Record<string, unknown> = {},
-): Promise<void> {
+): Promise<boolean> {
   const token = getToken();
-  if (!token) return;
+  if (!token) return false;
   const entryMarkup = extra.reply_markup ? null : await barberEntryMarkup(chatId);
   try {
-    await fetch(`${TELEGRAM_API}/bot${token}/sendMessage`, {
+    const res = await fetch(`${TELEGRAM_API}/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -47,8 +48,11 @@ async function sendTelegramMessage(
         ...(entryMarkup ? { reply_markup: entryMarkup } : {}),
       }),
     });
+    const json = await res.json() as { ok?: boolean };
+    return json.ok === true;
   } catch (err) {
     console.error("[Reminders] sendTelegramMessage failed:", err);
+    return false;
   }
 }
 
@@ -61,28 +65,6 @@ function nowInTashkent(): { hour: number; minute: number; dateStr: string } {
     minute:  tashkent.getUTCMinutes(),
     dateStr: tashkent.toISOString().split("T")[0]!,
   };
-}
-
-function buildBarberMorningSummary(
-  barberFirstName: string,
-  bookings: { time: string; clientName: string; serviceName: string | null }[],
-): string {
-  if (bookings.length === 0) {
-    return (
-      `\u2600\uFE0F <b>Xayrli tong, ${barberFirstName}!</b>\n\n` +
-      `Bugun uchun hech qanday bron yo\u02BBq. Dam oling! \uD83D\uDE0A`
-    );
-  }
-  const sorted = [...bookings].sort((a, b) => a.time.localeCompare(b.time));
-  const lines  = sorted
-    .map(b => `  \uD83D\uDD50 ${b.time} \u2014 ${b.clientName}${b.serviceName ? ` (${b.serviceName})` : ""}`)
-    .join("\n");
-  return (
-    `\u2600\uFE0F <b>Xayrli tong, ${barberFirstName}!</b>\n\n` +
-    `\uD83D\uDCC5 <b>Bugungi jadval (${bookings.length} ta bron):</b>\n\n` +
-    `${lines}\n\n` +
-    `Muvaffaqiyatli ish kuni! \uD83D\uDC88`
-  );
 }
 
 async function checkAndSendReminders(): Promise<void> {
@@ -104,6 +86,7 @@ async function checkAndSendReminders(): Promise<void> {
         .where(and(
           eq(bookingsTable.date, todayStr),
           inArray(bookingsTable.status, ["confirmed", "pending"]),
+          isNull(bookingsTable.deletedAt),
         ));
 
       const byBarber = new Map<string, typeof todayBookings>();
@@ -115,29 +98,49 @@ async function checkAndSendReminders(): Promise<void> {
       // Also include barbers who have telegramId but no bookings today
       // Query all barbers with telegramId
       const allBarbers = await db
-        .select({ id: usersTable.id, telegramId: usersTable.telegramId, name: usersTable.name })
+        .select({
+          id: usersTable.id,
+          telegramId: usersTable.telegramId,
+          morningDigestOn: usersTable.morningDigestOn,
+        })
         .from(usersTable)
         .where(and(
           eq(usersTable.role, "barber"),
           isNull(usersTable.deletedAt),
         ));
 
+      const dateLabel = uzDateLabel(todayStr);
       for (const barberUser of allBarbers) {
         if (!barberUser.telegramId) continue;
         const summaryKey = `morning_${todayStr}_${barberUser.id}`;
-        if (sentReminders.has(summaryKey)) continue;
+        if (sentReminders.has(summaryKey) || barberUser.morningDigestOn === todayStr) continue;
+
+        const claimed = await db
+          .update(usersTable)
+          .set({ morningDigestOn: todayStr })
+          .where(and(
+            eq(usersTable.id, barberUser.id),
+            eq(usersTable.role, "barber"),
+            or(isNull(usersTable.morningDigestOn), ne(usersTable.morningDigestOn, todayStr)),
+          ))
+          .returning({ id: usersTable.id });
+        if (!claimed.length) continue;
+        sentReminders.add(summaryKey);
 
         const barberBookings = byBarber.get(barberUser.id) ?? [];
-        const bookingList = barberBookings.map(bk => ({
+        const text = buildBarberMorningSummary(dateLabel, barberBookings.map(bk => ({
           time:        bk.startTime,
           clientName:  bk.clientName,
           serviceName: bk.serviceName ?? null,
-        }));
-
-        const firstName = barberUser.name?.split(" ")[0] || "Barber";
-        const text = buildBarberMorningSummary(firstName, bookingList);
-        await sendTelegramMessage(barberUser.telegramId, text);
-        sentReminders.add(summaryKey);
+        })));
+        const sent = await sendTelegramMessage(barberUser.telegramId, text);
+        if (!sent) {
+          sentReminders.delete(summaryKey);
+          await db.update(usersTable)
+            .set({ morningDigestOn: null })
+            .where(and(eq(usersTable.id, barberUser.id), eq(usersTable.morningDigestOn, todayStr)));
+          continue;
+        }
         console.log(`[Reminders] morning_summary sent: barberId=${barberUser.id}`);
       }
     }

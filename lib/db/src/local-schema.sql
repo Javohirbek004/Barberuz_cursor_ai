@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS users (
   quick_login boolean NOT NULL DEFAULT false,
   bot_notice_count integer NOT NULL DEFAULT 0,
   bot_entry_button boolean NOT NULL DEFAULT false,
+  morning_digest_on text,
   slug_changed_at timestamptz,
   slug_change_count integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -56,6 +57,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS session_epoch integer NOT NULL DEFAUL
 ALTER TABLE users ADD COLUMN IF NOT EXISTS quick_login boolean NOT NULL DEFAULT false;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_notice_count integer NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_entry_button boolean NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS morning_digest_on text;
 
 CREATE TABLE IF NOT EXISTS login_devices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
