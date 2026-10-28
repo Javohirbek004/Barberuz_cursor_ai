@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS users (
   notif_reminder_minutes text NOT NULL DEFAULT '30',
   notif_client_evening boolean NOT NULL DEFAULT true,
   notif_client_quick boolean NOT NULL DEFAULT true,
+  client_cancel_limit_min integer NOT NULL DEFAULT 60,
   notif_client_auto_cancel boolean NOT NULL DEFAULT true,
   session_epoch integer NOT NULL DEFAULT 0,
   quick_login boolean NOT NULL DEFAULT false,
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS buffer_time integer NOT NULL DEFAULT 10;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_client_evening boolean NOT NULL DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_client_quick boolean NOT NULL DEFAULT true;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS client_cancel_limit_min integer NOT NULL DEFAULT 60;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_client_auto_cancel boolean NOT NULL DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS session_epoch integer NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS quick_login boolean NOT NULL DEFAULT false;

@@ -36,6 +36,7 @@ interface BarberCard {
   quickReminder?: boolean;
   autoCancel?: boolean;
   notifyCancel?: boolean;
+  cancelLimit?: number;
 }
 
 interface BookingCard {
@@ -44,6 +45,7 @@ interface BookingCard {
   clientId: string | null;
   clientName: string;
   serviceName: string | null;
+  price: string;
   date: string;
   startTime: string;
   status: string;
@@ -167,13 +169,138 @@ function contactLine(barber: BarberCard): string | null {
   return `📞 Bogʻlanish: ${esc(formatPhone(barber.phone))}`;
 }
 
-function confirmKeyboard(bookingId: string, yesLabel: string) {
+export const CLIENT_CANCEL_LIMITS = [30, 60, 120, 180] as const;
+
+export function normalizeCancelLimit(value: unknown): number {
+  const n = Number(value);
+  return (CLIENT_CANCEL_LIMITS as readonly number[]).includes(n) ? n : 60;
+}
+
+function limitPhrase(minutes: number): string {
+  if (minutes <= 30) return "30 daqiqadan kam";
+  if (minutes <= 60) return "1 soatdan kam";
+  if (minutes <= 120) return "2 soatdan kam";
+  return "3 soatdan kam";
+}
+
+export function clientCancelKeyboard(bookingId: string) {
   return {
     inline_keyboard: [[
-      { text: yesLabel, callback_data: `confirm_${bookingId}` },
-      { text: "❌ Bekor qilish", callback_data: `cancel_${bookingId}` },
+      { text: "❌ Bronni bekor qilish", callback_data: `cancel_${bookingId}` },
     ]],
   };
+}
+
+function mapLinkLine(barber: BarberCard): string | null {
+  const link = resolveMapUrl(barber);
+  if (!link) return null;
+  return `📍 Manzil: <a href="${esc(link)}">Xaritadan ko'rish</a>`;
+}
+
+function phoneLine(barber: BarberCard): string | null {
+  if (barber.phoneVisible === false || !barber.phone?.trim()) return null;
+  return `📞 Aloqa: ${esc(formatPhone(barber.phone))}`;
+}
+
+function botNote(): string {
+  return lines(
+    "🤖 <b>Bot haqida eslatma:</b>",
+    "Ushbu bot sizning shaxsiy yordamchingiz:",
+    "• Navbatingizga oz qolganda eslatma yuboradi",
+    "• Istalgan vaqtda qayta bron qilishga yordam beradi",
+    "",
+    "Chatni o'chirmang, qulaylikdan foydalaning!",
+  );
+}
+
+function moneyLabel(price: string | number | null | undefined): string {
+  const n = Number(price ?? 0);
+  const shown = Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") : "0";
+  return `${shown} so'm`;
+}
+
+export function clientReceiptMessage(input: {
+  barber: BarberCard;
+  clientName: string;
+  service: string;
+  price: string | number | null | undefined;
+  date: string;
+  time: string;
+  minutesLeft: number;
+  bookingId?: string | null;
+}): { text: string; reply_markup?: ReturnType<typeof clientCancelKeyboard> } {
+  const limit = normalizeCancelLimit(input.barber.cancelLimit);
+  const canCancel = input.minutesLeft > limit && !!input.bookingId;
+  const today = tashkentNow().date === input.date;
+  const dateLine = !canCancel && today
+    ? `📅 Sana: Bugun (${esc(uzDate(input.date))})`
+    : `📅 Sana: ${esc(uzDate(input.date))}`;
+  const note = canCancel
+    ? "ℹ️ <b>Eslatma:</b> Iltimos, 5-10 daqiqa ertaroq keling."
+    : `🚨 <b>Muhim eslatma:</b> Bron vaqtingizga ${limitPhrase(limit)} vaqt qoldi. Iltimos, o'z vaqtida yetib keling. Agarda kechiksangiz yoki biror sababga ko'ra kela olmasligingiz aniq bo'lsa, darhol barber bilan aloqaga chiqing!`;
+  const text = lines(
+    `🥳 <b>Broningiz qabul qilindi, ${esc(input.clientName)}!</b>`,
+    "",
+    `👤 Usta: ${esc(salonName(input.barber))}`,
+    `✂️ Xizmat: ${esc(input.service)}`,
+    `💵 Narx: ${esc(moneyLabel(input.price))}`,
+    dateLine,
+    `⏰ Vaqt: ${esc(input.time)}`,
+    phoneLine(input.barber),
+    mapLinkLine(input.barber),
+    "",
+    note,
+    "",
+    botNote(),
+  );
+  return canCancel && input.bookingId
+    ? { text, reply_markup: clientCancelKeyboard(input.bookingId) }
+    : { text };
+}
+
+export function reminder24Message(input: {
+  barber: BarberCard;
+  clientName: string;
+  service: string;
+  time: string;
+  bookingId: string;
+}): { text: string; reply_markup: ReturnType<typeof clientCancelKeyboard> } {
+  return {
+    text: lines(
+      `⏰ <b>Ertaga navbatingiz bor, ${esc(input.clientName)}!</b>`,
+      "",
+      `👤 Usta: ${esc(salonName(input.barber))}`,
+      `✂️ Xizmat: ${esc(input.service)}`,
+      `⏰ Vaqt: Ertaga ${esc(input.time)} da`,
+      mapLinkLine(input.barber),
+      "",
+      "💡 Iltimos, belgilangan vaqtda keling.",
+    ),
+    reply_markup: clientCancelKeyboard(input.bookingId),
+  };
+}
+
+export function reminder1hMessage(input: {
+  barber: BarberCard;
+  clientName: string;
+  service: string;
+  time: string;
+  bookingId: string;
+}): { text: string; reply_markup?: ReturnType<typeof clientCancelKeyboard> } {
+  const limit = normalizeCancelLimit(input.barber.cancelLimit);
+  const text = lines(
+    `🚨 <b>Diqqat, ${esc(input.clientName)}! 1 soatdan keyin navbatingiz bor!</b>`,
+    "",
+    `👤 Usta: ${esc(salonName(input.barber))}`,
+    `✂️ Xizmat: ${esc(input.service)}`,
+    `⏰ Vaqt: ${esc(input.time)} (1 soat qoldi)`,
+    mapLinkLine(input.barber),
+    "",
+    "💡 Iltimos, belgilangan vaqtda keling. Agarda kechikishingiz mumkin bo‘lsa yoki qandaydir sababga ko‘ra kela olmasangiz, darhol barber bilan aloqaga chiqing!",
+  );
+  return limit === 30
+    ? { text, reply_markup: clientCancelKeyboard(input.bookingId) }
+    : { text };
 }
 
 export function receiptText(barber: BarberCard, service: string, date: string, time: string): string {
@@ -253,16 +380,22 @@ function confirmedText(): string {
   ].join("\n");
 }
 
-function tooLateText(barber: BarberCard): string {
+function tooLateText(barber: BarberCard, limit = normalizeCancelLimit(barber.cancelLimit)): string {
   const phone = barber.phone?.trim()
     ? `\n📞 Telefon: ${esc(formatPhone(barber.phone))}`
     : "";
   return [
     "🚫 <b>Bekor qilish vaqti o'tdi!</b>",
     "",
-    "Navbatga 1 soatdan kam vaqt qolgani sababli bot orqali bekor qilib bo'lmaydi.",
+    `Navbatga ${limitPhrase(limit)} vaqt qolgani sababli bot orqali bekor qilib bo'lmaydi.`,
     `Iltimos, usta bilan bevosita bog'laning:${phone}`,
   ].join("\n");
+}
+
+export async function handleClientCancelNo(chatId: number, messageId?: number): Promise<void> {
+  await editOrSend(String(chatId), messageId, "Bron saqlanib qoldi.", {
+    reply_markup: { inline_keyboard: [] },
+  });
 }
 
 function cancelledText(): string {
@@ -302,8 +435,6 @@ function barberRescheduledText(
     `✅ Yangi vaqt: ${esc(uzDate(to.date))}, ${esc(to.time)}`,
     addressLine(resolveMapUrl(barber), barber.address || ""),
     contactLine(barber),
-    "",
-    "Yangi vaqt sizga mosmi? Iltimos, kelishingizni tasdiqlang.",
   );
 }
 
@@ -394,6 +525,7 @@ async function loadBarber(barberId: string): Promise<BarberCard | null> {
       quickReminder: usersTable.notifClientQuick,
       autoCancel: usersTable.notifClientAutoCancel,
       notifyCancel: usersTable.notifCancellation,
+      cancelLimit: usersTable.clientCancelLimit,
     })
     .from(usersTable)
     .where(eq(usersTable.id, barberId))
@@ -460,19 +592,26 @@ export async function deliverBookingReceipt(
 
   const service = booking.serviceName?.trim() || "Xizmat";
   const time = booking.startTime.slice(0, 5);
-  const text = hint?.keepConfirmed
-    ? publicConfirmedReceiptText(barber, service, booking.date, time)
-    : receiptText(barber, service, booking.date, time);
-  const ok = await send(chat, text, hint?.keepConfirmed
-    ? { reply_markup: rebookMarkup(barber.username) }
-    : { reply_markup: confirmKeyboard(booking.id, "✅ Ha, boraman") });
+  const minutesLeft = (appointmentMs(booking.date, time) - Date.now()) / 60000;
+  const message = clientReceiptMessage({
+    barber,
+    clientName: booking.clientName,
+    service,
+    price: booking.price,
+    date: booking.date,
+    time,
+    minutesLeft,
+    bookingId: booking.id,
+  });
+  const ok = await send(chat, message.text, message.reply_markup
+    ? { reply_markup: message.reply_markup }
+    : {});
   if (!ok) return false;
 
   await db.update(bookingsTable).set({
     clientTelegramId: chat,
-    ...(hint?.keepConfirmed
-      ? { clientConfirmed: true, status: "confirmed" }
-      : { clientConfirmed: false, status: "pending" }),
+    clientConfirmed: true,
+    status: "confirmed",
     updatedAt: new Date(),
   }).where(eq(bookingsTable.id, booking.id));
 
@@ -528,8 +667,43 @@ export async function handleClientCancel(
   if (!barber) return;
 
   const minutesLeft = (appointmentMs(booking.date, booking.startTime) - Date.now()) / 60000;
-  if (minutesLeft < 60) {
-    await editOrSend(String(chatId), messageId, tooLateText(barber), { reply_markup: { inline_keyboard: [] } });
+  const limit = normalizeCancelLimit(barber.cancelLimit);
+  if (minutesLeft <= limit) {
+    await editOrSend(String(chatId), messageId, tooLateText(barber, limit), { reply_markup: { inline_keyboard: [] } });
+    return;
+  }
+
+  await send(String(chatId), "Haqiqatan ham ushbu bronni bekor qilmoqchimisiz?", {
+    reply_markup: {
+      inline_keyboard: [[
+        { text: "✅ Ha, bekor qilish", callback_data: `clyes_${booking.id}` },
+        { text: "🛑 Bekor qilmaslik", callback_data: `clno_${booking.id}` },
+      ]],
+    },
+  });
+}
+
+export async function handleClientCancelYes(
+  bookingId: string,
+  chatId: number,
+  messageId?: number,
+): Promise<void> {
+  const booking = await loadBooking(bookingId);
+  if (!booking || !ownsChat(booking, chatId)) {
+    await send(String(chatId), "Bron topilmadi.");
+    return;
+  }
+  if (booking.status === "cancelled" || booking.status === "auto_cancelled") {
+    await editOrSend(String(chatId), messageId, "Bu navbat allaqachon bekor qilingan.", { reply_markup: { inline_keyboard: [] } });
+    return;
+  }
+  const barber = await loadBarber(booking.barberId);
+  if (!barber) return;
+
+  const minutesLeft = (appointmentMs(booking.date, booking.startTime) - Date.now()) / 60000;
+  const limit = normalizeCancelLimit(barber.cancelLimit);
+  if (minutesLeft <= limit) {
+    await editOrSend(String(chatId), messageId, tooLateText(barber, limit), { reply_markup: { inline_keyboard: [] } });
     return;
   }
 
@@ -602,17 +776,11 @@ export async function notifyClientOfBarberChange(bookingId: string, change: Barb
       reply_markup: rebookMarkup(barber.username),
     });
   }
-  return send(
-    chat,
-    barberRescheduledText(barber, service, change.from, { date: booking.date, time }),
-    { reply_markup: confirmKeyboard(booking.id, "✅ Ha, boraman") },
-  );
+  return send(chat, barberRescheduledText(barber, service, change.from, { date: booking.date, time }));
 }
 
 export async function runClientNotificationCycle(now = Date.now()): Promise<void> {
   if (!token()) return;
-  const clock = tashkentNow(now);
-  const tomorrow = addDays(clock.date, 1);
 
   const rows = await db.select().from(bookingsTable).where(and(
     inArray(bookingsTable.status, [...OPEN_STATUSES]),
@@ -633,40 +801,33 @@ export async function runClientNotificationCycle(now = Date.now()): Promise<void
     const service = booking.serviceName?.trim() || "Xizmat";
     const time = booking.startTime.slice(0, 5);
     const minutesLeft = (appointmentMs(booking.date, time) - now) / 60000;
-    const ageMin = (now - new Date(booking.createdAt).getTime()) / 60000;
+    if (minutesLeft < 0) continue;
 
-    if (
-      barber.eveningConfirm !== false &&
-      clock.hour === 20 &&
-      booking.date === tomorrow &&
-      !booking.reminded24h
-    ) {
-      const ok = await send(booking.clientTelegramId, reminder24Text(barber, service, booking.date, time), {
-        reply_markup: confirmKeyboard(booking.id, "✅ Ha, boraman"),
+    if (barber.eveningConfirm !== false && !booking.reminded24h && minutesLeft <= 1440 && minutesLeft > 1430) {
+      const message = reminder24Message({
+        barber,
+        clientName: booking.clientName,
+        service,
+        time,
+        bookingId: booking.id,
       });
+      const ok = await send(booking.clientTelegramId, message.text, { reply_markup: message.reply_markup });
       if (ok) {
         await db.update(bookingsTable).set({ reminded24h: true }).where(eq(bookingsTable.id, booking.id));
       }
     }
 
-    if (
-      barber.quickReminder !== false &&
-      !booking.clientConfirmed &&
-      !booking.remindedFollowup &&
-      ageMin >= 5 &&
-      minutesLeft <= 180 &&
-      minutesLeft > 65
-    ) {
-      const ok = await send(booking.clientTelegramId, followupText(), {
-        reply_markup: confirmKeyboard(booking.id, "✅ Ha, boraman"),
+    if (barber.quickReminder !== false && !booking.reminded1h && minutesLeft <= 65 && minutesLeft >= 55) {
+      const message = reminder1hMessage({
+        barber,
+        clientName: booking.clientName,
+        service,
+        time,
+        bookingId: booking.id,
       });
-      if (ok) {
-        await db.update(bookingsTable).set({ remindedFollowup: true }).where(eq(bookingsTable.id, booking.id));
-      }
-    }
-
-    if (booking.clientConfirmed && !booking.reminded1h && minutesLeft <= 65 && minutesLeft >= 55) {
-      const ok = await send(booking.clientTelegramId, reminder1hText(barber, time));
+      const ok = await send(booking.clientTelegramId, message.text, message.reply_markup
+        ? { reply_markup: message.reply_markup }
+        : {});
       if (ok) {
         await db.update(bookingsTable).set({ reminded1h: true }).where(eq(bookingsTable.id, booking.id));
       }
@@ -674,7 +835,9 @@ export async function runClientNotificationCycle(now = Date.now()): Promise<void
   }
 }
 
-export function isClientCallback(data: string): "confirm" | "cancel" | null {
+export function isClientCallback(data: string): "confirm" | "cancel" | "cancel_yes" | "cancel_no" | null {
+  if (/^clyes_[0-9a-f-]{36}$/i.test(data)) return "cancel_yes";
+  if (/^clno_[0-9a-f-]{36}$/i.test(data)) return "cancel_no";
   const confirm = data.match(/^confirm_([0-9a-f-]{36})$/i);
   if (confirm?.[1] && UUID_RE.test(confirm[1])) return "confirm";
   const cancel = data.match(/^cancel_([0-9a-f-]{36})$/i);
@@ -735,26 +898,24 @@ export async function sendReminderPreview(chatId: string | number): Promise<void
     // Sample salon details are enough.
   }
 
-  const previewButtons = {
-    inline_keyboard: [[
-      { text: "✅ Ha, boraman", callback_data: "client_reminder_preview_confirm" },
-      { text: "❌ Bekor qilish", callback_data: "client_reminder_preview_cancel" },
-    ]],
+  const sample = {
+    barber: { ...barber, cancelLimit: 60 },
+    clientName: "Ali",
+    service: "Soch olish",
+    time: "15:00",
+    bookingId: "00000000-0000-4000-8000-000000000000",
   };
-  const receiptButtons = {
-    inline_keyboard: [[
-      { text: "✅ Ha, boraman", callback_data: "client_reminder_preview_confirm" },
-      { text: "❌ Bekor qilish", callback_data: "client_reminder_preview_cancel" },
-    ]],
-  };
+  const receipt = clientReceiptMessage({
+    ...sample,
+    price: 50000,
+    date: tashkentNow().date,
+    minutesLeft: 180,
+  });
+  const dayBefore = reminder24Message(sample);
+  const soon = reminder1hMessage(sample);
 
   await send(id, "Bu sinov. Haqiqiy mijozga xabar ketmadi va hech qanday bron o'zgarmaydi.");
-  await send(id, receiptText(barber, "Soch olish", tashkentNow().date, "15:00"), {
-    reply_markup: receiptButtons,
-  });
-  await send(id, reminder24Text(barber, "Soch olish", addDays(tashkentNow().date, 1), "15:00"), {
-    reply_markup: previewButtons,
-  });
-  await send(id, followupText(), { reply_markup: previewButtons });
-  await send(id, reminder1hText(barber, "15:00"));
+  await send(id, receipt.text, receipt.reply_markup ? { reply_markup: receipt.reply_markup } : {});
+  await send(id, dayBefore.text, { reply_markup: dayBefore.reply_markup });
+  await send(id, soon.text, soon.reply_markup ? { reply_markup: soon.reply_markup } : {});
 }

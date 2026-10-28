@@ -35,11 +35,14 @@ import { consumeRateLimit } from "./rate-limit";
 import {
   callbackBookingId,
   handleClientCancel,
+  handleClientCancelNo,
+  handleClientCancelYes,
   handleClientConfirm,
   isClientCallback,
   deliverBookingReceipt,
+  clientReceiptMessage,
+  normalizeCancelLimit,
   rebookUrl,
-  receiptText,
   sendReminderPreview,
 } from "./client-notifications";
 import { getTelegramBotToken, webhookSecretToken } from "./telegram-token";
@@ -1506,6 +1509,8 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
     const messageId = typeof message?.message_id === "number" ? message.message_id : undefined;
     const bookingId = callbackBookingId(callbackData);
     if (clientAction === "confirm") await handleClientConfirm(bookingId, chatId, messageId);
+    else if (clientAction === "cancel_yes") await handleClientCancelYes(bookingId, chatId, messageId);
+    else if (clientAction === "cancel_no") await handleClientCancelNo(chatId, messageId);
     else await handleClientCancel(bookingId, chatId, messageId);
     return;
   }
@@ -2563,17 +2568,13 @@ async function confirmBookingSession(
 
   if (presentation === "web") {
     if (bookingRowId) {
-      await db.update(bookingsTable).set({
-        status: "pending",
-        clientConfirmed: false,
-        clientTelegramId: tgUserId,
-        clientName: shownName,
-        ...(effectivePhone ? { notes: `Tel: ${effectivePhone}` } : {}),
-        updatedAt: new Date(),
-      }).where(eq(bookingsTable.id, bookingRowId));
+      await deliverBookingReceipt(bookingRowId, {
+        telegramId: tgUserId,
+        phone: effectivePhone,
+        keepConfirmed: true,
+      }).catch(() => false);
     }
     await deleteBookingPrompts(chatId);
-    await sendUnifiedBookingReceipt(chatId, data, shownName, effectivePhone, session.barberId);
     sendBarberBookingNotification(
       session.barberId, sessionId, data, shownName, effectivePhone,
     ).catch(err => console.error("[Bot] barber notification failed:", err));
@@ -2604,49 +2605,48 @@ async function confirmBookingSession(
       phoneVisible: usersTable.phoneVisible,
       username: usersTable.username,
       telegramId: usersTable.telegramId,
+      cancelLimit: usersTable.clientCancelLimit,
     })
     .from(usersTable)
     .where(eq(usersTable.id, session.barberId))
     .limit(1);
 
-  const confirmText = barberRow
-    ? receiptText(
-        {
+  const isoDate = toISODate(data.date);
+  const minutesLeft = (new Date(`${isoDate}T${data.time}:00+05:00`).getTime() - Date.now()) / 60000;
+  const receipt = barberRow
+    ? clientReceiptMessage({
+        barber: {
           ...barberRow,
           address: barberRow.address || data.barberAddress || null,
           mapLink: barberRow.mapLink || data.mapLink || null,
+          cancelLimit: normalizeCancelLimit(barberRow.cancelLimit),
         },
-        serviceNames,
-        toISODate(data.date),
-        data.time,
-      )
-    : `\u2705 <b>Broningiz qabul qilindi!</b>\n\n\uD83D\uDC88 Salon: ${data.barberName}\n\u2702\uFE0F Xizmat: ${serviceNames}\n\uD83D\uDCC5 Sana: ${formatDateLabel(data.date)}\n\u23F0 Vaqt: ${data.time}`;
+        clientName: shownName,
+        service: serviceNames,
+        price: data.totalPrice,
+        date: isoDate,
+        time: data.time,
+        minutesLeft,
+        bookingId: bookingRowId,
+      })
+    : {
+        text: `🥳 <b>Broningiz qabul qilindi, ${shownName}!</b>\n\n✂️ Xizmat: ${serviceNames}\n📅 Sana: ${formatDateLabel(data.date)}\n⏰ Vaqt: ${data.time}`,
+        reply_markup: undefined as undefined,
+      };
 
   const sent = await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: confirmText,
+    text: receipt.text,
     parse_mode: "HTML",
     disable_web_page_preview: true,
-    reply_markup: bookingRowId
-      ? {
-          inline_keyboard: [[
-            { text: "\u2705 Ha, boraman", callback_data: `confirm_${bookingRowId}` },
-            { text: "\u274C Bekor qilish", callback_data: `cancel_${bookingRowId}` },
-          ]],
-        }
-      : {
-          remove_keyboard: true,
-          inline_keyboard: [[
-            { text: "\u274C Navbatni bekor qilish", callback_data: `customer_cancel_${sessionId}` },
-          ]],
-        },
+    ...(receipt.reply_markup ? { reply_markup: receipt.reply_markup } : {}),
   }) as { ok?: boolean } | null;
 
   if (sent?.ok && bookingRowId) {
     await db.update(bookingsTable).set({
       clientTelegramId: tgUserId,
-      clientConfirmed: false,
-      status: "pending",
+      clientConfirmed: true,
+      status: "confirmed",
       updatedAt: new Date(),
     }).where(eq(bookingsTable.id, bookingRowId));
   }
