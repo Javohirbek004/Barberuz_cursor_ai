@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { db, bookingsTable, bookingSessionsTable, servicesTable, clientsTable } from "@workspace/db";
 import { eq, and, gte, lt, lte, inArray, isNull } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
-import { sendDirectBookingNotification } from "../lib/telegram-bot";
+import { eraseBookingAndFreeSlot, notifyBarberSelfCancel, sendDirectBookingNotification } from "../lib/telegram-bot";
 import { deliverBookingReceipt, notifyClientOfBarberChange } from "../lib/client-notifications";
 import { syncClientMetrics } from "../lib/client-metrics";
 import { findOrCreateClientByPhone } from "../lib/client-lookup";
@@ -204,6 +204,7 @@ router.post("/", authenticate, async (req, res) => {
     // Send Telegram notification to barber (non-blocking — never crashes booking flow)
     sendDirectBookingNotification({
       barberId: user.id,
+      bookingId: booking.id,
       clientName,
       clientPhone: rawPhone || null,
       serviceName: resolvedServiceName,
@@ -363,13 +364,13 @@ async function updateBooking(req: Request, res: Response) {
 
     const wasOpen = isOpenStatus(before.status);
     if (wasOpen && booking.status === "cancelled") {
-      // The online booking no longer needs its "15 minutes left" reminder either.
-      await db.update(bookingSessionsTable)
-        .set({ status: "cancelled" })
-        .where(eq(bookingSessionsTable.bookingId, booking.id))
-        .catch(() => {});
-      notifyClientOfBarberChange(booking.id, { kind: "cancelled" }).catch((err) =>
+      await notifyClientOfBarberChange(before.id, { kind: "cancelled" }).catch((err) =>
         console.warn("[Bookings] cancel notice failed:", (err as Error).message));
+      await eraseBookingAndFreeSlot(before.id);
+      notifyBarberSelfCancel(user.id).catch((err) =>
+        console.warn("[Bookings] barber cancel notice failed:", (err as Error).message));
+      res.json(formatBooking({ ...before, status: "cancelled", updatedAt: new Date() }, await readClientNotes(before.clientId)));
+      return;
     } else if (wasOpen && isOpenStatus(booking.status) && timeMoved) {
       notifyClientOfBarberChange(booking.id, {
         kind: "rescheduled",

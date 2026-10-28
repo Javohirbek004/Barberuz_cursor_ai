@@ -1402,6 +1402,66 @@ async function handleAuthStart(chatId: number, code: string, lang: string, _from
   await sendAuthPhoneRequest(chatId, lang);
 }
 
+async function handleBarberCancelButtons(
+  query: Record<string, unknown>,
+  data: string,
+  chatId: number,
+) {
+  const message = query.message as Record<string, unknown> | undefined;
+  const messageId = message?.message_id;
+  const messageChat = (message?.chat as { id?: number } | undefined)?.id;
+  if (typeof messageId !== "number" || typeof messageChat !== "number") return;
+
+  const bookingId = data.startsWith("bcyes_")
+    ? data.slice("bcyes_".length)
+    : data.startsWith("bcno_")
+      ? data.slice("bcno_".length)
+      : data.slice("bcan_".length);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookingId)) return;
+
+  const [booking] = await db
+    .select({ barberId: bookingsTable.barberId })
+    .from(bookingsTable)
+    .where(eq(bookingsTable.id, bookingId))
+    .limit(1);
+  if (data.startsWith("bcyes_")) {
+    if (!booking) {
+      await callTelegram("sendMessage", { chat_id: chatId, text: "Bu bron allaqachon bekor qilingan." });
+      return;
+    }
+    const [barber] = await db
+      .select({ telegramId: usersTable.telegramId })
+      .from(usersTable)
+      .where(eq(usersTable.id, booking.barberId))
+      .limit(1);
+    if (!barber?.telegramId || String(barber.telegramId) !== String(chatId)) return;
+    await eraseBookingAndFreeSlot(bookingId);
+    await callTelegram("editMessageReplyMarkup", {
+      chat_id: messageChat,
+      message_id: messageId,
+      reply_markup: { inline_keyboard: [] },
+    });
+    await callTelegram("sendMessage", { chat_id: chatId, text: BARBER_SELF_CANCEL_TEXT });
+    return;
+  }
+
+  if (!booking) return;
+  const [barber] = await db
+    .select({ telegramId: usersTable.telegramId })
+    .from(usersTable)
+    .where(eq(usersTable.id, booking.barberId))
+    .limit(1);
+  if (!barber?.telegramId || String(barber.telegramId) !== String(chatId)) return;
+
+  await callTelegram("editMessageReplyMarkup", {
+    chat_id: messageChat,
+    message_id: messageId,
+    reply_markup: data.startsWith("bcno_")
+      ? barberCancelKeyboard(bookingId)
+      : barberCancelConfirmKeyboard(bookingId),
+  });
+}
+
 async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
   const callbackData = (callbackQuery.data as string) || "";
   const from         = callbackQuery.from as Record<string, unknown>;
@@ -1461,6 +1521,11 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
   }
 
   // ── Barber: cancel booking (first click — show confirmation) ────────────
+  if (callbackData.startsWith("bcno_") || callbackData.startsWith("bcyes_") || callbackData.startsWith("bcan_")) {
+    await handleBarberCancelButtons(callbackQuery, callbackData, chatId);
+    return;
+  }
+
   if (callbackData.startsWith("cancel_booking_")) {
     const sessionId = callbackData.slice("cancel_booking_".length);
     log("cancel_confirm_prompt", { chatId, sessionId, telegramUserId: String(from.id) });
@@ -2013,6 +2078,48 @@ async function handleCustomerConfirmCancel(chatId: number, sessionId: string) {
 // Barber notification (exported — called when session confirmed)
 // ──────────────────────────────────────────────────────────────
 
+const BARBER_SELF_CANCEL_TEXT =
+  "🚫 Bron bekor qilindi!\nUshbu bron siz (sartarosh) tomonidan muvaffaqiyatli bekor qilindi. O'sha vaqt yana bo'shatildi.";
+
+function barberCancelKeyboard(bookingId: string) {
+  return {
+    inline_keyboard: [[
+      { text: "❌ Bronni bekor qilish", callback_data: `bcan_${bookingId}` },
+    ]],
+  };
+}
+
+function barberCancelConfirmKeyboard(bookingId: string) {
+  return {
+    inline_keyboard: [[
+      { text: "✅ Ha, bekor qilish", callback_data: `bcyes_${bookingId}` },
+      { text: "❌ Yo'q, qoldirish", callback_data: `bcno_${bookingId}` },
+    ]],
+  };
+}
+
+export async function eraseBookingAndFreeSlot(bookingId: string): Promise<boolean> {
+  const [booking] = await db.select().from(bookingsTable).where(eq(bookingsTable.id, bookingId)).limit(1);
+  if (!booking) return false;
+  await db.delete(bookingSessionsTable).where(eq(bookingSessionsTable.bookingId, bookingId));
+  await db.delete(bookingsTable).where(eq(bookingsTable.id, bookingId));
+  await syncClientMetrics(booking.clientId, booking.barberId).catch(() => undefined);
+  return true;
+}
+
+export async function notifyBarberSelfCancel(barberId: string): Promise<void> {
+  const [barber] = await db
+    .select({ telegramId: usersTable.telegramId })
+    .from(usersTable)
+    .where(eq(usersTable.id, barberId))
+    .limit(1);
+  if (!barber?.telegramId) return;
+  await callTelegram("sendMessage", {
+    chat_id: Number(barber.telegramId),
+    text: BARBER_SELF_CANCEL_TEXT,
+  });
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -2074,11 +2181,13 @@ export async function sendBarberBookingNotification(
       `\uD83C\uDF10 <i>Ushbu bron mijoz tomonidan web-sahifa orqali band qilindi va CRM kalendaringizga qo\u02BBshildi.</i>`;
 
     const entryMarkup = await barberEntryMarkup(barber.telegramId);
-    const cancelButton = {
-      inline_keyboard: [[
-        { text: "\u274C Bekor qilish", callback_data: `cancel_booking_${sessionId}` },
-      ]],
-    };
+    const cancelButton = session?.bookingId
+      ? barberCancelKeyboard(session.bookingId)
+      : {
+          inline_keyboard: [[
+            { text: "❌ Bronni bekor qilish", callback_data: `cancel_booking_${sessionId}` },
+          ]],
+        };
     const sent = await callTelegram("sendMessage", {
       chat_id: Number(barber.telegramId),
       text,
@@ -2117,6 +2226,7 @@ export async function sendBarberBookingNotification(
 // ──────────────────────────────────────────────────────────────
 export async function sendDirectBookingNotification(params: {
   barberId: string;
+  bookingId: string;
   clientName: string;
   clientPhone: string | null;
   serviceName: string | null;
@@ -2150,15 +2260,23 @@ export async function sendDirectBookingNotification(params: {
       `\u23F0 Vaqt: ${params.time}\n` +
       `\uD83D\uDCB5 Narxi: ${params.price.toLocaleString()} SO\u02BCM\n\n` +
       `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
-      `\uD83D\uDCA1 Ushbu bron avtomatik tarzda CRM kalendaringizga qo\u02BBshildi.`;
+      `Ushbu bron sartarosh tomonidan ilova orqali qo\u2018shildi.`;
 
     const entryMarkup = await barberEntryMarkup(String(barber.telegramId));
-    await callTelegram("sendMessage", {
+    const cancelButton = barberCancelKeyboard(params.bookingId);
+    const sent = await callTelegram("sendMessage", {
       chat_id: Number(barber.telegramId),
       text,
       parse_mode: "HTML",
-      ...(entryMarkup ? { reply_markup: entryMarkup } : {}),
-    });
+      reply_markup: entryMarkup ?? cancelButton,
+    }) as { ok?: boolean; result?: { message_id?: number } } | null;
+    if (entryMarkup && sent?.result?.message_id) {
+      await callTelegram("editMessageReplyMarkup", {
+        chat_id: Number(barber.telegramId),
+        message_id: sent.result.message_id,
+        reply_markup: cancelButton,
+      });
+    }
 
     log("direct_booking_notified", { barberId: params.barberId, telegramUserId: String(barber.telegramId) });
   } catch (err) {
