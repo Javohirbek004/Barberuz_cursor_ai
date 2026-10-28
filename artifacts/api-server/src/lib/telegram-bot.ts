@@ -2180,7 +2180,7 @@ export async function sendBarberBookingNotification(
       `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
       `\uD83C\uDF10 <i>Ushbu bron mijoz tomonidan web-sahifa orqali band qilindi va CRM kalendaringizga qo\u02BBshildi.</i>`;
 
-    const entryMarkup = await barberEntryMarkup(barber.telegramId);
+    await barberEntryMarkup(barber.telegramId);
     const cancelButton = session?.bookingId
       ? barberCancelKeyboard(session.bookingId)
       : {
@@ -2192,19 +2192,9 @@ export async function sendBarberBookingNotification(
       chat_id: Number(barber.telegramId),
       text,
       parse_mode: "HTML",
-      reply_markup: entryMarkup ?? cancelButton,
-    }) as { ok?: boolean; result?: { message_id?: number } } | null;
+      reply_markup: cancelButton,
+    }) as { ok?: boolean } | null;
     if (!sent?.ok) return;
-    if (entryMarkup) {
-      const messageId = sent.result?.message_id;
-      if (messageId) {
-        await callTelegram("editMessageReplyMarkup", {
-          chat_id: Number(barber.telegramId),
-          message_id: messageId,
-          reply_markup: cancelButton,
-        });
-      }
-    }
 
     await db
       .update(bookingSessionsTable)
@@ -2262,21 +2252,13 @@ export async function sendDirectBookingNotification(params: {
       `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
       `Ushbu bron sartarosh tomonidan ilova orqali qo\u2018shildi.`;
 
-    const entryMarkup = await barberEntryMarkup(String(barber.telegramId));
-    const cancelButton = barberCancelKeyboard(params.bookingId);
-    const sent = await callTelegram("sendMessage", {
+    await barberEntryMarkup(String(barber.telegramId));
+    await callTelegram("sendMessage", {
       chat_id: Number(barber.telegramId),
       text,
       parse_mode: "HTML",
-      reply_markup: entryMarkup ?? cancelButton,
-    }) as { ok?: boolean; result?: { message_id?: number } } | null;
-    if (entryMarkup && sent?.result?.message_id) {
-      await callTelegram("editMessageReplyMarkup", {
-        chat_id: Number(barber.telegramId),
-        message_id: sent.result.message_id,
-        reply_markup: cancelButton,
-      });
-    }
+      reply_markup: barberCancelKeyboard(params.bookingId),
+    });
 
     log("direct_booking_notified", { barberId: params.barberId, telegramUserId: String(barber.telegramId) });
   } catch (err) {
