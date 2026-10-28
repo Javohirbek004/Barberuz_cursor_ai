@@ -465,7 +465,9 @@ function notificationPayload(user: {
   notifClientEvening: boolean;
   notifClientQuick: boolean;
   notifClientAutoCancel: boolean;
+  clientCancelLimit?: number | null;
 }) {
+  const limit = Number(user.clientCancelLimit);
   return {
     newBooking: user.notifNewBooking,
     cancellation: user.notifCancellation,
@@ -474,6 +476,7 @@ function notificationPayload(user: {
     eveningConfirm: user.notifClientEvening,
     quickReminder: user.notifClientQuick,
     autoCancel: user.notifClientAutoCancel,
+    cancelLimit: [30, 60, 120, 180].includes(limit) ? limit : 60,
   };
 }
 
@@ -485,7 +488,8 @@ router.get("/notifications", authenticate, async (req, res) => {
 router.put("/notifications", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
-    const { newBooking, cancellation, reminders, reminderMinutes, eveningConfirm, quickReminder, autoCancel } = req.body;
+    const { newBooking, cancellation, reminders, reminderMinutes, eveningConfirm, quickReminder, autoCancel, cancelLimit } = req.body;
+    const limit = Number(cancelLimit);
     await db.update(usersTable)
       .set({
         ...(newBooking !== undefined && { notifNewBooking: newBooking }),
@@ -495,6 +499,7 @@ router.put("/notifications", authenticate, async (req, res) => {
         ...(typeof eveningConfirm === "boolean" && { notifClientEvening: eveningConfirm }),
         ...(typeof quickReminder === "boolean" && { notifClientQuick: quickReminder }),
         ...(typeof autoCancel === "boolean" && { notifClientAutoCancel: autoCancel }),
+        ...([30, 60, 120, 180].includes(limit) && { clientCancelLimit: limit }),
         updatedAt: new Date(),
       })
       .where(eq(usersTable.id, user.id));

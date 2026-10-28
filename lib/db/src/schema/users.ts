@@ -41,10 +41,12 @@ export const usersTable = pgTable(
     notifCancellation: boolean("notif_cancellation").notNull().default(true),
     notifReminders: boolean("notif_reminders").notNull().default(true),
     notifReminderMinutes: text("notif_reminder_minutes").notNull().default("30"),
-    /** Client Telegram: evening confirm request at 20:00 the day before. */
+    /** Client Telegram: reminder 24 hours before the appointment. */
     notifClientEvening: boolean("notif_client_evening").notNull().default(true),
-    /** Client Telegram: unconfirmed reminder when 1–3 hours remain. */
+    /** Client Telegram: reminder 1 hour before the appointment. */
     notifClientQuick: boolean("notif_client_quick").notNull().default(true),
+    /** Minutes before the visit when the client can no longer cancel in the bot. */
+    clientCancelLimit: integer("client_cancel_limit_min").notNull().default(60),
     /** Client Telegram: auto-cancel unconfirmed bookings inside the last hour. */
     notifClientAutoCancel: boolean("notif_client_auto_cancel").notNull().default(true),
     /** Bumped to sign every other device out. Tokens carry the same number. */

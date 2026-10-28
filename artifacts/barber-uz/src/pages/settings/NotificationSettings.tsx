@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { ChevronLeft, BellRing, BellOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-type ClientOff = "newBooking" | "cancellation" | "quick" | "auto";
+type ClientOff = "newBooking" | "cancellation" | "remind24" | "remind1h";
 
 type FormState = {
   newBooking: boolean;
@@ -24,7 +24,15 @@ type FormState = {
   eveningConfirm: boolean;
   quickReminder: boolean;
   autoCancel: boolean;
+  cancelLimit: number;
 };
+
+const CANCEL_LIMITS = [
+  { value: 30, label: "30 daqiqa" },
+  { value: 60, label: "1 soat" },
+  { value: 120, label: "2 soat" },
+  { value: 180, label: "3 soat" },
+];
 
 const CONFIRM_COPY: Record<ClientOff, { title: string; body: string }> = {
   newBooking: {
@@ -35,13 +43,13 @@ const CONFIRM_COPY: Record<ClientOff, { title: string; body: string }> = {
     title: "⚠️ Ogohlantirish",
     body: "Siz haqiqatan ham \"Bekor qilish\" bildirishnomalarini o‘chirmoqchimisiz? Agar o‘chirsangiz, mijoz bronni bekor qilsa Telegram botdan xabar kelmaydi.",
   },
-  quick: {
-    title: "⚠️ Tezkor eslatmani o'chirasizmi?",
-    body: "Xizmatga 1-3 soat qolganda mijozlarga qayta eslatma bormaydi. Bu mijoz navbatini unutib qo'yishi va kelmay qolishi xavfini oshiradi.",
+  remind24: {
+    title: "Diqqat!",
+    body: "Ushbu eslatmani o'chirsangiz, mijozlarga avtomatik xabarnomalar bormaydi. Rostdan ham o'chirmoqchimisiz?",
   },
-  auto: {
-    title: "⚠️ Avto-bekor qilishni o'chirasizmi?",
-    body: "Javob bermagan mijozlar bronlari avtomatik bekor qilinmaydi. Bu xizmat vaqtida kelmaydigan mijozlar sababli bo'sh vaqtlaringiz kuyib ketishiga olib kelishi mumkin.",
+  remind1h: {
+    title: "Diqqat!",
+    body: "Ushbu eslatmani o'chirsangiz, mijozlarga avtomatik xabarnomalar bormaydi. Rostdan ham o'chirmoqchimisiz?",
   },
 };
 
@@ -55,6 +63,7 @@ function readForm(settings: NotificationSettings): FormState {
     eveningConfirm: extra.eveningConfirm !== false,
     quickReminder: extra.quickReminder !== false,
     autoCancel: extra.autoCancel !== false,
+    cancelLimit: CANCEL_LIMITS.some(item => item.value === extra.cancelLimit) ? extra.cancelLimit! : 60,
   };
 }
 
@@ -74,6 +83,7 @@ export default function NotificationSettings() {
     eveningConfirm: true,
     quickReminder: true,
     autoCancel: true,
+    cancelLimit: 60,
   });
   const [confirmOff, setConfirmOff] = useState<ClientOff | null>(null);
 
@@ -103,10 +113,10 @@ export default function NotificationSettings() {
 
   const applyOff = () => {
     if (!confirmOff) return;
-    const key = confirmOff === "quick"
-      ? "quickReminder"
-      : confirmOff === "auto"
-        ? "autoCancel"
+    const key = confirmOff === "remind24"
+      ? "eveningConfirm"
+      : confirmOff === "remind1h"
+        ? "quickReminder"
         : confirmOff;
     setConfirmOff(null);
     save({ ...formData, [key]: false });
@@ -117,6 +127,7 @@ export default function NotificationSettings() {
 
   const copy = confirmOff ? CONFIRM_COPY[confirmOff] : null;
   const bookingWarning = confirmOff === "newBooking" || confirmOff === "cancellation";
+  const reminderWarning = confirmOff === "remind24" || confirmOff === "remind1h";
 
   return (
     <Layout>
@@ -168,36 +179,51 @@ export default function NotificationSettings() {
 
         <section data-testid="client-notifications">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 px-1 mb-3">
-            ⏰ Mijozlarga eslatmalar va Avto-bekor qilish
+            ⏰ Mijozlarga eslatmalar
           </p>
           <div className="space-y-2">
             <SwitchRow
-              testId="client-evening"
+              testId="client-24h"
               icon={<span className="text-base leading-none">🔔</span>}
-              title="Kechki tasdiqlash xabari (20:00)"
-              desc="Ertangi mijozlarga bir kun oldin kechqurun soat 20:00 da tasdiqlash so'rovi yuboriladi"
+              title="24 soat oldingi eslatma"
+              desc="Bron vaqtiga 24 soat (1 kun) qolganda mijozga eslatma va bekor qilish tugmasi yuboriladi"
               checked={formData.eveningConfirm}
               onChange={v => {
-                save(
-                  { ...formData, eveningConfirm: v },
-                  v ? undefined : "Kechki tasdiqlash xabari o'chirildi",
-                );
+                if (!v) {
+                  setConfirmOff("remind24");
+                  return;
+                }
+                save({ ...formData, eveningConfirm: true });
               }}
             />
             <SwitchRow
-              testId="client-quick"
+              testId="client-1h"
               icon={<span className="text-base leading-none">⏰</span>}
-              title="Tezkor eslatma (1-3 soat qolganda)"
-              desc="Tasdiqlanmagan mijozlarga navbatga 3 soatdan 1 soatgacha vaqt qolganda tasdiq so'rovi yuboriladi"
+              title="1 soat oldingi tezkor eslatma"
+              desc="Bron vaqtiga 1 soat qolganda mijozga yo'lga chiqish va ogohlantirish xabari yuboriladi"
               checked={formData.quickReminder}
               onChange={v => {
                 if (!v) {
-                  setConfirmOff("quick");
+                  setConfirmOff("remind1h");
                   return;
                 }
                 save({ ...formData, quickReminder: true });
               }}
             />
+            <div className="bg-card/50 px-4 py-4 rounded-2xl border border-white/5">
+              <p className="font-semibold text-sm text-foreground leading-tight">Bot orqali bekor qilish vaqti cheklovi</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Bron vaqtiga bu vaqtdan kam qolganda mijoz bot orqali bronni o‘zi bekor qila olmaydi</p>
+              <select
+                data-testid="client-cancel-limit"
+                value={formData.cancelLimit}
+                onChange={event => save({ ...formData, cancelLimit: Number(event.target.value) })}
+                className="mt-3 w-full h-11 rounded-2xl bg-black/20 border border-white/10 px-3 text-sm text-foreground"
+              >
+                {CANCEL_LIMITS.map(item => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </section>
       </div>
@@ -231,6 +257,25 @@ export default function NotificationSettings() {
                     className="flex-1 py-3 rounded-2xl bg-white/6 border border-white/10 text-foreground font-semibold text-sm"
                   >
                     Yo‘q, qoldirish
+                  </button>
+                </>
+              ) : reminderWarning ? (
+                <>
+                  <button
+                    type="button"
+                    data-testid="remind-off-submit"
+                    onClick={applyOff}
+                    className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm"
+                  >
+                    ✅ Ha, o‘chirish
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="remind-off-keep"
+                    onClick={() => setConfirmOff(null)}
+                    className="flex-1 py-3 rounded-2xl bg-white/6 border border-white/10 text-foreground font-semibold text-sm"
+                  >
+                    🛑 Bekor qilmaslik
                   </button>
                 </>
               ) : (
