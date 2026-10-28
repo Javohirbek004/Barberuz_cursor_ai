@@ -57,6 +57,8 @@ export const usersTable = pgTable(
     botEntryButton: boolean("bot_entry_button").notNull().default(false),
     /** Tashkent date (YYYY-MM-DD) when this barber already got today's morning schedule. */
     morningDigestOn: text("morning_digest_on"),
+    /** The one-time preview of the morning schedule was already sent to this barber. */
+    morningSampleSent: boolean("morning_sample_sent").notNull().default(false),
     slugChangedAt: timestamp("slug_changed_at", { withTimezone: true }),
     slugChangeCount: integer("slug_change_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
