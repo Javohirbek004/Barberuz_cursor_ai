@@ -28,7 +28,16 @@ import { noteFromBooking } from "@/lib/booking-note";
 import { IncomeAnalyticsSheet } from "@/pages/settings/IncomeAnalyticsSheet";
 import { SlotPeriodTabs } from "@/components/SlotPeriodTabs";
 import { dashboardEmptyCopy } from "@/lib/dashboard-empty";
-import { resolveDaySchedule, filterSlotsByPeriod, type ScheduleSource, type SlotPeriod } from "@/lib/schedule";
+import {
+  resolveDaySchedule,
+  filterSlotsByPeriod,
+  generateSmartSlots,
+  bookingsToIntervals,
+  lunchInterval,
+  normalizeBuffer,
+  type ScheduleSource,
+  type SlotPeriod,
+} from "@/lib/schedule";
 import { APP_ORIGIN } from "@/lib/config";
 import { BookingFlowDialog } from "@/components/BookingFlowDialog";
 
@@ -161,30 +170,6 @@ const MOCK_TEAM_BOOKINGS = [
   { id: "t3", time: "17:00", client: "Olim",    service: "Soqol",         barber: "Kamol barber"  },
 ];
 
-
-function fmtTimeMins(m: number): string {
-  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-}
-
-function computeFreeWindows(
-  workStart: number,
-  workEnd: number,
-  busyRanges: { startTime: string; endTime: string }[],
-): { start: number; end: number }[] {
-  const busy = busyRanges
-    .map(b => ({ s: toMins(b.startTime), e: toMins(b.endTime) }))
-    .sort((a, b) => a.s - b.s);
-  const windows: { start: number; end: number }[] = [];
-  let cursor = workStart;
-  for (const b of busy) {
-    // Bookings outside working hours (after-hours override) must not stretch the free time.
-    if (b.s > cursor) windows.push({ start: cursor, end: Math.min(b.s, workEnd) });
-    cursor = Math.max(cursor, b.e);
-    if (cursor >= workEnd) break;
-  }
-  if (cursor < workEnd) windows.push({ start: cursor, end: workEnd });
-  return windows.filter((w) => w.end > w.start);
-}
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 function DetailsPill({ label }: { label: string }) {
@@ -406,18 +391,9 @@ function TodayStatsModal({ open, onClose, total, completed, remaining, cancelled
 }
 
 // ── Free Slot Modal ───────────────────────────────────────────────────────────
-function freeSlotTimes(windows: { start: number; end: number }[]): string[] {
-  const times: string[] = [];
-  for (const w of windows) {
-    for (let t = w.start; t + 30 <= w.end; t += 30) times.push(fmtTimeMins(t));
-  }
-  return times;
-}
-
-function FreeSlotModal({ open, onClose, freeWindows, totalFreeSlots }: {
+function FreeSlotModal({ open, onClose, slots }: {
   open: boolean; onClose: () => void;
-  freeWindows: { start: number; end: number }[];
-  totalFreeSlots: number;
+  slots: string[];
 }) {
   const [period, setPeriod] = useState<SlotPeriod>("all");
   const [picked, setPicked] = useState<string | null>(null);
@@ -427,9 +403,8 @@ function FreeSlotModal({ open, onClose, freeWindows, totalFreeSlots }: {
     setPicked(null);
   }, [open]);
 
-  const allSlots = freeSlotTimes(freeWindows);
-  const visible = filterSlotsByPeriod(allSlots, period);
-  const shownCount = period === "all" ? totalFreeSlots : visible.length;
+  const visible = filterSlotsByPeriod(slots, period);
+  const shownCount = period === "all" ? slots.length : visible.length;
 
   return (
     <BottomSheet open={open} onClose={onClose}>
@@ -441,7 +416,7 @@ function FreeSlotModal({ open, onClose, freeWindows, totalFreeSlots }: {
         <p className="text-xs text-muted-foreground mb-4" data-testid="free-slot-count">
           Jami {shownCount} ta bo'sh slot mavjud
         </p>
-        {allSlots.length === 0 ? (
+        {slots.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground text-sm">Hozircha bo'sh vaqt yo'q 😔</div>
         ) : (
           <>
@@ -562,16 +537,22 @@ function IndividualDashboard() {
   const workStart = toMins(todayHours.start);
   const workEnd   = toMins(todayHours.end);
   const todayBusy = bookings.filter(b => !isDroppedBooking(b.status));
-  const lunchBusy =
-    extraProfile.lunchBreakEnabled && extraProfile.lunchBreakStart && extraProfile.lunchBreakEnd
-      ? [{ startTime: extraProfile.lunchBreakStart, endTime: extraProfile.lunchBreakEnd }]
-      : [];
   const isOffDay = !todayHours.enabled;
-  const freeWindows = isOffDay
-    ? []
-    : computeFreeWindows(workStart, workEnd, [...todayBusy, ...lunchBusy]);
-  const SLOT_MIN = 30;
-  const freeSlots   = freeWindows.reduce((s, w) => s + Math.floor((w.end - w.start) / SLOT_MIN), 0);
+  const nowMins = tashkentClock(now).mins;
+  // Same free-time rule as the (+) form for a 30-minute service: bookings, lunch,
+  // buffer and times that have already passed today are all left out.
+  const freeSlotList = isOffDay ? [] : generateSmartSlots({
+    duration: 30,
+    buffer: normalizeBuffer((profile as { bufferTime?: unknown } | undefined)?.bufferTime),
+    rangeStart: workStart,
+    rangeEnd: workEnd,
+    bookings: bookingsToIntervals(
+      bookings.filter((b) => b.status !== "cancelled" && b.status !== "auto_cancelled" && b.status !== "no_show"),
+    ),
+    fixedBreaks: lunchInterval(extraProfile),
+    nowMins,
+  });
+  const freeSlots = freeSlotList.length;
 
   // The report tiles must add up to every booking made today.
   const reportStatus = (status: string) => status.trim().toLowerCase();
@@ -884,8 +865,7 @@ function IndividualDashboard() {
       <FreeSlotModal
         open={showSlotModal}
         onClose={() => setShowSlotModal(false)}
-        freeWindows={freeWindows}
-        totalFreeSlots={freeSlots}
+        slots={freeSlotList}
       />
 
       <BookingFlowDialog open={addOpen} onOpenChange={setAddOpen} />
