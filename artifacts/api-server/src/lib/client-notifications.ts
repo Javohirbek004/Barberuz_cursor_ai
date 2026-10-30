@@ -631,9 +631,6 @@ export async function deliverBookingReceipt(
   });
   const ok = await send(chat, message.text, { reply_markup: message.reply_markup });
   if (!ok) return false;
-  if ("inline_keyboard" in message.reply_markup) {
-    await send(chat, "\u2060", { reply_markup: clientMenuKeyboard(), disable_notification: true });
-  }
 
   await db.update(bookingsTable).set({
     clientTelegramId: chat,
