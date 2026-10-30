@@ -2638,6 +2638,14 @@ async function confirmBookingSession(
     disable_web_page_preview: true,
     ...(receipt.reply_markup ? { reply_markup: receipt.reply_markup } : {}),
   }) as { ok?: boolean } | null;
+  if (sent?.ok && receipt.reply_markup && "inline_keyboard" in receipt.reply_markup) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "\u2060",
+      disable_notification: true,
+      reply_markup: clientMenuKeyboard(),
+    });
+  }
 
   if (sent?.ok && bookingRowId) {
     await db.update(bookingsTable).set({
