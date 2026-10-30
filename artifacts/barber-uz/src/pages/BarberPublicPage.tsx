@@ -331,6 +331,7 @@ function PublicBookingModal({
   }, [dateOpt, barber.username, slotReload]);
 
   const dateInputRef = useRef<HTMLInputElement>(null);
+  const returnNameRef = useRef<HTMLInputElement>(null);
   const displayName = barber.brandName || barber.name;
   const dateLabel   = dateFullLabel(dateOpt, todayISO, tomorrowISO);
   // Hours, lunch and buffer come from the barber's saved settings for THIS weekday.
@@ -556,10 +557,10 @@ function PublicBookingModal({
           <div className="flex-1">
             {step === "time" && <h2 className="font-bold text-base">Vaqt tanlash</h2>}
             {step === "name" && <h2 className="font-bold text-base">✍️ Ismingizni kiriting</h2>}
-            {step === "confirm" && <h2 className="font-bold text-base">{returning ? "Bronni tasdiqlash" : "📌 Buyurtmani tasdiqlash"}</h2>}
+            {step === "confirm" && <h2 className="font-bold text-base">{returning ? "Buyurtmani tasdiqlash" : "📌 Buyurtmani tasdiqlash"}</h2>}
             {step === "phone" && <h2 className="font-bold text-base">Raqamni yangilash</h2>}
             {step === "verifying" && <h2 className="font-bold text-base text-[#2AABEE]">Tasdiq kutilmoqda...</h2>}
-            {step === "done" && <h2 className="font-bold text-base text-emerald-400">{bookedDirect ? "Bron qabul qilindi" : "Bron tasdiqlandi! 🎉"}</h2>}
+            {step === "done" && <h2 className="font-bold text-base text-emerald-400">{bookedDirect ? "Bron tasdiqlandi" : "Bron tasdiqlandi! 🎉"}</h2>}
           </div>
           {(step !== "done" || bookedDirect) && (
             <button onClick={step === "done" && bookedDirect ? finishToShop : onClose}
@@ -663,7 +664,7 @@ function PublicBookingModal({
             )}
             {step === "confirm" && returning && (
               <motion.div key="confirm-return" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="pt-4">
-                <div className="bg-white/4 border border-white/8 rounded-2xl p-4 space-y-3 mb-5">
+                <div className="bg-white/4 border border-white/8 rounded-2xl p-4 mb-5">
                   {([
                     ["👤", "Usta", displayName],
                     ["✂️", "Xizmat", selectedServices.map(s => s.name).join(", ")],
@@ -671,7 +672,7 @@ function PublicBookingModal({
                     ["📅", "Sana", dateLabel],
                     ["⏰", "Vaqt", selectedTime || ""],
                   ] as const).map(([icon, label, value]) => (
-                    <div key={label} className="flex items-center gap-3">
+                    <div key={label} className="flex items-center gap-3 mb-3">
                       <span className="text-base w-5 shrink-0">{icon}</span>
                       <div>
                         <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide font-semibold">{label}</p>
@@ -679,22 +680,35 @@ function PublicBookingModal({
                       </div>
                     </div>
                   ))}
-                </div>
-                <div className="space-y-2 mb-4">
-                  <label className="text-sm font-semibold text-muted-foreground block">Ismingiz</label>
-                  <input value={clientName} onChange={e => { setClientName(e.target.value); setNameError(""); }}
-                    className="w-full h-12 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50" />
-                  {nameError && <p className="text-xs text-red-400">{nameError}</p>}
-                </div>
-                <div className="space-y-2 mb-5">
-                  <label className="text-sm font-semibold text-muted-foreground block">Telefon raqamingiz</label>
-                  <div className="flex items-center gap-2">
-                    <input value={formatSavedPhone(clientPhone)} disabled readOnly
-                      className="min-w-0 flex-1 h-12 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground/80 cursor-not-allowed" />
-                    <button type="button" onClick={() => setStep("phone")}
-                      className="shrink-0 h-12 px-3 rounded-2xl bg-white/5 border border-white/10 text-sm font-semibold text-primary">
-                      ✏️ Oʻzgartirish
-                    </button>
+                  <div className="space-y-2 mt-1">
+                    <label className="text-sm font-semibold text-muted-foreground block">Ism</label>
+                    <div className="relative">
+                      <input
+                        ref={returnNameRef}
+                        value={clientName}
+                        onChange={e => { setClientName(e.target.value); setNameError(""); }}
+                        className="w-full h-12 pl-4 pr-11 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50"
+                      />
+                      <button
+                        type="button"
+                        aria-label="Ismni tahrirlash"
+                        onClick={() => returnNameRef.current?.focus()}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-primary text-base"
+                      >
+                        ✎
+                      </button>
+                    </div>
+                    {nameError && <p className="text-xs text-red-400">{nameError}</p>}
+                  </div>
+                  <div className="space-y-2 mt-3">
+                    <label className="text-sm font-semibold text-muted-foreground block">Telefon</label>
+                    <input
+                      value={formatSavedPhone(clientPhone)}
+                      readOnly
+                      tabIndex={-1}
+                      aria-readonly="true"
+                      className="w-full h-12 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground/80 pointer-events-none"
+                    />
                   </div>
                 </div>
                 {formError && <p className="text-sm text-red-400 mb-3" data-testid="booking-form-error">{formError}</p>}
@@ -703,7 +717,7 @@ function PublicBookingModal({
                   className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base disabled:opacity-40 shadow-lg shadow-primary/20">
                   {submitting
                     ? <span className="inline-flex items-center gap-2"><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Saqlanmoqda...</span>
-                    : "🎉 Bronni tasdiqlash"}
+                    : "Bronni tasdiqlash"}
                 </button>
               </motion.div>
             )}
@@ -771,26 +785,26 @@ function PublicBookingModal({
             )}
             {step === "done" && bookedDirect && (
               <motion.div key="done-direct" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="py-6">
-                <h2 className="text-lg font-bold text-center mb-4 leading-snug">🎉 TABRIKLAYMIZ! Broningiz muvaffaqiyatli qabul qilindi!</h2>
-                <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-4 text-left space-y-2">
-                  <p className="text-sm"><span className="text-muted-foreground">👤 Usta:</span> <span className="font-semibold">{displayName}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">✂️ Xizmat:</span> <span className="font-semibold">{selectedServices.map(s => s.name).join(", ")}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">💰 Narx:</span> <span className="font-semibold">{formatPrice(totalPrice)}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">📅 Vaqt:</span> <span className="font-semibold">{dateLabel}, {selectedTime}</span></p>
+                <h2 className="text-lg font-bold text-center mb-4 leading-snug">Broningiz muvaffaqiyatli tasdiqlandi!</h2>
+                <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-5 text-left space-y-2">
+                  <p className="text-sm"><span className="text-muted-foreground">Usta:</span> <span className="font-semibold">{displayName}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">Xizmat:</span> <span className="font-semibold">{selectedServices.map(s => s.name).join(", ")}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">Narx:</span> <span className="font-semibold">{formatPrice(totalPrice)}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">Sana:</span> <span className="font-semibold">{dateLabel}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">Vaqt:</span> <span className="font-semibold">{selectedTime}</span></p>
                 </div>
-                <p className="text-sm text-muted-foreground text-center mb-5">💡 Telegram botga bron cheki va eslatma yuborildi.</p>
+                <button onClick={finishToShop}
+                  className="w-full h-12 rounded-2xl bg-white/8 border border-white/10 text-foreground font-bold mb-3">
+                  🌐 Sahifaga qaytish
+                </button>
                 <a
                   href={`https://t.me/${BOT_USERNAME}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full h-12 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2 mb-3"
+                  className="w-full h-12 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2"
                 >
-                  🤖 Telegram Botga oʻtish
+                  🤖 Botga qaytish
                 </a>
-                <button onClick={finishToShop}
-                  className="w-full h-12 rounded-2xl bg-white/8 border border-white/10 text-foreground font-bold">
-                  🏠 Sartaroshxona sahifasiga qaytish
-                </button>
               </motion.div>
             )}
             {step === "done" && !bookedDirect && (
