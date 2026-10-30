@@ -41,6 +41,7 @@ import {
   isClientCallback,
   deliverBookingReceipt,
   clientReceiptMessage,
+  clientMenuKeyboard,
   normalizeCancelLimit,
   rebookUrl,
   sendReminderPreview,
@@ -135,14 +136,7 @@ const CLIENT_MENU_REBOOK = "✂️ Qayta bron";
 const CLIENT_MENU_CONTACT = "📞 Aloqa";
 
 function clientReplyKeyboard() {
-  return {
-    keyboard: [
-      [{ text: CLIENT_MENU_BOOKINGS }, { text: CLIENT_MENU_REBOOK }],
-      [{ text: CLIENT_MENU_CONTACT }],
-    ],
-    resize_keyboard: true,
-    is_persistent: true,
-  };
+  return clientMenuKeyboard();
 }
 
 function rememberBookingPrompt(chatId: number, messageId: number | undefined) {
@@ -2844,8 +2838,10 @@ async function handleClientMenu(chatId: number, text: string) {
     const url = slug ? `${publicSiteUrl()}/${encodeURIComponent(slug)}?bron=1` : publicSiteUrl();
     await callTelegram("sendMessage", {
       chat_id: chatId,
-      text: `Qayta bron qilish:\n${url}`,
-      reply_markup: clientReplyKeyboard(),
+      text: "Qayta bron qilish uchun pastdagi tugmani bosing.",
+      reply_markup: {
+        inline_keyboard: [[{ text: "✂️ Qayta bron", web_app: { url } }]],
+      },
     });
     return;
   }
@@ -2858,23 +2854,22 @@ async function handleClientMenu(chatId: number, text: string) {
       });
       return;
     }
-    const name = barber.brandName || barber.name;
-    const hours = barber.workingHoursStart && barber.workingHoursEnd
-      ? `${barber.workingHoursStart}–${barber.workingHoursEnd}`
-      : "sozlanmagan";
-    const phone = barber.phone?.trim() ? plusPhone(barber.phone) : "—";
-    const map = barber.mapLink?.trim();
-    const tg = barber.telegramUsername?.trim();
+    const shop = barber.brandName?.trim();
+    const phone = barber.phone?.trim() ? plusPhone(barber.phone) : "";
+    const address = barber.address?.trim() || "";
+    const map = safeMapUrl(barber.mapLink);
+    const lines = [
+      shop ? `💈 Barbershop: ${escapeHtml(shop)}` : "",
+      `👤 Usta: ${escapeHtml(barber.name?.trim() || "Usta")}`,
+      phone ? `📞 Tel: ${escapeHtml(phone)}` : "",
+    ];
+    if (address && map) {
+      lines.push(`📍 Manzil: ${escapeHtml(address)}`);
+      lines.push(`📍 Xarita: <a href="${escapeHtml(map)}">Xaritadan ko'rish</a>`);
+    }
     await callTelegram("sendMessage", {
       chat_id: chatId,
-      text: [
-        `📞 <b>${escapeHtml(name)}</b>`,
-        `Telefon: ${escapeHtml(phone)}`,
-        `Manzil: ${escapeHtml(barber.address?.trim() || "—")}`,
-        `Ish vaqti: ${escapeHtml(hours)}`,
-        map ? `Xarita: ${escapeHtml(map)}` : "",
-        tg ? `Telegram: @${escapeHtml(tg.replace(/^@/, ""))}` : "",
-      ].filter(Boolean).join("\n"),
+      text: lines.filter(Boolean).join("\n"),
       parse_mode: "HTML",
       disable_web_page_preview: true,
       reply_markup: clientReplyKeyboard(),
@@ -2897,19 +2892,35 @@ async function handleClientMenu(chatId: number, text: string) {
     });
     return;
   }
-  const lines = rows.map((row, i) =>
-    `${i + 1}. ${formatDateLabel(row.date)}, ${row.startTime.slice(0, 5)} — ${row.serviceName || "Xizmat"}`,
-  );
+  const limit = normalizeCancelLimit(barber?.clientCancelLimit);
+  const phone = barber?.phone?.trim() ? plusPhone(barber.phone) : "";
+  const lines: string[] = [];
+  const buttons: { text: string; callback_data: string }[][] = [];
+  for (const [i, row] of rows.entries()) {
+    const time = row.startTime.slice(0, 5);
+    const when = `${formatDateLabel(row.date)}, ${time} — ${row.serviceName || "Xizmat"}`;
+    const start = new Date(`${row.date}T${time}:00+05:00`).getTime();
+    const minutesLeft = (start - Date.now()) / 60000;
+    if (minutesLeft > limit) {
+      lines.push(`${i + 1}. ${when}`);
+      if (buttons.length < 8) {
+        const label = rows.length === 1 ? "❌ Bronni bekor qilish" : `❌ ${time} bronni bekor qilish`;
+        buttons.push([{ text: label, callback_data: `cancel_${row.id}` }]);
+      }
+    } else {
+      const warn = phone
+        ? `⚠️ Bekor qilish vaqti tugagan. Aloqa: ${phone}`
+        : "⚠️ Bekor qilish vaqti tugagan.";
+      lines.push(`${i + 1}. ${when}\n${warn}`);
+    }
+  }
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: `📅 <b>Mening bronlarim</b>\n\n${lines.join("\n")}`,
+    text: `📅 <b>Mening bronlarim</b>\n\n${lines.join("\n\n")}`,
     parse_mode: "HTML",
-    reply_markup: {
-      inline_keyboard: rows.slice(0, 8).map((row) => [{
-        text: `❌ ${row.date.slice(5)} ${row.startTime.slice(0, 5)} bekor`,
-        callback_data: `cancel_${row.id}`,
-      }]),
-    },
+    ...(buttons.length
+      ? { reply_markup: { inline_keyboard: buttons } }
+      : { reply_markup: clientReplyKeyboard() }),
   });
 }
 
