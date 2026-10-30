@@ -27,6 +27,7 @@ import { PageTabs } from "@/components/PageTabs";
 import { parseSpecializations } from "@/lib/specializations";
 import { getCategoryIcon } from "@/lib/category-icon";
 import {
+  closeTelegramWebApp,
   extractPhoneNumber,
   getTelegramWebApp,
   telegramWebAppUser,
@@ -125,6 +126,28 @@ function dateFullLabel(iso: string, todayISO: string, tomorrowISO: string): stri
 }
 
 type PubBookingStep = "time" | "name" | "confirm" | "phone" | "verifying" | "done";
+
+type ActiveBookingCard = {
+  id: string;
+  master: string;
+  service: string;
+  date: string;
+  time: string;
+  price: number;
+  canCancel: boolean;
+  contactPhone: string | null;
+};
+
+type SuccessFacts = {
+  master: string;
+  service: string;
+  price: string;
+  date: string;
+  time: string;
+};
+
+const CANCEL_OLD_TEXT = "Bu harakatni tasdiqlasangiz eski broningiz bekor qilinadi va yangi tanlagan broningiz tasdiqlanadi. Bu harakatni tasdiqlaysizmi?";
+const MOVE_OLD_TEXT = "Bu harakatni tasdiqlasangiz eski broningiz vaqti yangi tanlagan vaqtingizga o‘zgartiriladi. Bu harakatni tasdiqlaysizmi?";
 
 interface SavedClient {
   tgId: string;
@@ -270,6 +293,9 @@ function PublicBookingModal({
   const [nameError, setNameError] = useState("");
   const [phoneError, setPhoneError] = useState("");
   const [bookedDirect, setBookedDirect] = useState(false);
+  const [activeBooking, setActiveBooking] = useState<ActiveBookingCard | null>(null);
+  const [activeAsk, setActiveAsk] = useState<null | "cancel" | "move">(null);
+  const [successFacts, setSuccessFacts] = useState<SuccessFacts | null>(null);
 
   useEffect(() => {
     const refresh = () => {
@@ -390,11 +416,21 @@ function PublicBookingModal({
     clearBookingDraft();
   }
 
-  async function createSession(direct: boolean) {
-    const services = selectedServices.map(s => ({ id: s.id, name: s.name, price: s.price, duration: s.duration }));
-    const pageLink = `${window.location.origin}/${barber.username}`;
+  function directCustomer() {
     const profile = savedClient.current;
     const tgId = profile?.tgId || (telegramWebAppUser()?.id ? String(telegramWebAppUser()?.id) : "");
+    return {
+      tgId,
+      body: tgId ? {
+        tgCustomer: { tgId, name: clientName.trim(), username: profile?.username || telegramWebAppUser()?.username || null },
+      } : {},
+    };
+  }
+
+  async function createSession(direct: boolean, replacingBookingId?: string) {
+    const services = selectedServices.map(s => ({ id: s.id, name: s.name, price: s.price, duration: s.duration }));
+    const pageLink = `${window.location.origin}/${barber.username}`;
+    const customer = directCustomer();
     return fetch("/api/public/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -405,19 +441,82 @@ function PublicBookingModal({
         services, totalPrice, totalDuration, date: dateOpt, time: selectedTime,
         clientName: clientName.trim(),
         clientPhone: direct ? clientPhone.trim() : "",
-        ...(direct && tgId ? {
-          tgCustomer: { tgId, name: clientName.trim(), username: profile?.username || telegramWebAppUser()?.username || null },
-        } : {}),
+        ...(direct ? customer.body : {}),
+        ...(replacingBookingId ? { replacingBookingId } : {}),
       }),
     });
   }
 
   function timeNoLongerOpen(message: string) {
+    setActiveBooking(null);
+    setActiveAsk(null);
     setSelectedTime(null);
     setStep("time");
     setSlotReload((n) => n + 1);
     setFormError(message);
     toast({ title: "Vaqt mos emas", description: message, variant: "destructive" });
+  }
+
+  function rememberDirectClient() {
+    const user = telegramWebAppUser();
+    const next = {
+      tgId: savedClient.current?.tgId || (user?.id ? String(user.id) : ""),
+      name: clientName.trim(),
+      phone: clientPhone.trim(),
+      username: savedClient.current?.username || user?.username || null,
+    };
+    savedClient.current = next;
+    saveClientProfile(next);
+    clearBookingDraft();
+  }
+
+  async function readDirectResult(res: Response): Promise<boolean> {
+    const data = await res.json().catch(() => null) as {
+      status?: string;
+      message?: string;
+      error?: string;
+      booking?: ActiveBookingCard;
+    } | null;
+    if (res.status === 409 && data?.error === "active_booking" && data.booking?.id) {
+      setActiveBooking(data.booking);
+      setActiveAsk(null);
+      setFormError("");
+      return false;
+    }
+    if (res.status === 409) {
+      slotJustTaken();
+      return false;
+    }
+    if (!res.ok) {
+      const message = (data?.message || "").trim();
+      if (res.status === 400 && message) {
+        timeNoLongerOpen(message);
+        return false;
+      }
+      if (res.status === 403 && message) {
+        setFormError(message);
+        toast({ title: "Bekor qilib bo'lmaydi", description: message, variant: "destructive" });
+        return false;
+      }
+      if (res.status === 429) {
+        const text = message || "Ko'p urinish. Biroz kuting.";
+        setFormError(text);
+        toast({ title: "Biroz kuting", description: text, variant: "destructive" });
+        return false;
+      }
+      throw new Error(message || "booking failed");
+    }
+    if (data?.status !== "confirmed") throw new Error(data?.message || "not confirmed");
+    return true;
+  }
+
+  function showSavedError(err: unknown) {
+    const said = err instanceof Error ? err.message.trim() : "";
+    const text = said && said !== "booking failed" && said !== "not confirmed"
+      ? said
+      : "Bron saqlanmadi. Qayta urinib ko'ring.";
+    setFormError(text);
+    toast({ title: "Bron saqlanmadi", description: text, variant: "destructive" });
   }
 
   async function handleDirectConfirm() {
@@ -438,52 +537,90 @@ function PublicBookingModal({
     setFormError("");
     try {
       const res = await createSession(true);
-      if (res.status === 409) {
-        slotJustTaken();
-        return;
-      }
-      const data = await res.json().catch(() => null) as { status?: string; message?: string } | null;
-      if (!res.ok) {
-        const message = (data?.message || "").trim();
-        if (res.status === 400 && message) {
-          timeNoLongerOpen(message);
-          return;
-        }
-        if (res.status === 429) {
-          const text = message || "Ko'p urinish. Biroz kuting.";
-          setFormError(text);
-          toast({ title: "Biroz kuting", description: text, variant: "destructive" });
-          return;
-        }
-        throw new Error(message || "booking failed");
-      }
-      if (data?.status !== "confirmed") throw new Error(data?.message || "not confirmed");
-      const user = telegramWebAppUser();
-      const next = {
-        tgId: savedClient.current?.tgId || (user?.id ? String(user.id) : ""),
-        name: clientName.trim(),
-        phone: clientPhone.trim(),
-        username: savedClient.current?.username || user?.username || null,
-      };
-      savedClient.current = next;
-      saveClientProfile(next);
-      clearBookingDraft();
+      const saved = await readDirectResult(res);
+      if (!saved) return;
+      setSuccessFacts(null);
+      rememberDirectClient();
+      setActiveBooking(null);
+      setActiveAsk(null);
       setBookedDirect(true);
       setStep("done");
     } catch (err) {
-      const said = err instanceof Error ? err.message.trim() : "";
-      const text = said && said !== "booking failed" && said !== "not confirmed"
-        ? said
-        : "Bron saqlanmadi. Qayta urinib ko'ring.";
-      setFormError(text);
-      toast({ title: "Bron saqlanmadi", description: text, variant: "destructive" });
+      showSavedError(err);
     } finally {
       setSubmitting(false);
     }
   }
 
+  async function confirmCancelOld() {
+    if (submitting || !activeBooking || !selectedTime) return;
+    setSubmitting(true);
+    setFormError("");
+    try {
+      const res = await createSession(true, activeBooking.id);
+      const saved = await readDirectResult(res);
+      if (!saved) return;
+      setSuccessFacts(null);
+      rememberDirectClient();
+      setActiveBooking(null);
+      setActiveAsk(null);
+      setBookedDirect(true);
+      setStep("done");
+    } catch (err) {
+      showSavedError(err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function confirmMoveOld() {
+    if (submitting || !activeBooking || !selectedTime) return;
+    setSubmitting(true);
+    setFormError("");
+    try {
+      const customer = directCustomer();
+      const res = await fetch("/api/public/active-booking/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookingId: activeBooking.id,
+          date: dateOpt,
+          time: selectedTime,
+          clientName: clientName.trim(),
+          clientPhone: clientPhone.trim(),
+          ...customer.body,
+        }),
+      });
+      const saved = await readDirectResult(res);
+      if (!saved) return;
+      setSuccessFacts({
+        master: activeBooking.master,
+        service: activeBooking.service,
+        price: formatPrice(Number(activeBooking.price) || 0),
+        date: dateLabel,
+        time: selectedTime,
+      });
+      rememberDirectClient();
+      setActiveBooking(null);
+      setActiveAsk(null);
+      setBookedDirect(true);
+      setStep("done");
+    } catch (err) {
+      showSavedError(err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function returnToBot() {
+    if (closeTelegramWebApp()) return;
+    window.location.assign(`https://t.me/${BOT_USERNAME}`);
+  }
+
   function slotJustTaken() {
     const text = "Ushbu vaqt yangigina band qilindi. Iltimos, boshqa vaqtni tanlang.";
+    setActiveBooking(null);
+    setActiveAsk(null);
     setSelectedTime(null);
     setStep("time");
     setSlotReload((n) => n + 1);
@@ -822,11 +959,11 @@ function PublicBookingModal({
               <motion.div key="done-direct" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="py-6">
                 <h2 className="text-lg font-bold text-center mb-4 leading-snug">Broningiz muvaffaqiyatli tasdiqlandi!</h2>
                 <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-5 text-left space-y-2">
-                  <p className="text-sm"><span className="text-muted-foreground">Usta:</span> <span className="font-semibold">{displayName}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">Xizmat:</span> <span className="font-semibold">{selectedServices.map(s => s.name).join(", ")}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">Narx:</span> <span className="font-semibold">{formatPrice(totalPrice)}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">Sana:</span> <span className="font-semibold">{dateLabel}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">Vaqt:</span> <span className="font-semibold">{selectedTime}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">Usta:</span> <span className="font-semibold">{successFacts?.master ?? displayName}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">Xizmat:</span> <span className="font-semibold">{successFacts?.service ?? selectedServices.map(s => s.name).join(", ")}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">Narx:</span> <span className="font-semibold">{successFacts?.price ?? formatPrice(totalPrice)}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">Sana:</span> <span className="font-semibold">{successFacts?.date ?? dateLabel}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">Vaqt:</span> <span className="font-semibold">{successFacts?.time ?? selectedTime}</span></p>
                 </div>
                 <button onClick={finishToShop}
                   className="w-full h-12 rounded-2xl bg-white/8 border border-white/10 text-foreground font-bold mb-3">
@@ -870,6 +1007,63 @@ function PublicBookingModal({
           </AnimatePresence>
         </div>
       </motion.div>
+      {activeBooking && step !== "done" && (
+        <div className="absolute inset-0 z-20 flex items-end justify-center" data-testid="active-booking-modal">
+          <div className="absolute inset-0 bg-black/75" />
+          <div className="relative w-full max-w-md bg-card rounded-t-3xl z-10 max-h-[92vh] overflow-y-auto px-5 pb-8 pt-5">
+            <h2 className="font-bold text-base leading-snug mb-4">⚠️ Sizda allaqachon faol bron mavjud!</h2>
+            <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-4 space-y-2">
+              <p className="text-sm">👤 Usta: <span className="font-semibold">{activeBooking.master}</span></p>
+              <p className="text-sm">✂️ Xizmat: <span className="font-semibold">{activeBooking.service}</span></p>
+              <p className="text-sm">📅 Sana va Vaqt: <span className="font-semibold">{dateFullLabel(activeBooking.date, todayISO, tomorrowISO)}, {activeBooking.time}</span></p>
+              <p className="text-sm">💵 Narx: <span className="font-semibold">{formatPrice(Number(activeBooking.price) || 0)}</span></p>
+            </div>
+            {activeBooking.canCancel ? (
+              <button type="button" onClick={() => { setFormError(""); setActiveAsk("cancel"); }} disabled={submitting}
+                data-testid="cancel-old-booking"
+                className="w-full py-3.5 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-300 font-bold mb-3 disabled:opacity-40">
+                ❌ Eski bronni bekor qilish
+              </button>
+            ) : (
+              <p className="text-sm text-amber-300 mb-3" data-testid="cancel-closed">
+                ⚠️ Bekor qilish vaqti tugagan.{activeBooking.contactPhone ? ` Aloqa: ${formatSavedPhone(activeBooking.contactPhone)}` : ""}
+              </p>
+            )}
+            <button type="button" onClick={() => { setFormError(""); setActiveAsk("move"); }} disabled={submitting}
+              data-testid="move-old-booking"
+              className="w-full py-3.5 rounded-2xl bg-white/8 border border-white/10 text-foreground font-bold mb-3 disabled:opacity-40">
+              🔄 Eski bron vaqtini o‘zgartirish
+            </button>
+            <button type="button" onClick={returnToBot}
+              className="w-full py-3.5 rounded-2xl bg-[#2AABEE] text-white font-bold mb-3">
+              🤖 Botga qaytish
+            </button>
+            <button type="button" onClick={() => { setActiveBooking(null); setActiveAsk(null); finishToShop(); }}
+              className="w-full py-3.5 rounded-2xl bg-white/8 border border-white/10 text-foreground font-bold">
+              🌐 Sahifaga qaytish
+            </button>
+          </div>
+        </div>
+      )}
+      {activeAsk && activeBooking && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center px-5" data-testid="active-booking-ask">
+          <div className="absolute inset-0 bg-black/80" />
+          <div className="relative w-full max-w-sm bg-card rounded-3xl p-5">
+            <p className="text-sm leading-relaxed mb-4">{activeAsk === "cancel" ? CANCEL_OLD_TEXT : MOVE_OLD_TEXT}</p>
+            {formError && <p className="text-sm text-red-400 mb-3">{formError}</p>}
+            <button type="button" disabled={submitting}
+              onClick={() => void (activeAsk === "cancel" ? confirmCancelOld() : confirmMoveOld())}
+              data-testid="active-ask-yes"
+              className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold mb-3 disabled:opacity-40">
+              {submitting ? "Saqlanmoqda..." : "Ha, tasdiqlayman"}
+            </button>
+            <button type="button" disabled={submitting} onClick={() => { setActiveAsk(null); setFormError(""); }}
+              className="w-full py-3.5 rounded-2xl bg-white/8 border border-white/10 text-foreground font-bold disabled:opacity-40">
+              Yo‘q
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

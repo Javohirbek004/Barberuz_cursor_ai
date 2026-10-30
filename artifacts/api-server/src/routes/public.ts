@@ -10,6 +10,7 @@ import { Router } from "express";
 import { db, bookingSessionsTable, usersTable, servicesTable, serviceCategoriesTable, slugRedirectsTable, bookingsTable, clientsTable, qrScansTable, phoneUpdateIntentsTable } from "@workspace/db";
 import { eq, and, isNull, or, desc, gt, notInArray, sql } from "drizzle-orm";
 import { deliverBookingReceipt } from "../lib/client-notifications";
+import { assertClientMayReplace, cancelBookingRecord, findUpcomingBooking, moveOwnedBooking } from "../lib/active-booking";
 import { findClientByPhone } from "../lib/client-lookup";
 import { expirePendingHolds, findBookingConflict, minsToTime, parseClockTime } from "../lib/booking-conflicts";
 import { resolveCatalogServices } from "../lib/public-booking";
@@ -202,12 +203,42 @@ router.post("/sessions", async (req, res) => {
     const reqEnd = reqStart + catalog.totalDuration;
     const endTimeStr = minsToTime(Math.min(reqEnd, 24 * 60 - 1));
     const bufferMins = typeof barberRow.bufferTime === "number" ? barberRow.bufferTime : 10;
+
+    const typedPhone = typeof clientPhone === "string" ? clientPhone.trim() : "";
+    const safeClientPhone = typedPhone ? (normalizePhone(typedPhone) ?? typedPhone) : null;
+    const chosenName = (typeof req.body.clientName === "string" && req.body.clientName.trim())
+      ? req.body.clientName.trim()
+      : ((typeof tgCustomer?.name === "string" && tgCustomer.name.trim()) ? tgCustomer.name.trim() : "");
+    const tgIdStr = tgCustomer?.tgId ? String(tgCustomer.tgId) : null;
+    const canConfirmNow = !!chosenName && (!!safeClientPhone || !!tgIdStr);
+    const replacingId = typeof req.body.replacingBookingId === "string" ? req.body.replacingBookingId.trim() : "";
+    let exceptBookingId: string | undefined;
+    if (canConfirmNow && replacingId) {
+      const allowed = await assertClientMayReplace({
+        bookingId: replacingId,
+        phone: safeClientPhone,
+        telegramId: tgIdStr,
+      });
+      if (!allowed.ok) {
+        res.status(allowed.status).json({ error: "replace_blocked", message: allowed.message });
+        return;
+      }
+      exceptBookingId = replacingId;
+    } else if (canConfirmNow) {
+      const active = await findUpcomingBooking({ phone: safeClientPhone, telegramId: tgIdStr });
+      if (active) {
+        res.status(409).json({ error: "active_booking", booking: active });
+        return;
+      }
+    }
+
     const clash = await findBookingConflict({
       barberId,
       date: isoDate,
       startTime,
       endTime: endTimeStr,
       bufferMins,
+      ...(exceptBookingId ? { exceptBookingId } : {}),
     });
     if (clash) {
       res.status(409).json({ error: "conflict", message: "Tanlangan vaqt allaqachon band" });
@@ -230,14 +261,6 @@ router.post("/sessions", async (req, res) => {
       date:           isoDate,
       time:           startTime,
     };
-
-    const typedPhone = typeof clientPhone === "string" ? clientPhone.trim() : "";
-    const safeClientPhone = typedPhone ? (normalizePhone(typedPhone) ?? typedPhone) : null;
-    const chosenName = (typeof req.body.clientName === "string" && req.body.clientName.trim())
-      ? req.body.clientName.trim()
-      : ((typeof tgCustomer?.name === "string" && tgCustomer.name.trim()) ? tgCustomer.name.trim() : "");
-    const tgIdStr = tgCustomer?.tgId ? String(tgCustomer.tgId) : null;
-    const canConfirmNow = !!chosenName && (!!safeClientPhone || !!tgIdStr);
 
     if (canConfirmNow) {
       await db.insert(bookingSessionsTable).values({
@@ -327,6 +350,20 @@ router.post("/sessions", async (req, res) => {
           bookingId = await insertBooking();
         }
 
+        if (bookingId && exceptBookingId) {
+          const stillAllowed = await assertClientMayReplace({
+            bookingId: exceptBookingId,
+            phone: safeClientPhone,
+            telegramId: tgIdStr,
+          });
+          if (!stillAllowed.ok) {
+            await db.update(bookingsTable).set({ status: "cancelled", updatedAt: new Date() }).where(eq(bookingsTable.id, bookingId));
+            res.status(stillAllowed.status).json({ error: "replace_blocked", message: stillAllowed.message });
+            return;
+          }
+          await cancelBookingRecord(exceptBookingId);
+        }
+
         if (bookingId) {
           try {
             await db.update(bookingSessionsTable)
@@ -347,6 +384,11 @@ router.post("/sessions", async (req, res) => {
           return;
         }
         console.error("[PublicAPI] booking row insert failed:", bookingErr);
+        res.status(500).json({ error: "server_error", message: "Bron saqlanmadi" });
+        return;
+      }
+
+      if (exceptBookingId && !bookingId) {
         res.status(500).json({ error: "server_error", message: "Bron saqlanmadi" });
         return;
       }
@@ -404,6 +446,47 @@ router.post("/sessions", async (req, res) => {
   } catch (err) {
     console.error("[PublicAPI] POST /sessions error:", err);
     res.status(500).json({ error: "server_error" });
+  }
+});
+
+/**
+ * POST /api/public/active-booking/move
+ * Keep the same booking and only change its date and time.
+ */
+router.post("/active-booking/move", async (req, res) => {
+  try {
+    const phoneRaw = typeof req.body?.clientPhone === "string" ? req.body.clientPhone.trim() : "";
+    const phone = phoneRaw ? (normalizePhone(phoneRaw) ?? phoneRaw) : null;
+    const telegramId = req.body?.tgCustomer?.tgId ? String(req.body.tgCustomer.tgId).slice(0, 32) : "";
+    const bookingId = typeof req.body?.bookingId === "string" ? req.body.bookingId.trim() : "";
+    if (
+      !consumeRateLimit(`sessions:ip:${clientIp(req)}`, 40, HOUR_MS)
+      || (phone && !consumeRateLimit(`sessions:phone:${phone}`, 8, HOUR_MS))
+      || (telegramId && !consumeRateLimit(`sessions:tg:${telegramId}`, 8, HOUR_MS))
+    ) {
+      res.status(429).json(TOO_MANY);
+      return;
+    }
+    if (!bookingId || !req.body?.date || !req.body?.time) {
+      res.status(400).json({ error: "validation", message: "Vaqt noto'g'ri" });
+      return;
+    }
+    const moved = await moveOwnedBooking({
+      bookingId,
+      phone,
+      telegramId,
+      date: toISODate(String(req.body.date)),
+      time: String(req.body.time),
+    });
+    if (!moved.ok) {
+      const error = moved.status === 409 ? "conflict" : "validation";
+      res.status(moved.status).json({ error, message: moved.message });
+      return;
+    }
+    res.json({ status: "confirmed" });
+  } catch (err) {
+    console.error("[PublicAPI] POST /active-booking/move error:", err);
+    res.status(500).json({ error: "server_error", message: "Bron saqlanmadi" });
   }
 });
 

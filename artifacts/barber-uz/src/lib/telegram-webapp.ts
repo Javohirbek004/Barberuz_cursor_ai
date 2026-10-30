@@ -9,6 +9,7 @@ type TgUser = {
 type TgWebApp = {
   ready?: () => void;
   expand?: () => void;
+  close?: () => void;
   initDataUnsafe?: { user?: TgUser };
   requestContact?: (cb?: (shared: boolean, extra?: unknown) => void) => void;
   onEvent?: (event: string, cb: (data: unknown) => void) => void;
@@ -31,6 +32,18 @@ export function wakeTelegramWebApp() {
     tg?.expand?.();
   } catch {
     // Not inside Telegram.
+  }
+}
+
+/** Leave the booking page and land back in the bot chat. */
+export function closeTelegramWebApp(): boolean {
+  const tg = getTelegramWebApp();
+  if (!tg?.close) return false;
+  try {
+    tg.close();
+    return true;
+  } catch {
+    return false;
   }
 }
 
