@@ -288,23 +288,30 @@ function PublicBookingModal({
   useEffect(() => {
     wakeTelegramWebApp();
     const user = telegramWebAppUser();
-    if (!user?.id) return;
-    const tgName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
-    const tgPhone = extractPhoneNumber(user) || extractPhoneNumber(getTelegramWebApp()?.initDataUnsafe);
-    const existing = savedClient.current;
-    const next = {
-      tgId: String(user.id),
-      name: (existing?.name || clientName || tgName || "Mijoz").trim(),
-      phone: (existing?.phone || clientPhone || tgPhone).trim(),
-      username: existing?.username || user.username || null,
-    };
-    savedClient.current = next;
-    if (!clientName.trim() && next.name) setClientName(next.name);
-    if (tgPhone && !phoneReady(clientPhone)) setClientPhone(tgPhone);
-    saveClientProfile(next);
-    // Hydrate once when the Telegram Mini App opens.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const tgId = user?.id ? String(user.id) : savedClient.current?.tgId || "";
+    if (!tgId) return;
+    const tgName = [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim();
+    let cancelled = false;
+    void fetch(`/api/public/barber/${encodeURIComponent(barber.username)}/returning?telegramId=${encodeURIComponent(tgId)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: { name?: string | null; phone?: string | null } | null) => {
+        if (cancelled) return;
+        const phone = (data?.phone || savedClient.current?.phone || "").trim();
+        if (!phoneReady(phone)) return;
+        const next = {
+          tgId,
+          name: (data?.name || savedClient.current?.name || tgName || "Mijoz").trim(),
+          phone,
+          username: savedClient.current?.username || user?.username || null,
+        };
+        savedClient.current = next;
+        setClientName(current => current.trim() ? current : next.name);
+        setClientPhone(phone);
+        saveClientProfile(next);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [barber.username]);
 
   const [busySlots, setBusySlots] = useState<{ startTime: string; endTime: string }[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
