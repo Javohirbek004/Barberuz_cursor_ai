@@ -8,7 +8,7 @@
 
 import { Router } from "express";
 import { db, bookingSessionsTable, usersTable, servicesTable, serviceCategoriesTable, slugRedirectsTable, bookingsTable, clientsTable, qrScansTable, phoneUpdateIntentsTable } from "@workspace/db";
-import { eq, and, isNull, or, desc, gt, notInArray } from "drizzle-orm";
+import { eq, and, isNull, or, desc, gt, notInArray, sql } from "drizzle-orm";
 import { deliverBookingReceipt } from "../lib/client-notifications";
 import { findClientByPhone } from "../lib/client-lookup";
 import { expirePendingHolds, findBookingConflict, minsToTime, parseClockTime } from "../lib/booking-conflicts";
@@ -23,6 +23,34 @@ const router = Router();
 
 const HOUR_MS = 60 * 60 * 1000;
 const TOO_MANY = { error: "too_many", message: "Ko'p urinish. Biroz kuting." };
+
+/** Drizzle writes every bookings column. A missing one makes the save fail. */
+const BOOKING_COLUMN_FIXES = [
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "client_confirmed" boolean DEFAULT true NOT NULL`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "client_telegram_id" text`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_24h" boolean DEFAULT false NOT NULL`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_1h" boolean DEFAULT false NOT NULL`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_followup" boolean DEFAULT false NOT NULL`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "notes" text`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "barber_notice_message_id" text`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "booking_time" timestamptz`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "deleted_at" timestamptz`,
+];
+
+function postgresCode(err: unknown): string {
+  const wrapped = err as { code?: string; cause?: { code?: string } };
+  return wrapped?.code || wrapped?.cause?.code || "";
+}
+
+async function ensureBookingColumns(): Promise<void> {
+  for (const statement of BOOKING_COLUMN_FIXES) {
+    try {
+      await db.execute(sql.raw(statement));
+    } catch (err) {
+      console.error("[PublicAPI] booking column fix failed:", err);
+    }
+  }
+}
 
 function generateSessionId(): string {
   return randomBytes(5).toString("hex");
@@ -266,35 +294,58 @@ router.post("/sessions", async (req, res) => {
       // via bookingSessionsTable.bookingId — this makes confirmation idempotent:
       // if confirmBookingSession ever runs for this session, it will see
       // session.bookingId is already set and skip the duplicate insert.
+      let bookingId: string | null = null;
       try {
         const svcName = catalog.services.map((s) => s.name).join(", ");
-
-        const [inserted] = await db.insert(bookingsTable).values({
+        const row = {
           barberId,
-          clientId: clientId || null,
+          ...(clientId ? { clientId } : {}),
           clientName: chosenName,
           serviceName: svcName,
           date: isoDate,
           startTime,
           endTime: endTimeStr,
           price: String(catalog.totalPrice),
-          status: "confirmed",
+          status: "confirmed" as const,
           clientConfirmed: true,
           ...(tgIdStr ? { clientTelegramId: tgIdStr } : {}),
           ...(safeClientPhone ? { notes: `Tel: ${safeClientPhone}` } : {}),
-        }).returning({ id: bookingsTable.id });
+        };
 
-        if (inserted?.id) {
-          await db.update(bookingSessionsTable)
-            .set({ bookingId: inserted.id })
-            .where(eq(bookingSessionsTable.sessionId, sessionId));
-          deliverBookingReceipt(inserted.id, {
+        const insertBooking = async () => {
+          const [inserted] = await db.insert(bookingsTable).values(row).returning({ id: bookingsTable.id });
+          return inserted?.id ?? null;
+        };
+
+        try {
+          bookingId = await insertBooking();
+        } catch (fullErr) {
+          // The save lists every column. If one was never added, add it and try once more.
+          if (postgresCode(fullErr) !== "42703") throw fullErr;
+          console.error("[PublicAPI] booking table is missing a column, repairing:", fullErr);
+          await ensureBookingColumns();
+          bookingId = await insertBooking();
+        }
+
+        if (bookingId) {
+          try {
+            await db.update(bookingSessionsTable)
+              .set({ bookingId })
+              .where(eq(bookingSessionsTable.sessionId, sessionId));
+          } catch (linkErr) {
+            console.error("[PublicAPI] session link failed:", linkErr);
+          }
+          deliverBookingReceipt(bookingId, {
             telegramId: tgIdStr,
             phone: safeClientPhone,
             keepConfirmed: true,
           }).catch((err) => console.error("[PublicAPI] client receipt failed:", err));
         }
       } catch (bookingErr) {
+        if (postgresCode(bookingErr) === "23505") {
+          res.status(409).json({ error: "conflict", message: "Tanlangan vaqt allaqachon band" });
+          return;
+        }
         console.error("[PublicAPI] booking row insert failed:", bookingErr);
         res.status(500).json({ error: "server_error", message: "Bron saqlanmadi" });
         return;

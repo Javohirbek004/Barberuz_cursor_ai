@@ -412,6 +412,14 @@ function PublicBookingModal({
     });
   }
 
+  function timeNoLongerOpen(message: string) {
+    setSelectedTime(null);
+    setStep("time");
+    setSlotReload((n) => n + 1);
+    setFormError(message);
+    toast({ title: "Vaqt mos emas", description: message, variant: "destructive" });
+  }
+
   async function handleDirectConfirm() {
     if (submitting || !selectedTime) return;
     const nameOk = !!clientName.trim();
@@ -422,6 +430,10 @@ function PublicBookingModal({
       setFormError(phoneOk ? "Ismingizni kiriting." : "Telefon raqamini kiriting.");
       return;
     }
+    if (dateOpt === todayISO && toMins(selectedTime) <= tashkentNowMinutes()) {
+      timeNoLongerOpen("O'tgan vaqtga bron qilib bo'lmaydi. Boshqa vaqtni tanlang.");
+      return;
+    }
     setSubmitting(true);
     setFormError("");
     try {
@@ -430,9 +442,22 @@ function PublicBookingModal({
         slotJustTaken();
         return;
       }
-      if (!res.ok) throw new Error("booking failed");
-      const data = await res.json();
-      if (data.status !== "confirmed") throw new Error("not confirmed");
+      const data = await res.json().catch(() => null) as { status?: string; message?: string } | null;
+      if (!res.ok) {
+        const message = (data?.message || "").trim();
+        if (res.status === 400 && message) {
+          timeNoLongerOpen(message);
+          return;
+        }
+        if (res.status === 429) {
+          const text = message || "Ko'p urinish. Biroz kuting.";
+          setFormError(text);
+          toast({ title: "Biroz kuting", description: text, variant: "destructive" });
+          return;
+        }
+        throw new Error(message || "booking failed");
+      }
+      if (data?.status !== "confirmed") throw new Error(data?.message || "not confirmed");
       const user = telegramWebAppUser();
       const next = {
         tgId: savedClient.current?.tgId || (user?.id ? String(user.id) : ""),
@@ -445,8 +470,11 @@ function PublicBookingModal({
       clearBookingDraft();
       setBookedDirect(true);
       setStep("done");
-    } catch {
-      const text = "Bron saqlanmadi. Qayta urinib ko'ring.";
+    } catch (err) {
+      const said = err instanceof Error ? err.message.trim() : "";
+      const text = said && said !== "booking failed" && said !== "not confirmed"
+        ? said
+        : "Bron saqlanmadi. Qayta urinib ko'ring.";
       setFormError(text);
       toast({ title: "Bron saqlanmadi", description: text, variant: "destructive" });
     } finally {
