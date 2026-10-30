@@ -56,20 +56,29 @@ export function slotOutsideWorkingHours(params: {
 
   try {
     const parsed = params.scheduleJson ? JSON.parse(params.scheduleJson) as Record<string, unknown> : null;
-    if (parsed && typeof parsed === "object") {
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       const key = weekdayKey(params.isoDate);
+      const short: Record<DayKey, string> = {
+        monday: "mon", tuesday: "tue", wednesday: "wed", thursday: "thu",
+        friday: "fri", saturday: "sat", sunday: "sun",
+      };
+      const grid = DAY_KEYS.some((day) => parsed[day] && typeof parsed[day] === "object");
+      const workDays = Array.isArray(parsed.workDays)
+        ? parsed.workDays.filter((day): day is string => typeof day === "string")
+        : null;
       const entry = parsed[key];
-      if (entry && typeof entry === "object") {
+      // Same rule as the booking page: an empty day list means "not chosen yet",
+      // so every day stays open. A listed day, or a day switched off in the week
+      // grid, is the only thing that closes a date.
+      if (grid && entry && typeof entry === "object") {
         const e = entry as { enabled?: unknown; start?: unknown; end?: unknown };
         dayEnabled = Boolean(e.enabled);
         dayStart = parseClock(e.start, globalStart);
         dayEnd = parseClock(e.end, globalEnd);
-      } else if (Array.isArray(parsed.workDays)) {
-        const short: Record<DayKey, string> = {
-          monday: "mon", tuesday: "tue", wednesday: "wed", thursday: "thu",
-          friday: "fri", saturday: "sat", sunday: "sun",
-        };
-        dayEnabled = parsed.workDays.includes(short[key]);
+      } else if (grid) {
+        dayEnabled = workDays ? workDays.includes(short[key]) : false;
+      } else if (workDays && workDays.length > 0) {
+        dayEnabled = workDays.includes(short[key]);
       }
     }
   } catch {
