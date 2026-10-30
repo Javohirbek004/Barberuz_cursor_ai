@@ -238,8 +238,9 @@ export function clientReceiptMessage(input: {
   time: string;
   minutesLeft: number;
   bookingId?: string | null;
-}): { text: string; reply_markup: ReturnType<typeof clientMenuKeyboard> } {
-  void input.minutesLeft;
+}): { text: string; reply_markup: ReturnType<typeof clientMenuKeyboard> | ReturnType<typeof clientCancelKeyboard> } {
+  const limit = normalizeCancelLimit(input.barber.cancelLimit);
+  const canCancel = input.minutesLeft > limit && !!input.bookingId;
   const text = lines(
     `🥳 <b>Broningiz qabul qilindi, ${esc(input.clientName)}!</b>`,
     "",
@@ -257,7 +258,10 @@ export function clientReceiptMessage(input: {
     "",
     botNote(),
   );
-  return { text, reply_markup: clientMenuKeyboard() };
+  return {
+    text,
+    reply_markup: canCancel ? clientCancelKeyboard(input.bookingId!) : clientMenuKeyboard(),
+  };
 }
 
 export function reminder24Message(input: {
@@ -605,10 +609,11 @@ export async function deliverBookingReceipt(
     minutesLeft,
     bookingId: booking.id,
   });
-  const ok = await send(chat, message.text, message.reply_markup
-    ? { reply_markup: message.reply_markup }
-    : {});
+  const ok = await send(chat, message.text, { reply_markup: message.reply_markup });
   if (!ok) return false;
+  if ("inline_keyboard" in message.reply_markup) {
+    await send(chat, "\u2060", { reply_markup: clientMenuKeyboard(), disable_notification: true });
+  }
 
   await db.update(bookingsTable).set({
     clientTelegramId: chat,
