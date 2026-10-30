@@ -40,6 +40,7 @@ import {
   handleClientConfirm,
   isClientCallback,
   deliverBookingReceipt,
+  notifyClientOfBarberChange,
   clientReceiptMessage,
   clientMenuKeyboard,
   normalizeCancelLimit,
@@ -1432,6 +1433,8 @@ async function handleBarberCancelButtons(
       .where(eq(usersTable.id, booking.barberId))
       .limit(1);
     if (!barber?.telegramId || String(barber.telegramId) !== String(chatId)) return;
+    await notifyClientOfBarberChange(bookingId, { kind: "cancelled" }).catch((err) =>
+      console.warn("[Bot] client cancel notice failed:", (err as Error).message));
     await eraseBookingAndFreeSlot(bookingId);
     await callTelegram("editMessageReplyMarkup", {
       chat_id: messageChat,
