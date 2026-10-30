@@ -191,6 +191,17 @@ export function clientCancelKeyboard(bookingId: string) {
   };
 }
 
+export function clientMenuKeyboard() {
+  return {
+    keyboard: [
+      [{ text: "📅 Mening bronlarim" }],
+      [{ text: "✂️ Qayta bron" }, { text: "📞 Aloqa" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
 function mapLinkLine(barber: BarberCard): string | null {
   const link = resolveMapUrl(barber);
   if (!link) return null;
@@ -213,10 +224,9 @@ function botNote(): string {
   );
 }
 
-function moneyLabel(price: string | number | null | undefined): string {
+function moneyAmount(price: string | number | null | undefined): string {
   const n = Number(price ?? 0);
-  const shown = Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") : "0";
-  return `${shown} so'm`;
+  return Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") : "0";
 }
 
 export function clientReceiptMessage(input: {
@@ -228,34 +238,26 @@ export function clientReceiptMessage(input: {
   time: string;
   minutesLeft: number;
   bookingId?: string | null;
-}): { text: string; reply_markup?: ReturnType<typeof clientCancelKeyboard> } {
-  const limit = normalizeCancelLimit(input.barber.cancelLimit);
-  const canCancel = input.minutesLeft > limit && !!input.bookingId;
-  const today = tashkentNow().date === input.date;
-  const dateLine = !canCancel && today
-    ? `📅 Sana: Bugun (${esc(uzDate(input.date))})`
-    : `📅 Sana: ${esc(uzDate(input.date))}`;
-  const note = canCancel
-    ? "ℹ️ <b>Eslatma:</b> Iltimos, 5-10 daqiqa ertaroq keling."
-    : `🚨 <b>Muhim eslatma:</b> Bron vaqtingizga ${limitPhrase(limit)} vaqt qoldi. Iltimos, o'z vaqtida yetib keling. Agarda kechiksangiz yoki biror sababga ko'ra kela olmasligingiz aniq bo'lsa, darhol barber bilan aloqaga chiqing!`;
+}): { text: string; reply_markup: ReturnType<typeof clientMenuKeyboard> } {
+  void input.minutesLeft;
   const text = lines(
     `🥳 <b>Broningiz qabul qilindi, ${esc(input.clientName)}!</b>`,
     "",
     `👤 Usta: ${esc(salonName(input.barber))}`,
     `✂️ Xizmat: ${esc(input.service)}`,
-    `💵 Narx: ${esc(moneyLabel(input.price))}`,
-    dateLine,
+    `💵 Narx: ${esc(moneyAmount(input.price))} so'm`,
+    `📅 Sana: ${esc(uzDate(input.date))}`,
     `⏰ Vaqt: ${esc(input.time)}`,
     phoneLine(input.barber),
     mapLinkLine(input.barber),
     "",
-    note,
+    "ℹ️ <b>Eslatma:</b> Iltimos, 5-10 daqiqa ertaroq keling.",
+    "",
+    "ℹ️ <b>Eslatma:</b> Bronni bekor qilish uchun cheklov vaqti mavjud. Cheklov vaqti o'tgach, faqat usta bilan bog'lanib bekor qilishingiz mumkin.",
     "",
     botNote(),
   );
-  return canCancel && input.bookingId
-    ? { text, reply_markup: clientCancelKeyboard(input.bookingId) }
-    : { text };
+  return { text, reply_markup: clientMenuKeyboard() };
 }
 
 export function reminder24Message(input: {
