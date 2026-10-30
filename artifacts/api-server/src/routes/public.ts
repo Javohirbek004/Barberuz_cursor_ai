@@ -380,6 +380,7 @@ router.get("/sessions/:sessionId", async (req, res) => {
     res.json({
       status: session.status,
       clientName: session.clientName,
+      clientPhone: session.clientPhone,
       clientTelegramId: session.clientTelegramId,
       clientTelegramUsername: session.clientTelegramUsername,
     });
@@ -412,6 +413,53 @@ router.get("/client-phone", async (req, res) => {
     res.json({ phone: fresh ? intent.phone : null });
   } catch {
     res.json({ phone: null });
+  }
+});
+
+/**
+ * GET /api/public/barber/:slug/returning?telegramId=
+ * Name and phone already saved for this barber after a bot booking.
+ */
+router.get("/barber/:slug/returning", async (req, res) => {
+  const telegramId = String(req.query.telegramId || "").replace(/\D/g, "");
+  if (!telegramId) {
+    res.json({ name: null, phone: null });
+    return;
+  }
+  try {
+    const { slug } = req.params;
+    const [barber] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.username, slug), isNull(usersTable.deletedAt)))
+      .limit(1);
+    if (!barber) {
+      res.json({ name: null, phone: null });
+      return;
+    }
+    const [client] = await db
+      .select({ name: clientsTable.name, phone: clientsTable.phone })
+      .from(clientsTable)
+      .where(and(eq(clientsTable.barberId, barber.id), eq(clientsTable.telegramId, telegramId)))
+      .limit(1);
+    if (client?.phone) {
+      res.json({ name: client.name, phone: client.phone });
+      return;
+    }
+    const [session] = await db
+      .select({ name: bookingSessionsTable.clientName, phone: bookingSessionsTable.clientPhone })
+      .from(bookingSessionsTable)
+      .where(and(
+        eq(bookingSessionsTable.barberId, barber.id),
+        eq(bookingSessionsTable.clientTelegramId, telegramId),
+        eq(bookingSessionsTable.status, "confirmed"),
+      ))
+      .orderBy(desc(bookingSessionsTable.expiresAt))
+      .limit(1);
+    res.json({ name: session?.name ?? null, phone: session?.phone ?? null });
+  } catch (err) {
+    console.error("[PublicAPI] GET returning client error:", err);
+    res.json({ name: null, phone: null });
   }
 });
 
