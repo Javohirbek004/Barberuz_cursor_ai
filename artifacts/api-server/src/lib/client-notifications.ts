@@ -229,6 +229,28 @@ function moneyAmount(price: string | number | null | undefined): string {
   return Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") : "0";
 }
 
+function arrivalNote(minutesLeft: number): string {
+  if (minutesLeft >= 60) {
+    return lines(
+      "Iltimos, broningiz vaqtidan 5-10 daqiqa ertaroq keling.",
+      "",
+      "ℹ️ <b>Eslatma:</b> Bronni bekor qilish uchun cheklov vaqti mavjud. Cheklov vaqti o'tgach, faqat usta bilan bog'lanib bronni bekor qilishingiz mumkin.",
+    );
+  }
+  if (minutesLeft >= 20) {
+    return lines(
+      "⏳ <b>Eslatma:</b> Uchrashuv vaqtiga oz qoldi (1 soatdan kam vaqt qoldi). Iltimos, tayyorgarlikni ko'ring.",
+      "",
+      "⚠️ <b>Eslatma:</b> Bu bron uchun bekor qilish vaqti tugagan. O'zgarishlar bo'lsa, ustaga to'g'ridan-to'g'ri qo'ng'iroq qiling.",
+    );
+  }
+  return lines(
+    "🚨 <b>Diqqat!</b> Uchrashuv vaqtiga juda oz qoldi! Iltimos, darhol yo'lga chiqing yoki tezroq yetib boring.",
+    "",
+    "⚠️ <b>Eslatma:</b> Bu bronni endi bekor qilib bo'lmaydi. Har qanday o'zgarish bo'yicha ustaga zudlik bilan qo'ng'iroq qiling.",
+  );
+}
+
 export function clientReceiptMessage(input: {
   barber: BarberCard;
   clientName: string;
@@ -252,9 +274,7 @@ export function clientReceiptMessage(input: {
     phoneLine(input.barber),
     mapLinkLine(input.barber),
     "",
-    "ℹ️ <b>Eslatma:</b> Iltimos, 5-10 daqiqa ertaroq keling.",
-    "",
-    "ℹ️ <b>Eslatma:</b> Bronni bekor qilish uchun cheklov vaqti mavjud. Cheklov vaqti o'tgach, faqat usta bilan bog'lanib bekor qilishingiz mumkin.",
+    arrivalNote(input.minutesLeft),
     "",
     botNote(),
   );
