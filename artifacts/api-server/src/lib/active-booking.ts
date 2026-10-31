@@ -11,6 +11,7 @@ import { syncClientMetrics } from "./client-metrics";
 import { findBookingConflict, minsToTime, parseClockTime, timeToMins } from "./booking-conflicts";
 import { phoneKey } from "./phone";
 import { slotOutsideWorkingHours } from "./schedule-guard";
+import { getTelegramBotToken } from "./telegram-token";
 
 const OPEN = ["pending", "confirmed"] as const;
 
@@ -22,7 +23,9 @@ export type ActiveBookingCard = {
   time: string;
   price: number;
   canCancel: boolean;
+  canMove: boolean;
   contactPhone: string | null;
+  phone: string | null;
 };
 
 type ActiveRow = {
@@ -36,8 +39,10 @@ type ActiveRow = {
   price: string;
   clientTelegramId: string | null;
   notes: string | null;
+  clientName: string;
   clientPhone: string | null;
   clientTelegram: string | null;
+  barberTelegram: string | null;
   masterName: string;
   brandName: string | null;
   barberPhone: string | null;
@@ -73,9 +78,8 @@ function toCard(row: ActiveRow): ActiveBookingCard {
   const time = (parseClockTime(row.startTime) || row.startTime).slice(0, 5);
   const minutesLeft = (appointmentMs(row.date, time) - Date.now()) / 60000;
   const canCancel = minutesLeft > normalizeCancelLimit(row.cancelLimit);
-  const contactPhone = !canCancel && row.phoneVisible !== false && row.barberPhone?.trim()
-    ? row.barberPhone.trim()
-    : null;
+  const phone = row.phoneVisible !== false && row.barberPhone?.trim() ? row.barberPhone.trim() : null;
+  const contactPhone = !canCancel ? phone : null;
   return {
     id: row.id,
     master: row.brandName?.trim() || row.masterName?.trim() || "Usta",
@@ -84,7 +88,9 @@ function toCard(row: ActiveRow): ActiveBookingCard {
     time,
     price: Math.round(Number(row.price) || 0),
     canCancel,
+    canMove: minutesLeft >= 60,
     contactPhone,
+    phone,
   };
 }
 
@@ -99,8 +105,10 @@ const activeSelect = {
   price: bookingsTable.price,
   clientTelegramId: bookingsTable.clientTelegramId,
   notes: bookingsTable.notes,
+  clientName: bookingsTable.clientName,
   clientPhone: clientsTable.phone,
   clientTelegram: clientsTable.telegramId,
+  barberTelegram: usersTable.telegramId,
   masterName: usersTable.name,
   brandName: usersTable.brandName,
   barberPhone: usersTable.phone,
@@ -209,6 +217,14 @@ export async function moveOwnedBooking(input: {
 }): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
   const row = await loadOwned(input.bookingId, input.phone, input.telegramId);
   if (!row) return { ok: false, status: 404, message: "Faol bron topilmadi" };
+  const minutesLeft = (appointmentMs(row.date, row.startTime) - Date.now()) / 60000;
+  if (minutesLeft < 60) {
+    return {
+      ok: false,
+      status: 403,
+      message: "Belgilangan vaqtga 1 soatdan kam qolgani sababli vaqtni o‘zgartirib bo‘lmaydi. Iltimos, usta bilan bog‘laning.",
+    };
+  }
 
   const startTime = parseClockTime(input.time);
   if (!startTime || !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
@@ -240,6 +256,7 @@ export async function moveOwnedBooking(input: {
   });
   if (clash) return { ok: false, status: 409, message: "Tanlangan vaqt allaqachon band" };
 
+  const previous = { date: row.date, time: (parseClockTime(row.startTime) || row.startTime).slice(0, 5) };
   await db.update(bookingsTable).set({
     date: input.date,
     startTime,
@@ -250,5 +267,75 @@ export async function moveOwnedBooking(input: {
     updatedAt: new Date(),
   }).where(eq(bookingsTable.id, row.id));
 
+  notifyMove(row, previous, { date: input.date, time: startTime }).catch((err) => {
+    console.error("[ActiveBooking] move notice failed:", err);
+  });
+
   return { ok: true };
+}
+
+const MONTHS = [
+  "yanvar", "fevral", "mart", "aprel", "may", "iyun",
+  "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr",
+];
+
+function uzWhen(date: string, time: string): string {
+  const [, month, day] = date.split("-").map(Number);
+  return `${day}-${MONTHS[(month || 1) - 1]}, ${time}`;
+}
+
+function esc(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+async function sendTelegram(chatId: string, text: string): Promise<void> {
+  const token = getTelegramBotToken();
+  if (!token || !chatId) return;
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    }),
+  });
+  if (!res.ok) {
+    console.error("[ActiveBooking] telegram send failed:", res.status);
+  }
+}
+
+async function notifyMove(
+  row: ActiveRow,
+  previous: { date: string; time: string },
+  next: { date: string; time: string },
+): Promise<void> {
+  const master = row.brandName?.trim() || row.masterName?.trim() || "Usta";
+  const service = row.serviceName?.trim() || "Xizmat";
+  const price = Math.round(Number(row.price) || 0).toLocaleString("ru-RU");
+  const oldWhen = uzWhen(previous.date, previous.time);
+  const newWhen = uzWhen(next.date, next.time);
+  const clientChat = row.clientTelegramId || row.clientTelegram;
+  if (clientChat) {
+    await sendTelegram(clientChat, [
+      "🔄 <b>Broningiz vaqti o‘zgartirildi!</b>",
+      "",
+      `👤 Usta: ${esc(master)}`,
+      `✂️ Xizmat: ${esc(service)}`,
+      `💵 Narx: ${esc(price)} so'm`,
+      `📅 Eski vaqt: ${esc(oldWhen)}`,
+      `📅 Yangi vaqt: ${esc(newWhen)}`,
+    ].join("\n"));
+  }
+  if (row.barberTelegram) {
+    await sendTelegram(row.barberTelegram, [
+      "🔄 <b>Mijoz bron vaqtini o‘zgartirdi</b>",
+      "",
+      `👤 Mijoz: ${esc(row.clientName || "Mijoz")}`,
+      `✂️ Xizmat: ${esc(service)}`,
+      `📅 Eski vaqt: ${esc(oldWhen)}`,
+      `📅 Yangi vaqt: ${esc(newWhen)}`,
+    ].join("\n"));
+  }
 }

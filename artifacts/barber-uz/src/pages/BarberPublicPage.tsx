@@ -135,7 +135,9 @@ type ActiveBookingCard = {
   time: string;
   price: number;
   canCancel: boolean;
+  canMove: boolean;
   contactPhone: string | null;
+  phone: string | null;
 };
 
 type SuccessFacts = {
@@ -147,7 +149,7 @@ type SuccessFacts = {
 };
 
 const CANCEL_OLD_TEXT = "Bu harakatni tasdiqlasangiz eski broningiz bekor qilinadi va yangi tanlagan broningiz tasdiqlanadi. Bu harakatni tasdiqlaysizmi?";
-const MOVE_OLD_TEXT = "Bu harakatni tasdiqlasangiz eski broningiz vaqti yangi tanlagan vaqtingizga o‘zgartiriladi. Bu harakatni tasdiqlaysizmi?";
+const MOVE_CLOSED_TEXT = "Belgilangan vaqtga 1 soatdan kam qolgani sababli vaqtni o‘zgartirib bo‘lmaydi. Iltimos, usta bilan bog‘laning.";
 
 interface SavedClient {
   tgId: string;
@@ -294,7 +296,9 @@ function PublicBookingModal({
   const [phoneError, setPhoneError] = useState("");
   const [bookedDirect, setBookedDirect] = useState(false);
   const [activeBooking, setActiveBooking] = useState<ActiveBookingCard | null>(null);
-  const [activeAsk, setActiveAsk] = useState<null | "cancel" | "move">(null);
+  const [activeAsk, setActiveAsk] = useState<null | "cancel">(null);
+  const [rescheduleMode, setRescheduleMode] = useState(false);
+  const [replacementTime, setReplacementTime] = useState<string | null>(null);
   const [successFacts, setSuccessFacts] = useState<SuccessFacts | null>(null);
 
   useEffect(() => {
@@ -427,7 +431,7 @@ function PublicBookingModal({
     };
   }
 
-  async function createSession(direct: boolean, replacingBookingId?: string) {
+  async function createSession(direct: boolean, replacingBookingId?: string, time = selectedTime) {
     const services = selectedServices.map(s => ({ id: s.id, name: s.name, price: s.price, duration: s.duration }));
     const pageLink = `${window.location.origin}/${barber.username}`;
     const customer = directCustomer();
@@ -438,7 +442,7 @@ function PublicBookingModal({
         barberId: barber.id, barberName: displayName,
         barberAddress: barber.address || "", mapLink: barber.mapLink || "",
         barberPageLink: pageLink, isTeam: false, teamBarberName: null,
-        services, totalPrice, totalDuration, date: dateOpt, time: selectedTime,
+        services, totalPrice, totalDuration, date: dateOpt, time,
         clientName: clientName.trim(),
         clientPhone: direct ? clientPhone.trim() : "",
         ...(direct ? customer.body : {}),
@@ -448,6 +452,7 @@ function PublicBookingModal({
   }
 
   function timeNoLongerOpen(message: string) {
+    setRescheduleMode(false);
     setActiveBooking(null);
     setActiveAsk(null);
     setSelectedTime(null);
@@ -553,15 +558,18 @@ function PublicBookingModal({
   }
 
   async function confirmCancelOld() {
-    if (submitting || !activeBooking || !selectedTime) return;
+    const nextTime = selectedTime || replacementTime;
+    if (submitting || !activeBooking || !nextTime) return;
     setSubmitting(true);
     setFormError("");
     try {
-      const res = await createSession(true, activeBooking.id);
+      const res = await createSession(true, activeBooking.id, nextTime);
       const saved = await readDirectResult(res);
       if (!saved) return;
       setSuccessFacts(null);
+      setSelectedTime(nextTime);
       rememberDirectClient();
+      setRescheduleMode(false);
       setActiveBooking(null);
       setActiveAsk(null);
       setBookedDirect(true);
@@ -571,6 +579,17 @@ function PublicBookingModal({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function startReschedule() {
+    if (!activeBooking?.canMove) return;
+    setFormError("");
+    setActiveAsk(null);
+    setReplacementTime(selectedTime);
+    setSelectedTime(null);
+    setRescheduleMode(true);
+    setStep("time");
+    setSlotReload((n) => n + 1);
   }
 
   async function confirmMoveOld() {
@@ -591,8 +610,29 @@ function PublicBookingModal({
           ...customer.body,
         }),
       });
-      const saved = await readDirectResult(res);
-      if (!saved) return;
+      const data = await res.json().catch(() => null) as { status?: string; message?: string } | null;
+      const message = (data?.message || "").trim();
+      if (res.status === 403) {
+        setRescheduleMode(false);
+        setActiveBooking({ ...activeBooking, canMove: false });
+        setSelectedTime(null);
+        toast({ title: "Vaqtni o‘zgartirib bo‘lmaydi", description: message || MOVE_CLOSED_TEXT, variant: "destructive" });
+        return;
+      }
+      if (res.status === 409) {
+        setSelectedTime(null);
+        setSlotReload((n) => n + 1);
+        const text = message || "Tanlangan vaqt allaqachon band";
+        setFormError(text);
+        toast({ title: "Vaqt band", description: text, variant: "destructive" });
+        return;
+      }
+      if (!res.ok || data?.status !== "confirmed") {
+        const text = message || "Vaqtni saqlab bo‘lmadi. Boshqa vaqtni tanlang.";
+        setFormError(text);
+        toast({ title: "Vaqt mos emas", description: text, variant: "destructive" });
+        return;
+      }
       setSuccessFacts({
         master: activeBooking.master,
         service: activeBooking.service,
@@ -601,6 +641,7 @@ function PublicBookingModal({
         time: selectedTime,
       });
       rememberDirectClient();
+      setRescheduleMode(false);
       setActiveBooking(null);
       setActiveAsk(null);
       setBookedDirect(true);
@@ -619,6 +660,7 @@ function PublicBookingModal({
 
   function slotJustTaken() {
     const text = "Ushbu vaqt yangigina band qilindi. Iltimos, boshqa vaqtni tanlang.";
+    setRescheduleMode(false);
     setActiveBooking(null);
     setActiveAsk(null);
     setSelectedTime(null);
@@ -720,14 +762,22 @@ function PublicBookingModal({
         onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 shrink-0" />
         <div className="flex items-center gap-3 px-5 py-4 shrink-0 border-b border-white/6">
-          {(step === "name" || step === "confirm" || step === "phone") && (
-            <button onClick={() => setStep(step === "phone" ? "confirm" : step === "confirm" ? (returning ? "time" : "name") : "time")}
+          {(step === "name" || step === "confirm" || step === "phone" || (rescheduleMode && step === "time")) && (
+            <button onClick={() => {
+              if (rescheduleMode && step === "time") {
+                setRescheduleMode(false);
+                setSelectedTime(null);
+                setFormError("");
+                return;
+              }
+              setStep(step === "phone" ? "confirm" : step === "confirm" ? (returning ? "time" : "name") : "time");
+            }}
               className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
               <ArrowLeft className="w-4 h-4" />
             </button>
           )}
           <div className="flex-1">
-            {step === "time" && <h2 className="font-bold text-base">Vaqt tanlash</h2>}
+            {step === "time" && <h2 className="font-bold text-base">{rescheduleMode ? "Vaqtni o‘zgartirish" : "Vaqt tanlash"}</h2>}
             {step === "name" && <h2 className="font-bold text-base">✍️ Ismingizni kiriting</h2>}
             {step === "confirm" && <h2 className="font-bold text-base">{returning ? "Buyurtmani tasdiqlash" : "📌 Buyurtmani tasdiqlash"}</h2>}
             {step === "phone" && <h2 className="font-bold text-base">Raqamni yangilash</h2>}
@@ -807,9 +857,18 @@ function PublicBookingModal({
                     ))}
                   </div>
                 )}
-                <button onClick={() => selectedTime && setStep(returning ? "confirm" : "name")} disabled={!selectedTime || slotsLoading}
+                {rescheduleMode && formError && <p className="text-sm text-red-400 mt-4">{formError}</p>}
+                <button onClick={() => {
+                  if (!selectedTime) return;
+                  if (rescheduleMode) {
+                    void confirmMoveOld();
+                    return;
+                  }
+                  setStep(returning ? "confirm" : "name");
+                }} disabled={!selectedTime || slotsLoading || submitting}
+                  data-testid={rescheduleMode ? "save-reschedule" : undefined}
                   className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base mt-6 disabled:opacity-30 shadow-lg shadow-primary/20">
-                  {returning ? "Davom etish →" : "Keyingi →"}
+                  {rescheduleMode ? (submitting ? "Saqlanmoqda..." : "Vaqtni saqlash") : returning ? "Davom etish →" : "Keyingi →"}
                 </button>
               </motion.div>
             )}
@@ -1007,10 +1066,10 @@ function PublicBookingModal({
           </AnimatePresence>
         </div>
       </motion.div>
-      {activeBooking && step !== "done" && (
+      {activeBooking && step !== "done" && !rescheduleMode && (
         <div className="absolute inset-0 z-20 flex items-end justify-center" data-testid="active-booking-modal">
           <div className="absolute inset-0 bg-black/75" />
-          <div className="relative w-full max-w-md bg-card rounded-t-3xl z-10 max-h-[92vh] overflow-y-auto px-5 pb-8 pt-5">
+          <div className="relative w-full max-w-md bg-card rounded-t-3xl z-10 max-h-[92vh] overflow-y-auto px-5 pb-6 pt-5">
             <h2 className="font-bold text-base leading-snug mb-4">⚠️ Sizda allaqachon faol bron mavjud!</h2>
             <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-4 space-y-2">
               <p className="text-sm">👤 Usta: <span className="font-semibold">{activeBooking.master}</span></p>
@@ -1018,41 +1077,52 @@ function PublicBookingModal({
               <p className="text-sm">📅 Sana va Vaqt: <span className="font-semibold">{dateFullLabel(activeBooking.date, todayISO, tomorrowISO)}, {activeBooking.time}</span></p>
               <p className="text-sm">💵 Narx: <span className="font-semibold">{formatPrice(Number(activeBooking.price) || 0)}</span></p>
             </div>
-            {activeBooking.canCancel ? (
-              <button type="button" onClick={() => { setFormError(""); setActiveAsk("cancel"); }} disabled={submitting}
-                data-testid="cancel-old-booking"
-                className="w-full py-3.5 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-300 font-bold mb-3 disabled:opacity-40">
-                ❌ Eski bronni bekor qilish
+            <div className="space-y-2">
+              {activeBooking.canCancel ? (
+                <button type="button" onClick={() => { setFormError(""); setActiveAsk("cancel"); }} disabled={submitting}
+                  data-testid="cancel-old-booking"
+                  className="w-full h-12 rounded-2xl bg-red-500/12 border border-red-400/30 text-red-200 font-semibold disabled:opacity-40">
+                  ❌ Eski bronni bekor qilish
+                </button>
+              ) : (
+                <p className="text-sm text-amber-300 px-1" data-testid="cancel-closed">
+                  ⚠️ Bekor qilish vaqti tugagan.{activeBooking.contactPhone ? ` Aloqa: ${formatSavedPhone(activeBooking.contactPhone)}` : ""}
+                </p>
+              )}
+              {activeBooking.canMove ? (
+                <button type="button" onClick={startReschedule} disabled={submitting}
+                  data-testid="move-old-booking"
+                  className="w-full h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-medium text-foreground disabled:opacity-40">
+                  🔄 Eski bron vaqtini o‘zgartirish
+                </button>
+              ) : (
+                <p className="text-sm leading-relaxed text-amber-100/90 bg-amber-500/10 border border-amber-500/20 rounded-2xl px-4 py-3" data-testid="move-closed">
+                  {MOVE_CLOSED_TEXT}
+                  {activeBooking.phone ? <span className="block mt-1 font-semibold">Aloqa: {formatSavedPhone(activeBooking.phone)}</span> : null}
+                </p>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              <button type="button" onClick={returnToBot}
+                className="h-10 rounded-xl bg-transparent border border-white/10 text-xs font-medium text-foreground/75">
+                🤖 Botga qaytish
               </button>
-            ) : (
-              <p className="text-sm text-amber-300 mb-3" data-testid="cancel-closed">
-                ⚠️ Bekor qilish vaqti tugagan.{activeBooking.contactPhone ? ` Aloqa: ${formatSavedPhone(activeBooking.contactPhone)}` : ""}
-              </p>
-            )}
-            <button type="button" onClick={() => { setFormError(""); setActiveAsk("move"); }} disabled={submitting}
-              data-testid="move-old-booking"
-              className="w-full py-3.5 rounded-2xl bg-white/8 border border-white/10 text-foreground font-bold mb-3 disabled:opacity-40">
-              🔄 Eski bron vaqtini o‘zgartirish
-            </button>
-            <button type="button" onClick={returnToBot}
-              className="w-full py-3.5 rounded-2xl bg-[#2AABEE] text-white font-bold mb-3">
-              🤖 Botga qaytish
-            </button>
-            <button type="button" onClick={() => { setActiveBooking(null); setActiveAsk(null); finishToShop(); }}
-              className="w-full py-3.5 rounded-2xl bg-white/8 border border-white/10 text-foreground font-bold">
-              🌐 Sahifaga qaytish
-            </button>
+              <button type="button" onClick={() => { setActiveBooking(null); setActiveAsk(null); setRescheduleMode(false); finishToShop(); }}
+                className="h-10 rounded-xl bg-transparent border border-white/10 text-xs font-medium text-foreground/75">
+                🌐 Sahifaga qaytish
+              </button>
+            </div>
           </div>
         </div>
       )}
-      {activeAsk && activeBooking && (
+      {activeAsk === "cancel" && activeBooking && (
         <div className="absolute inset-0 z-30 flex items-center justify-center px-5" data-testid="active-booking-ask">
           <div className="absolute inset-0 bg-black/80" />
           <div className="relative w-full max-w-sm bg-card rounded-3xl p-5">
-            <p className="text-sm leading-relaxed mb-4">{activeAsk === "cancel" ? CANCEL_OLD_TEXT : MOVE_OLD_TEXT}</p>
+            <p className="text-sm leading-relaxed mb-4">{CANCEL_OLD_TEXT}</p>
             {formError && <p className="text-sm text-red-400 mb-3">{formError}</p>}
             <button type="button" disabled={submitting}
-              onClick={() => void (activeAsk === "cancel" ? confirmCancelOld() : confirmMoveOld())}
+              onClick={() => void confirmCancelOld()}
               data-testid="active-ask-yes"
               className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold mb-3 disabled:opacity-40">
               {submitting ? "Saqlanmoqda..." : "Ha, tasdiqlayman"}
