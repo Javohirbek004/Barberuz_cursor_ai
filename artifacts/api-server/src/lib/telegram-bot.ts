@@ -2203,6 +2203,8 @@ export async function sendBarberBookingNotification(
       return;
     }
 
+    // This switch stops only the barber's "new booking" alert.
+    // The client's confirmation is sent separately and must still go out.
     if (barber.notifNewBooking === false) {
       log("barber_new_booking_muted", { barberId, sessionId });
       return;
@@ -2284,6 +2286,7 @@ export async function sendDirectBookingNotification(params: {
       .limit(1);
 
     if (!barber?.telegramId) return;
+    if (barber.notifNewBooking === false) return;
 
     const serviceLine = params.serviceName || "Belgilanmagan";
 

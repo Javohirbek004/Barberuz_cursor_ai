@@ -37,7 +37,7 @@ const CANCEL_LIMITS = [
 const CONFIRM_COPY: Record<ClientOff, { title: string; body: string }> = {
   newBooking: {
     title: "⚠️ Ogohlantirish",
-    body: "Siz haqiqatan ham \"Yangi bron\" bildirishnomalarini o‘chirmoqchimisiz? Agar o‘chirsangiz, yangi mijozlar yozilganda Telegram botdan xabar kelmaydi.",
+    body: "Siz haqiqatan ham \"Yangi bron\" bildirishnomalarini o‘chirmoqchimisiz? Agar o‘chirsangiz, yangi bron haqida sizga Telegramdan xabar kelmaydi. Mijozga tasdiq xabari avvalgidek boradi.",
   },
   cancellation: {
     title: "⚠️ Ogohlantirish",

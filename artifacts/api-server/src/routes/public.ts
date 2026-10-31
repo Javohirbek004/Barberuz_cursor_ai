@@ -372,7 +372,7 @@ router.post("/sessions", async (req, res) => {
           } catch (linkErr) {
             console.error("[PublicAPI] session link failed:", linkErr);
           }
-          deliverBookingReceipt(bookingId, {
+          await deliverBookingReceipt(bookingId, {
             telegramId: tgIdStr,
             phone: safeClientPhone,
             keepConfirmed: true,
