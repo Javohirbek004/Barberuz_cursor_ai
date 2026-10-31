@@ -258,7 +258,7 @@ async function refreshSavedClientPhone() {
 }
 
 function PublicBookingModal({
-  barber, selectedServices, totalDuration, totalPrice, onClose, onFinished, resume,
+  barber, selectedServices, totalDuration, totalPrice, onClose, onFinished, onLeaveSuccess, resume,
 }: {
   barber: BarberData;
   selectedServices: BarberData["services"];
@@ -266,6 +266,8 @@ function PublicBookingModal({
   totalPrice: number;
   onClose: () => void;
   onFinished?: () => void;
+  /** Success screen was left open, then the page came back. Start a fresh booking. */
+  onLeaveSuccess?: () => void;
   resume?: BookingDraft | null;
 }) {
   // Calendar days are always Tashkent days, whatever the client's device timezone is.
@@ -314,6 +316,39 @@ function PublicBookingModal({
     void refreshSavedClientPhone();
     return () => window.removeEventListener("barber-client-saved", refresh);
   }, []);
+
+  const onLeaveSuccessRef = useRef(onLeaveSuccess);
+  onLeaveSuccessRef.current = onLeaveSuccess;
+  useEffect(() => {
+    if (step !== "done") return;
+    let left = false;
+    const markLeft = () => { left = true; };
+    const restart = () => {
+      left = false;
+      onLeaveSuccessRef.current?.();
+    };
+    const comeBack = () => { if (left) restart(); };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted || left) restart();
+    };
+    const onVis = () => {
+      if (document.visibilityState === "hidden") markLeft();
+      else comeBack();
+    };
+    window.addEventListener("pagehide", markLeft);
+    window.addEventListener("pageshow", onPageShow);
+    document.addEventListener("visibilitychange", onVis);
+    const tg = getTelegramWebApp();
+    tg?.onEvent?.("deactivated", markLeft);
+    tg?.onEvent?.("activated", comeBack);
+    return () => {
+      window.removeEventListener("pagehide", markLeft);
+      window.removeEventListener("pageshow", onPageShow);
+      document.removeEventListener("visibilitychange", onVis);
+      tg?.offEvent?.("deactivated", markLeft);
+      tg?.offEvent?.("activated", comeBack);
+    };
+  }, [step]);
 
   useEffect(() => {
     wakeTelegramWebApp();
@@ -1504,6 +1539,13 @@ function PublicView({ barber }: { barber: BarberData }) {
               setSelectedIds([]);
               clearBookingDraft();
               setTab("asosiy");
+            }}
+            onLeaveSuccess={() => {
+              setBookingOpen(false);
+              setResume(null);
+              setSelectedIds([]);
+              clearBookingDraft();
+              setTab("xizmatlar");
             }}
           />
         )}
