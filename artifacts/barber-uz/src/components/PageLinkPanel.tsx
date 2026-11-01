@@ -5,11 +5,6 @@ import { QR_CARD, canvasToPdf, drawQrPoster, qrCenterRatio } from "@/lib/qr-post
 
 const MONTHS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
 const DEFAULT_CTA = "Onlayn navbat olish uchun skanerlang";
-const CTA_PRESETS = [
-  "Onlayn navbat olish uchun skanerlang",
-  "Bron qilish uchun skanerlang",
-  "Navbatingizni oldindan band qiling",
-];
 const RESERVED = new Set(["admin", "login", "settings", "services", "barber", "register", "dashboard", "calendar", "clients", "client", "api", "b"]);
 
 type CheckStatus = "ok" | "space" | "format" | "length" | "reserved" | "taken" | "";
@@ -84,8 +79,6 @@ export function PageLinkPanel({
   const [nextAt, setNextAt] = useState<string | null>(null);
   const [cta, setCta] = useState(DEFAULT_CTA);
   const [logo, setLogo] = useState<string | null>(null);
-  const [scans, setScans] = useState<number | null>(null);
-  const [bookings, setBookings] = useState<number | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [copied, setCopied] = useState(false);
@@ -111,14 +104,6 @@ export function PageLinkPanel({
         if (typeof data.qrCta === "string" && data.qrCta.trim()) setCta(data.qrCta);
         if (typeof data.qrLogo === "string" && data.qrLogo) setLogo(data.qrLogo);
         qrReady.current = true;
-      })
-      .catch(() => {});
-    fetch("/api/settings/page-stats", { headers: authHeaders() })
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => {
-        if (cancelled || !data) return;
-        setScans(Number(data.scans || 0));
-        setBookings(Number(data.bookings || 0));
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -186,17 +171,6 @@ export function PageLinkPanel({
         onLogo={(value) => { setLogo(value); void saveQr({ logo: value }); }}
       />
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-white/6 rounded-2xl p-4 text-center">
-          <p className="text-3xl font-bold text-primary mb-1">{scans ?? "—"}</p>
-          <p className="text-xs text-muted-foreground">QR skanerlashlar</p>
-        </div>
-        <div className="bg-card border border-white/6 rounded-2xl p-4 text-center">
-          <p className="text-3xl font-bold text-emerald-400 mb-1">{bookings ?? "—"}</p>
-          <p className="text-xs text-muted-foreground">Bronlar</p>
-        </div>
-      </div>
-
       {editorOpen && (
         <SlugEditor
           currentSlug={slug}
@@ -234,8 +208,10 @@ function QrStudio({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const qrRef = useRef<HTMLDivElement>(null);
+  const ctaRef = useRef<HTMLInputElement>(null);
   const scanUrl = `${APP_ORIGIN}/${slug}?qr=1`;
   const center = `${qrCenterRatio() * 100}%`;
+  const pencilTop = `calc(${center} + ${(88 / QR_CARD.height) * 100}% + 8px)`;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -275,15 +251,11 @@ function QrStudio({
         <canvas ref={canvasRef} data-testid="qr-canvas" className="w-full rounded-2xl bg-white" style={{ aspectRatio: `${QR_CARD.width} / ${QR_CARD.height}` }} />
         <label
           data-testid="qr-logo-upload"
-          className={`absolute left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 cursor-pointer flex-col items-center justify-center rounded-full text-center shadow-md ${logo ? "h-10 w-10 bg-black/70 text-base" : "w-[28%] bg-white px-2 text-neutral-900 aspect-square"}`}
-          style={{ top: center }}
+          aria-label="Logoni o‘zgartirish"
+          className="absolute left-1/2 z-10 flex h-9 w-9 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full border border-white/80 bg-black/80 text-base text-white shadow-md"
+          style={{ top: pencilTop }}
         >
-          {logo ? "✏️" : (
-            <>
-              <span className="text-xl leading-none">📷</span>
-              <span className="mt-1 text-[10px] font-semibold leading-tight">Logo yuklash</span>
-            </>
-          )}
+          <span aria-hidden>✎</span>
           <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => {
             const file = event.target.files?.[0];
             event.target.value = "";
@@ -299,22 +271,26 @@ function QrStudio({
           Logoni olib tashlash
         </button>
       )}
-      <label className="block text-xs font-semibold text-muted-foreground">QR ostidagi yozuvni tahrirlash (✏️)</label>
       <div className="relative">
-        <input value={cta} maxLength={80} onChange={(event) => onCta(event.target.value)}
-          className="w-full rounded-xl border border-white/10 bg-background/60 px-3 py-2.5 pr-10 text-sm outline-none" />
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm" aria-hidden>✏️</span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {CTA_PRESETS.map((preset) => (
-          <button key={preset} type="button" onClick={() => onCta(preset)}
-            className={`rounded-full border px-3 py-1.5 text-xs ${cta === preset ? "border-primary bg-primary/15 text-primary" : "border-white/10 text-muted-foreground"}`}>
-            {preset}
-          </button>
-        ))}
+        <input
+          ref={ctaRef}
+          data-testid="qr-cta"
+          value={cta}
+          maxLength={80}
+          onChange={(event) => onCta(event.target.value)}
+          className="w-full rounded-xl border border-white/10 bg-background/60 px-3 py-2.5 pr-11 text-sm outline-none"
+        />
+        <button
+          type="button"
+          aria-label="Yozuvni tahrirlash"
+          onClick={() => ctaRef.current?.focus()}
+          className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-base text-foreground"
+        >
+          ✎
+        </button>
       </div>
       <p className="text-xs text-amber-200/80 leading-relaxed">
-        💡 Eslatma: Sahifa manzilingizni o‘zgartirsangiz ham, chop etilgan ushbu QR-kod 30 kun davomida avtomatik ravishda yangi havolangizga yo‘naltirib turiladi.
+        💡 Eslatma: Sahifa manzilingizni o‘zgartirsangiz ham, eski chop etilgan QR-kod 30 kun davomida avtomatik ravishda yangi havolangizga yo‘naltirib turiladi. Bu vaqt ichida mijozlaringiz yo‘qolmaydi va eski QR-kodni yangisiga almashtirishga ulgurasiz.
       </p>
       <div className="grid grid-cols-2 gap-2">
         <button type="button" onClick={() => void downloadPng()} className="h-11 rounded-xl bg-primary text-black text-xs font-bold">📥 PNG Yuklash</button>
