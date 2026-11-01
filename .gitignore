@@ -11,6 +11,8 @@ out-tsc
 
 # dependencies
 node_modules
+# npm lock is unused; this repo installs with pnpm
+package-lock.json
 
 # IDEs and editors
 /.idea
