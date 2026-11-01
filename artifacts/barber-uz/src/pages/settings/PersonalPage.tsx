@@ -1273,6 +1273,60 @@ function XizmatlarTab({
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [catCreating, setCatCreating] = useState(false);
+  const catScrollRef = useRef<HTMLDivElement>(null);
+  const newCatRowRef = useRef<HTMLDivElement>(null);
+  const newCatInputRef = useRef<HTMLInputElement>(null);
+  const catEdgeRef = useRef({ left: false, right: false });
+  const [catEdge, setCatEdge] = useState({ left: false, right: false });
+
+  const updateCatFade = useCallback(() => {
+    const el = catScrollRef.current;
+    const next = !el
+      ? { left: false, right: false }
+      : {
+          left: el.scrollLeft > 8,
+          right: el.scrollWidth - el.clientWidth - el.scrollLeft > 8,
+        };
+    const prev = catEdgeRef.current;
+    if (prev.left === next.left && prev.right === next.right) return;
+    catEdgeRef.current = next;
+    setCatEdge(next);
+  }, []);
+
+  useEffect(() => {
+    updateCatFade();
+    const el = catScrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => updateCatFade());
+    ro.observe(el);
+    for (const child of el.children) ro.observe(child);
+    return () => ro.disconnect();
+  }, [updateCatFade, categories.length, showNewCat, catsLoading]);
+
+  useEffect(() => {
+    if (!showNewCat) return;
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => {
+        const scroller = catScrollRef.current;
+        const row = newCatRowRef.current;
+        if (scroller && row) {
+          const scrollerRect = scroller.getBoundingClientRect();
+          const rowRect = row.getBoundingClientRect();
+          const extraRight = rowRect.right - scrollerRect.right;
+          const extraLeft = scrollerRect.left - rowRect.left;
+          if (extraRight > 1) scroller.scrollBy({ left: extraRight + 12, behavior: "smooth" });
+          else if (extraLeft > 1) scroller.scrollBy({ left: -(extraLeft + 12), behavior: "smooth" });
+        }
+        newCatInputRef.current?.focus({ preventScroll: true });
+        updateCatFade();
+      });
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      if (second) cancelAnimationFrame(second);
+    };
+  }, [showNewCat, updateCatFade]);
 
   // Auto-seed default categories on first load when list is empty
   useEffect(() => {
@@ -1349,53 +1403,71 @@ function XizmatlarTab({
 
       {/* Category filter row */}
       {!catsLoading && (
-        <div className="flex gap-1.5 overflow-x-auto pb-3 mb-4 scrollbar-hide">
-          <button onClick={() => setActiveCat(null)}
-            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${activeCat === null ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground"}`}>
-            Hammasi
-          </button>
-          {categories.map((c: ServiceCategory) => (
-            <div key={c.id} className="shrink-0 flex items-center gap-0.5">
-              <button onClick={() => setActiveCat(c.id === activeCat ? null : c.id)}
-                className={`px-3 py-1.5 rounded-l-full text-xs font-semibold border border-r-0 transition-all ${activeCat === c.id ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground"}`}>
-                {c.name}
-              </button>
-              <div className={`flex items-center border transition-all rounded-r-full overflow-hidden ${activeCat === c.id ? "border-primary/30 bg-primary/15" : "border-white/8 bg-white/4"}`}>
-                <button onClick={() => { setRenameCat(c); setRenameVal(c.name); }}
-                  className="w-6 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
-                  <Pencil className="w-2.5 h-2.5" />
+        <div className="relative mb-4">
+          <div
+            ref={catScrollRef}
+            data-testid="category-scroll"
+            onScroll={updateCatFade}
+            className="flex gap-1.5 overflow-x-auto pb-3 scrollbar-hide"
+          >
+            <button onClick={() => setActiveCat(null)}
+              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${activeCat === null ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground"}`}>
+              Hammasi
+            </button>
+            {categories.map((c: ServiceCategory) => (
+              <div key={c.id} className="shrink-0 flex items-center gap-0.5">
+                <button onClick={() => setActiveCat(c.id === activeCat ? null : c.id)}
+                  className={`px-3 py-1.5 rounded-l-full text-xs font-semibold border border-r-0 transition-all ${activeCat === c.id ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground"}`}>
+                  {c.name}
                 </button>
-                <button onClick={() => setDeleteCat(c)}
-                  className="w-6 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors">
-                  <Trash2 className="w-2.5 h-2.5" />
+                <div className={`flex items-center border transition-all rounded-r-full overflow-hidden ${activeCat === c.id ? "border-primary/30 bg-primary/15" : "border-white/8 bg-white/4"}`}>
+                  <button onClick={() => { setRenameCat(c); setRenameVal(c.name); }}
+                    className="w-6 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+                    <Pencil className="w-2.5 h-2.5" />
+                  </button>
+                  <button onClick={() => setDeleteCat(c)}
+                    className="w-6 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors">
+                    <Trash2 className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {/* Add category inline */}
+            {showNewCat ? (
+              <div ref={newCatRowRef} data-testid="new-category-row" className="flex items-center gap-1 shrink-0">
+                <input
+                  ref={newCatInputRef}
+                  data-testid="new-category-input"
+                  value={newCatName}
+                  onChange={e => setNewCatName(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleCreateCat()}
+                  placeholder="Kategoriya nomi"
+                  className="h-8 px-2 w-28 rounded-full text-xs bg-white/5 border border-white/15 focus:outline-none focus:border-primary/50"
+                />
+                <button data-testid="new-category-save" onClick={handleCreateCat} disabled={catCreating || !newCatName.trim()}
+                  className="h-8 w-8 rounded-full bg-primary/15 border border-primary/30 text-primary flex items-center justify-center shrink-0 disabled:opacity-40">
+                  {catCreating
+                    ? <span className="w-3 h-3 border border-primary/40 border-t-primary rounded-full animate-spin" />
+                    : <Check className="w-3.5 h-3.5" />}
+                </button>
+                <button data-testid="new-category-cancel" onClick={() => { setShowNewCat(false); setNewCatName(""); }}
+                  className="h-8 w-8 rounded-full bg-white/5 border border-white/10 text-muted-foreground flex items-center justify-center shrink-0">
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
-            </div>
-          ))}
-
-          {/* Add category inline */}
-          {showNewCat ? (
-            <div className="flex items-center gap-1 shrink-0">
-              <input autoFocus value={newCatName} onChange={e => setNewCatName(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleCreateCat()}
-                placeholder="Kategoriya nomi"
-                className="h-8 px-2 w-28 rounded-full text-xs bg-white/5 border border-white/15 focus:outline-none focus:border-primary/50" />
-              <button onClick={handleCreateCat} disabled={catCreating || !newCatName.trim()}
-                className="h-8 w-8 rounded-full bg-primary/15 border border-primary/30 text-primary flex items-center justify-center shrink-0 disabled:opacity-40">
-                {catCreating
-                  ? <span className="w-3 h-3 border border-primary/40 border-t-primary rounded-full animate-spin" />
-                  : <Check className="w-3.5 h-3.5" />}
+            ) : (
+              <button data-testid="add-category" onClick={() => setShowNewCat(true)}
+                className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border border-dashed border-white/15 text-muted-foreground hover:text-foreground hover:border-white/30 transition-all flex items-center gap-1">
+                <Plus className="w-3 h-3" /> Yangi
               </button>
-              <button onClick={() => { setShowNewCat(false); setNewCatName(""); }}
-                className="h-8 w-8 rounded-full bg-white/5 border border-white/10 text-muted-foreground flex items-center justify-center shrink-0">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ) : (
-            <button onClick={() => setShowNewCat(true)}
-              className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border border-dashed border-white/15 text-muted-foreground hover:text-foreground hover:border-white/30 transition-all flex items-center gap-1">
-              <Plus className="w-3 h-3" /> Yangi
-            </button>
+            )}
+          </div>
+          {catEdge.left && (
+            <div data-testid="category-fade-left" className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background to-transparent" />
+          )}
+          {catEdge.right && (
+            <div data-testid="category-fade-right" className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-background to-transparent" />
           )}
         </div>
       )}
