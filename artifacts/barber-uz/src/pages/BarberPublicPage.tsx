@@ -959,7 +959,7 @@ function PublicBookingModal({
                       data-closed={closed ? "1" : "0"}
                       onClick={() => {
                         if (closed) {
-                          toast({ title: "Bu kun dam olish kuni" });
+                          toast({ title: "Afsuski, bu kun usta uchun dam olish kuni. Iltimos, boshqa sanani tanlang." });
                           return;
                         }
                         setDateOpt(day);
@@ -993,7 +993,7 @@ function PublicBookingModal({
                       todayISO={todayISO}
                       selected={dateOpt}
                       isClosed={(iso) => !isWorkingDate(barber, iso)}
-                      onClosed={() => toast({ title: "Bu kun dam olish kuni" })}
+                      onClosed={() => toast({ title: "Afsuski, bu kun usta uchun dam olish kuni. Iltimos, boshqa sanani tanlang." })}
                       onSelect={(iso) => {
                         setDateOpt(iso);
                         setSelectedTime(null);
