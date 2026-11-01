@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Send, MapPin, Instagram, Phone, X, ArrowLeft } from "lucide-react";
+import { Clock, Send, MapPin, Instagram, Phone, X, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { SlotPeriodTabs } from "@/components/SlotPeriodTabs";
 import { ShopTimeHint } from "@/components/ShopTimeHint";
 import {
@@ -126,6 +126,106 @@ function dateFullLabel(iso: string, todayISO: string, tomorrowISO: string): stri
 }
 
 type PubBookingStep = "time" | "name" | "confirm" | "phone" | "verifying" | "done";
+
+function isoParts(iso: string): { year: number; month: number } {
+  const [year = 1970, month = 1] = iso.split("-").map(Number);
+  return { year, month };
+}
+
+function shiftMonth(year: number, month: number, delta: number): { year: number; month: number } {
+  const next = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return { year: next.getUTCFullYear(), month: next.getUTCMonth() + 1 };
+}
+
+function monthCells(year: number, month: number): Array<string | null> {
+  const first = new Date(Date.UTC(year, month - 1, 1));
+  const count = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const cells: Array<string | null> = Array.from({ length: first.getUTCDay() }, () => null);
+  for (let day = 1; day <= count; day++) {
+    cells.push(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+  }
+  return cells;
+}
+
+/** Month grid for the client. Days the barber marked off cannot be pressed. */
+function ClientDateGrid({
+  todayISO,
+  selected,
+  isClosed,
+  onSelect,
+}: {
+  todayISO: string;
+  selected: string;
+  isClosed: (iso: string) => boolean;
+  onSelect: (iso: string) => void;
+}) {
+  const latest = addDaysISO(todayISO, 365);
+  const initial = isoParts(selected >= todayISO ? selected : todayISO);
+  const [view, setView] = useState(initial);
+  const minView = isoParts(todayISO);
+  const maxView = isoParts(latest);
+  const atStart = view.year < minView.year || (view.year === minView.year && view.month <= minView.month);
+  const atEnd = view.year > maxView.year || (view.year === maxView.year && view.month >= maxView.month);
+
+  return (
+    <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3" data-testid="public-date-grid">
+      <div className="mb-2 flex items-center justify-between">
+        <button
+          type="button"
+          disabled={atStart}
+          aria-label="Oldingi oy"
+          onClick={() => setView((current) => shiftMonth(current.year, current.month, -1))}
+          className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground disabled:opacity-30"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <p className="text-sm font-semibold text-foreground">
+          {UZ_MONTHS_PUB[view.month - 1]} {view.year}
+        </p>
+        <button
+          type="button"
+          disabled={atEnd}
+          aria-label="Keyingi oy"
+          onClick={() => setView((current) => shiftMonth(current.year, current.month, 1))}
+          className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground disabled:opacity-30"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="mb-1 grid grid-cols-7 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60">
+        {UZ_SHORT_DAYS_PUB.map((label) => <span key={label}>{label}</span>)}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {monthCells(view.year, view.month).map((iso, index) => {
+          if (!iso) return <span key={`empty-${index}`} />;
+          const past = iso < todayISO || iso > latest;
+          const closed = !past && isClosed(iso);
+          const disabled = past || closed;
+          const chosen = iso === selected;
+          return (
+            <button
+              key={iso}
+              type="button"
+              disabled={disabled}
+              data-testid={`public-date-${iso}`}
+              data-closed={closed ? "1" : "0"}
+              onClick={() => { if (!disabled) onSelect(iso); }}
+              className={`h-9 rounded-xl text-sm font-semibold ${
+                disabled
+                  ? "cursor-not-allowed bg-white/[0.03] text-muted-foreground/30"
+                  : chosen
+                    ? "bg-primary/20 text-primary"
+                    : "text-foreground hover:bg-white/8"
+              }`}
+            >
+              {Number(iso.slice(-2))}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 type ActiveBookingCard = {
   id: string;
@@ -402,7 +502,7 @@ function PublicBookingModal({
       .catch(() => { setBusySlots([]); setSlotsLoading(false); });
   }, [dateOpt, barber.username, slotReload]);
 
-  const dateInputRef = useRef<HTMLInputElement>(null);
+  const [otherDateOpen, setOtherDateOpen] = useState(false);
   const returnNameRef = useRef<HTMLInputElement>(null);
   const displayName = barber.brandName || barber.name;
   const dateLabel   = dateFullLabel(dateOpt, todayISO, tomorrowISO);
@@ -865,28 +965,29 @@ function PublicBookingModal({
                     );
                   })}
                 </div>
-                {/* Calendar picker trigger */}
-                <div className="flex justify-center mb-5">
-                  <button type="button" onClick={() => dateInputRef.current?.showPicker()}
-                    className="text-sm font-medium flex items-center gap-1.5 py-1 transition-colors"
-                    style={{ color: dateOpt !== todayISO && dateOpt !== tomorrowISO ? "#FACC15" : "rgba(250,204,21,0.65)" }}>
-                    📅 {dateOpt !== todayISO && dateOpt !== tomorrowISO
-                      ? `${dateFullLabel(dateOpt, todayISO, tomorrowISO)} tanlandi`
-                      : "Boshqa sana ➔"}
-                  </button>
-                  <input ref={dateInputRef} type="date" aria-hidden="true"
-                    className="sr-only" min={todayISO} value={dateOpt}
-                    onChange={e => {
-                      const value = e.target.value;
-                      if (!value) return;
-                      if (!isWorkingDate(barber, value)) {
-                        e.target.value = dateOpt;
-                        toast({ title: "Bu kun dam olish kuni", description: "Bu kunda bron qilib bo'lmaydi" });
-                        return;
-                      }
-                      setDateOpt(value);
-                      setSelectedTime(null);
-                    }} />
+                <div className="mb-5">
+                  <div className="flex justify-center">
+                    <button type="button" data-testid="public-other-date"
+                      onClick={() => setOtherDateOpen((open) => !open)}
+                      className="text-sm font-medium flex items-center gap-1.5 py-1 transition-colors"
+                      style={{ color: dateOpt !== todayISO && dateOpt !== tomorrowISO ? "#FACC15" : "rgba(250,204,21,0.65)" }}>
+                      📅 {dateOpt !== todayISO && dateOpt !== tomorrowISO
+                        ? `${dateFullLabel(dateOpt, todayISO, tomorrowISO)} tanlandi`
+                        : "Boshqa sana ➔"}
+                    </button>
+                  </div>
+                  {otherDateOpen && (
+                    <ClientDateGrid
+                      todayISO={todayISO}
+                      selected={dateOpt}
+                      isClosed={(iso) => !isWorkingDate(barber, iso)}
+                      onSelect={(iso) => {
+                        setDateOpt(iso);
+                        setSelectedTime(null);
+                        setOtherDateOpen(false);
+                      }}
+                    />
+                  )}
                 </div>
                 <ShopTimeHint />
                 {!slotsLoading && allSlots.length > 0 && (

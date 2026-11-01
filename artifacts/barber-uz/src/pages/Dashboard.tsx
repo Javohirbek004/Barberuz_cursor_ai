@@ -103,7 +103,7 @@ function calcNextBookingInfo(
   const clock = tashkentClock(now);
   const nowMins = clock.mins;
   const today = clock.date;
-  if (!shift.enabled) return { main: "Bugun dam olish kuni", sub: "", nextId: null };
+  if (!shift.enabled) return { main: "Bugun bronlar yo'q", sub: "", nextId: null };
   for (const b of upcomingBookings) {
     if (bookingDay(b.date) !== today) continue;
     const start = toMins(b.startTime);
