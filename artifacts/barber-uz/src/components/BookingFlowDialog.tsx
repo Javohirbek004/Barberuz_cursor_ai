@@ -20,6 +20,8 @@ import {
   Plus,
   AlertTriangle,
   Check,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -41,6 +43,7 @@ import { ShopTimeHint } from "@/components/ShopTimeHint";
 import {
   TODAY_PASSED_MESSAGE,
   todaySlotsExhausted,
+  addDaysISO,
   bookingsToIntervals,
   filterSlotsByPeriod,
   generateSmartSlots,
@@ -634,45 +637,165 @@ function TimePicker({
   );
 }
 
-// ── Date Picker (tabs + calendar trigger) ────────────────────────────────────
-function DatePicker({ form, onChange, hasError }: {
+function monthCells(year: number, month: number): Array<string | null> {
+  const first = new Date(Date.UTC(year, month - 1, 1));
+  const count = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const cells: Array<string | null> = Array.from({ length: first.getUTCDay() }, () => null);
+  for (let day = 1; day <= count; day++) {
+    cells.push(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+  }
+  return cells;
+}
+
+const MASTER_WEEKDAYS = ["Ya", "Du", "Se", "Ch", "Pa", "Ju", "Sh"];
+const MASTER_MONTHS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
+
+// ── Date Picker (tabs + calendar) ─────────────────────────────────────────────
+function DatePicker({ form, onPick, hasError, isClosed }: {
   form: FormState;
-  onChange: (patch: Partial<FormState>) => void;
+  onPick: (date: string) => void;
   hasError?: boolean;
+  isClosed: (iso: string) => boolean;
 }) {
-  const ref = useRef<HTMLInputElement>(null);
-  const todayVal    = todayStr();
+  const todayVal = todayStr();
   const tomorrowVal = tomorrowStr();
-  const isCustom    = form.date !== todayVal && form.date !== tomorrowVal;
+  const isCustom = Boolean(form.date) && form.date !== todayVal && form.date !== tomorrowVal;
+  const [open, setOpen] = useState(false);
+  const latest = addDaysISO(todayVal, 365);
+  const [view, setView] = useState(() => {
+    const [year = 1970, month = 1] = todayVal.split("-").map(Number);
+    return { year, month };
+  });
+  const min = todayVal.split("-").map(Number);
+  const max = latest.split("-").map(Number);
+  const atStart = view.year < min[0] || (view.year === min[0] && view.month <= min[1]);
+  const atEnd = view.year > max[0] || (view.year === max[0] && view.month >= max[1]);
+
+  useEffect(() => {
+    if (form.date) setOpen(false);
+  }, [form.date]);
+
+  function shift(delta: number) {
+    const next = new Date(Date.UTC(view.year, view.month - 1 + delta, 1));
+    setView({ year: next.getUTCFullYear(), month: next.getUTCMonth() + 1 });
+  }
 
   return (
     <div>
       <div className="flex gap-2 mb-2">
-        {[todayVal, tomorrowVal].map((d, i) => (
-          <button key={d} type="button"
-            onClick={() => onChange({ date: d, time: "" })}
-            className={`flex-1 py-3 rounded-2xl text-sm font-bold border transition-all ${
-              form.date === d
-                ? "bg-primary/15 border-primary/30 text-primary"
-                : hasError
-                  ? "bg-background/60 border-red-500/70 text-muted-foreground hover:bg-white/5"
-                  : "bg-background/60 border-white/10 text-muted-foreground hover:bg-white/5"
-            }`}>
-            {i === 0 ? "Bugun" : "Ertaga"}
-          </button>
-        ))}
+        {[todayVal, tomorrowVal].map((d, i) => {
+          const closed = isClosed(d);
+          const selected = form.date === d;
+          return (
+            <button key={d} type="button"
+              data-testid={i === 0 ? "master-day-today" : "master-day-tomorrow"}
+              data-closed={closed ? "1" : "0"}
+              onClick={() => onPick(d)}
+              className={`flex-1 py-3 rounded-2xl text-sm font-bold border transition-all ${
+                selected
+                  ? "bg-primary/15 border-primary/30 text-primary"
+                  : closed
+                    ? "bg-white/4 border-white/8 text-muted-foreground/40"
+                    : hasError
+                      ? "bg-background/60 border-red-500/70 text-muted-foreground hover:bg-white/5"
+                      : "bg-background/60 border-white/10 text-muted-foreground hover:bg-white/5"
+              }`}>
+              {i === 0 ? "Bugun" : "Ertaga"}
+            </button>
+          );
+        })}
       </div>
       <div className="flex justify-center">
-        <button type="button" onClick={() => ref.current?.showPicker()}
+        <button type="button" data-testid="master-other-date" onClick={() => setOpen((value) => !value)}
           className="text-sm flex items-center gap-1.5 py-1 transition-colors"
           style={{ color: isCustom ? "#FACC15" : "rgba(250,204,21,0.65)" }}>
           📅 {isCustom ? `${fmtDateUzShort(form.date)} tanlandi` : "Boshqa sana ➔"}
         </button>
-        <input ref={ref} type="date" aria-hidden="true" className="sr-only"
-          min={todayVal} value={form.date}
-          onChange={e => { if (e.target.value) onChange({ date: e.target.value, time: "" }); }} />
       </div>
+      {open && (
+        <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3" data-testid="master-date-grid">
+          <div className="mb-2 flex items-center justify-between">
+            <button type="button" disabled={atStart} onClick={() => shift(-1)} aria-label="Oldingi oy" className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground disabled:opacity-30">
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <p className="text-sm font-semibold">{MASTER_MONTHS[view.month - 1]} {view.year}</p>
+            <button type="button" disabled={atEnd} onClick={() => shift(1)} aria-label="Keyingi oy" className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground disabled:opacity-30">
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="mb-1 grid grid-cols-7 text-center text-[10px] font-semibold uppercase text-muted-foreground/60">
+            {MASTER_WEEKDAYS.map((label) => <span key={label}>{label}</span>)}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {monthCells(view.year, view.month).map((iso, index) => {
+              if (!iso) return <span key={`empty-${index}`} />;
+              const past = iso < todayVal || iso > latest;
+              const closed = !past && isClosed(iso);
+              const selected = form.date === iso;
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  disabled={past}
+                  data-testid={`master-date-${iso}`}
+                  data-closed={closed ? "1" : "0"}
+                  onClick={() => { if (!past) onPick(iso); }}
+                  className={`h-9 rounded-xl text-sm font-semibold ${
+                    past || (closed && !selected)
+                      ? "bg-white/[0.03] text-muted-foreground/30"
+                      : selected
+                        ? "bg-primary/20 text-primary"
+                        : "text-foreground hover:bg-white/8"
+                  }`}
+                >
+                  {Number(iso.slice(-2))}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function OffDayWarning({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <motion.div
+      className="fixed inset-0 z-[200] flex items-center justify-center px-5"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      data-testid="off-day-warning"
+    >
+      <motion.div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
+      <motion.div
+        initial={{ scale: 0.94, y: 16 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.94, y: 16 }}
+        className="relative w-full max-w-sm bg-[#18181d] rounded-3xl border border-white/8 p-6 z-10 shadow-2xl"
+      >
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-2xl bg-amber-500/15 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-amber-400" />
+          </div>
+          <h3 className="font-bold text-foreground text-base leading-snug">Diqqat!</h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
+          Bu kun dam olish kuni deb belgilangan. Baribir bron qo'shmoqchimisiz?
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button" data-testid="off-day-cancel" onClick={onCancel}
+            className="py-3 rounded-2xl bg-white/6 border border-white/10 text-sm font-semibold text-foreground">
+            Bekor qilish
+          </button>
+          <button type="button" data-testid="off-day-confirm" onClick={onConfirm}
+            className="py-3 rounded-2xl bg-primary/15 border border-primary/30 text-primary text-sm font-semibold">
+            Baribir qo'shish
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -955,9 +1078,13 @@ function BookingFormContent({
   onSave,
   onClose,
   onAddService,
+  isClosed,
+  onPickDate,
 }: {
   form: FormState;
   onChange: (patch: Partial<FormState>) => void;
+  isClosed: (iso: string) => boolean;
+  onPickDate: (date: string) => void;
   services: Service[];
   svcLoading: boolean;
   selectedSvc: Service | undefined;
@@ -974,6 +1101,8 @@ function BookingFormContent({
   onSave: () => void;
   onClose: () => void;
   onAddService: () => void;
+  isClosed: (iso: string) => boolean;
+  onPickDate: (date: string) => void;
 }) {
   const readyForSlots = Boolean(form.serviceId && form.date);
 
@@ -1059,7 +1188,7 @@ function BookingFormContent({
       {/* 4. Sana */}
       <div data-booking-field="date">
         <FieldLabel required>Sana</FieldLabel>
-        <DatePicker form={form} onChange={onChange} hasError={Boolean(fieldErrors.date)} />
+        <DatePicker form={form} onPick={onPickDate} hasError={Boolean(fieldErrors.date)} isClosed={isClosed} />
         <FieldError message={fieldErrors.date} />
       </div>
 
@@ -1186,19 +1315,23 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
   const [saved, setSaved] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [scrollKey, setScrollKey] = useState(0);
+  const [allowedOffDate, setAllowedOffDate] = useState<string | null>(null);
+  const [pendingOffDate, setPendingOffDate] = useState<string | null>(null);
 
   // ── Existing bookings (conflict detection) ────────────────────────────────
-  const { data: bookingsData } = useListBookings({ date: form.date });
+  const { data: bookingsData } = useListBookings({ date: form.date || todayStr() });
   const bookedIntervals = bookingsToIntervals(
     (bookingsData?.bookings ?? []).filter((b) => b.status !== "cancelled" && (b.status as string) !== "auto_cancelled" && (b.status as string) !== "no_show"),
   );
 
   // Hours for the chosen weekday (Monday and Friday can differ).
-  const dayHours = resolveDaySchedule(sched, form.date);
+  const dayHours = resolveDaySchedule(sched, form.date || todayStr());
   const isOffDay = !dayHours.enabled;
+  const offOverride = isOffDay && allowedOffDate === form.date && form.date !== "";
+  const treatAsClosed = isOffDay && !offOverride;
   const globalStart = sched.workingHoursStart || "09:00";
-  const workStartStr = isOffDay ? globalStart : dayHours.start;
-  const workEndStr = isOffDay ? globalStart : dayHours.end;
+  const workStartStr = treatAsClosed ? globalStart : dayHours.start;
+  const workEndStr = treatAsClosed ? globalStart : dayHours.end;
   const workStart = toMins(workStartStr);
   const workEnd = toMins(workEndStr);
   const bufferMins = normalizeBuffer(sched.bufferTime);
@@ -1219,10 +1352,20 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
       setFieldErrors({});
       setScrollKey(0);
       setActiveTab("bron");
+      setAllowedOffDate(null);
+      setPendingOffDate(null);
     }
   }, [open]);
 
-  const datePickerRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!open || !profile) return;
+    setForm((current) => {
+      if (!current.date || current.date === allowedOffDate) return current;
+      if (resolveDaySchedule(sched, current.date).enabled) return current;
+      return { ...current, date: "", time: "" };
+    });
+  }, [open, profile, allowedOffDate, sched]);
+
   const selectedSvc = services.find((s) => s.id === form.serviceId);
   const duration = selectedSvc?.duration ?? 0;
 
@@ -1239,15 +1382,15 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
     fixedBreaks: lunchInterval(sched),
   };
   const standardSlots =
-    !isOffDay && duration > 0 ? generateSmartSlots({ ...standardInput, nowMins }) : [];
+    !treatAsClosed && duration > 0 ? generateSmartSlots({ ...standardInput, nowMins }) : [];
   // "Bugun" with every working hour already behind us.
   const todayPassed =
     duration > 0 &&
     todaySlotsExhausted({
       isToday: form.date === todayStr(),
-      dayOpen: !isOffDay,
+      dayOpen: !treatAsClosed,
       slotsNow: standardSlots.length,
-      slotsIgnoringNow: !isOffDay ? generateSmartSlots({ ...standardInput, nowMins: null }).length : 0,
+      slotsIgnoringNow: !treatAsClosed ? generateSmartSlots({ ...standardInput, nowMins: null }).length : 0,
       nowMins,
       dayEnd: workEnd,
     });
@@ -1265,7 +1408,27 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
       : [];
 
   const isAfterHoursTime =
-    form.time !== "" && (isOffDay || toMins(form.time) >= workEnd);
+    form.time !== "" && (treatAsClosed || toMins(form.time) >= workEnd);
+
+  function dayIsClosed(iso: string) {
+    return !resolveDaySchedule(sched, iso).enabled;
+  }
+
+  function pickDate(date: string) {
+    if (dayIsClosed(date) && allowedOffDate !== date) {
+      setPendingOffDate(date);
+      return;
+    }
+    patchForm({ date, time: "" });
+  }
+
+  function confirmOffDay() {
+    if (!pendingOffDate) return;
+    const date = pendingOffDate;
+    setAllowedOffDate(date);
+    setPendingOffDate(null);
+    patchForm({ date, time: "" });
+  }
 
   function patchForm(patch: Partial<FormState>) {
     const nextForm = { ...form, ...patch };
@@ -1480,11 +1643,22 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
                     onSave={handleSave}
                     onClose={close}
                     onAddService={() => setShowAddService(true)}
+                    isClosed={dayIsClosed}
+                    onPickDate={pickDate}
                   />
                 </motion.div>
               )}
             </AnimatePresence>
           </Sheet>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {pendingOffDate && open && (
+          <OffDayWarning
+            onConfirm={confirmOffDay}
+            onCancel={() => setPendingOffDate(null)}
+          />
         )}
       </AnimatePresence>
 

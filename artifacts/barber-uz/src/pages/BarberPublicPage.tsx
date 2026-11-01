@@ -147,17 +147,19 @@ function monthCells(year: number, month: number): Array<string | null> {
   return cells;
 }
 
-/** Month grid for the client. Days the barber marked off cannot be pressed. */
+/** Month grid for the client. Off-days stay grey, and a tap only explains why. */
 function ClientDateGrid({
   todayISO,
   selected,
   isClosed,
   onSelect,
+  onClosed,
 }: {
   todayISO: string;
   selected: string;
   isClosed: (iso: string) => boolean;
   onSelect: (iso: string) => void;
+  onClosed: (iso: string) => void;
 }) {
   const latest = addDaysISO(todayISO, 365);
   const initial = isoParts(selected >= todayISO ? selected : todayISO);
@@ -200,19 +202,22 @@ function ClientDateGrid({
           if (!iso) return <span key={`empty-${index}`} />;
           const past = iso < todayISO || iso > latest;
           const closed = !past && isClosed(iso);
-          const disabled = past || closed;
-          const chosen = iso === selected;
+          const chosen = iso === selected && !closed;
           return (
             <button
               key={iso}
               type="button"
-              disabled={disabled}
+              disabled={past}
               data-testid={`public-date-${iso}`}
               data-closed={closed ? "1" : "0"}
-              onClick={() => { if (!disabled) onSelect(iso); }}
+              onClick={() => {
+                if (past) return;
+                if (closed) { onClosed(iso); return; }
+                onSelect(iso);
+              }}
               className={`h-9 rounded-xl text-sm font-semibold ${
-                disabled
-                  ? "cursor-not-allowed bg-white/[0.03] text-muted-foreground/30"
+                past || closed
+                  ? "cursor-pointer bg-white/[0.03] text-muted-foreground/30"
                   : chosen
                     ? "bg-primary/20 text-primary"
                     : "text-foreground hover:bg-white/8"
@@ -949,10 +954,17 @@ function PublicBookingModal({
                   {([todayISO, tomorrowISO] as const).map((day, i) => {
                     const closed = !isWorkingDate(barber, day);
                     return (
-                    <button key={day} type="button" disabled={closed}
+                    <button key={day} type="button"
                       data-testid={i === 0 ? "public-day-today" : "public-day-tomorrow"}
                       data-closed={closed ? "1" : "0"}
-                      onClick={() => { if (closed) return; setDateOpt(day); setSelectedTime(null); }}
+                      onClick={() => {
+                        if (closed) {
+                          toast({ title: "Bu kun dam olish kuni" });
+                          return;
+                        }
+                        setDateOpt(day);
+                        setSelectedTime(null);
+                      }}
                       className={`flex-1 py-3 rounded-2xl text-sm font-bold border transition-all ${
                         closed
                           ? "bg-white/4 border-white/8 text-muted-foreground/40 cursor-not-allowed"
@@ -981,6 +993,7 @@ function PublicBookingModal({
                       todayISO={todayISO}
                       selected={dateOpt}
                       isClosed={(iso) => !isWorkingDate(barber, iso)}
+                      onClosed={() => toast({ title: "Bu kun dam olish kuni" })}
                       onSelect={(iso) => {
                         setDateOpt(iso);
                         setSelectedTime(null);

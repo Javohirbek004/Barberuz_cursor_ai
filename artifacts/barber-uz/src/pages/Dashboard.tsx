@@ -103,7 +103,6 @@ function calcNextBookingInfo(
   const clock = tashkentClock(now);
   const nowMins = clock.mins;
   const today = clock.date;
-  if (!shift.enabled) return { main: "Bugun bronlar yo'q", sub: "", nextId: null };
   for (const b of upcomingBookings) {
     if (bookingDay(b.date) !== today) continue;
     const start = toMins(b.startTime);
@@ -114,6 +113,7 @@ function calcNextBookingInfo(
       nextId: b.id,
     };
   }
+  if (!shift.enabled) return { main: "Bugun bronlar yo'q", sub: "", nextId: null };
   const beforeOpen = shift.enabled && nowMins < shift.startMins;
   if (beforeOpen) return { main: "Ish vaqti hali boshlanmadi", sub: "", nextId: null };
   const duringHours = shift.enabled && nowMins < shift.endMins;
@@ -812,7 +812,7 @@ function IndividualDashboard() {
             </section>
           )}
 
-          {upcomingBookings.length === 0 && reviewBookings.length === 0 && (
+          {upcomingBookings.length === 0 && (reviewBookings.length === 0 || isOffDay) && (
             <div data-testid="dashboard-empty" data-empty-phase={emptyCopy.phase} className="px-1 pt-2 text-center">
               <div className="mx-auto mb-3.5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 text-muted-foreground/70">
                 <Calendar className="h-6 w-6" strokeWidth={1.8} />

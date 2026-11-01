@@ -393,7 +393,7 @@ function IndividualCalendar() {
           </section>
         )}
 
-        {selectedClosed ? (
+        {selectedClosed && visibleBookings.length === 0 ? (
           <div
             data-testid="calendar-day-off"
             className="flex flex-col items-center justify-center py-16 text-center rounded-3xl border border-dashed border-white/15 bg-white/[0.03]"
@@ -415,7 +415,11 @@ function IndividualCalendar() {
             <p className="text-xs text-muted-foreground/45 mt-1.5">Yangi bron qo'shish uchun + tugmasini bosing</p>
           </div>
         ) : (
-          visibleBookings.map((b, i) => {
+          <div className={selectedClosed ? "space-y-2 rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-3" : "space-y-2"}>
+          {selectedClosed && (
+            <p data-testid="calendar-day-off" className="text-center text-sm font-semibold text-muted-foreground py-1">Dam olish kuni</p>
+          )}
+          {visibleBookings.map((b, i) => {
             const shown = bookingStatus(b.status) === "confirmed" || bookingStatus(b.status) === "pending" || bookingStatus(b.status) === "pending_action"
               ? { ...b, status: "confirmed" as Booking["status"], date: "2099-01-01", startTime: "23:59" }
               : b;
@@ -429,7 +433,8 @@ function IndividualCalendar() {
               whileTap={{ scale: 0.98 }}
               onClick={() => setSelectedBooking(b)}
               data-testid={`cal-card-${b.id}`}
-              className={`w-full text-left rounded-2xl border p-4 flex items-start gap-4 transition-colors ${view.card}`}
+              data-off-booking={selectedClosed ? "1" : "0"}
+              className={`w-full text-left rounded-2xl border p-4 flex items-start gap-4 transition-colors ${view.card} ${selectedClosed ? "ring-2 ring-primary/70 shadow-lg shadow-primary/20" : ""}`}
             >
               <div className="flex flex-col items-center min-w-[2.75rem]">
                 <span className="text-sm font-bold tabular-nums text-foreground">
@@ -459,7 +464,8 @@ function IndividualCalendar() {
               </div>
             </motion.button>
             );
-          })
+          })}
+          </div>
         )}
       </div>
 
