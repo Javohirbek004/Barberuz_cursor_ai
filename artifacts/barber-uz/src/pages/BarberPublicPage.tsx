@@ -846,12 +846,24 @@ function PublicBookingModal({
               <motion.div key="time" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                 {/* Quick select: Bugun / Ertaga */}
                 <div className="flex gap-2 mb-3">
-                  {([todayISO, tomorrowISO] as const).map((day, i) => (
-                    <button key={day} onClick={() => { setDateOpt(day); setSelectedTime(null); }}
-                      className={`flex-1 py-3 rounded-2xl text-sm font-bold border transition-all ${dateOpt === day ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground hover:bg-white/8"}`}>
+                  {([todayISO, tomorrowISO] as const).map((day, i) => {
+                    const closed = !isWorkingDate(barber, day);
+                    return (
+                    <button key={day} type="button" disabled={closed}
+                      data-testid={i === 0 ? "public-day-today" : "public-day-tomorrow"}
+                      data-closed={closed ? "1" : "0"}
+                      onClick={() => { if (closed) return; setDateOpt(day); setSelectedTime(null); }}
+                      className={`flex-1 py-3 rounded-2xl text-sm font-bold border transition-all ${
+                        closed
+                          ? "bg-white/4 border-white/8 text-muted-foreground/40 cursor-not-allowed"
+                          : dateOpt === day
+                            ? "bg-primary/15 border-primary/30 text-primary"
+                            : "bg-white/4 border-white/8 text-muted-foreground hover:bg-white/8"
+                      }`}>
                       {i === 0 ? "Bugun" : "Ertaga"}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
                 {/* Calendar picker trigger */}
                 <div className="flex justify-center mb-5">
@@ -864,7 +876,17 @@ function PublicBookingModal({
                   </button>
                   <input ref={dateInputRef} type="date" aria-hidden="true"
                     className="sr-only" min={todayISO} value={dateOpt}
-                    onChange={e => { if (e.target.value) { setDateOpt(e.target.value); setSelectedTime(null); } }} />
+                    onChange={e => {
+                      const value = e.target.value;
+                      if (!value) return;
+                      if (!isWorkingDate(barber, value)) {
+                        e.target.value = dateOpt;
+                        toast({ title: "Bu kun dam olish kuni", description: "Bu kunda bron qilib bo'lmaydi" });
+                        return;
+                      }
+                      setDateOpt(value);
+                      setSelectedTime(null);
+                    }} />
                 </div>
                 <ShopTimeHint />
                 {!slotsLoading && allSlots.length > 0 && (

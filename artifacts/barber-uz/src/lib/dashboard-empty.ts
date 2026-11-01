@@ -9,12 +9,21 @@ export interface DashboardEmptyCopy {
 
 /**
  * Empty dashboard greeting for a day with no active or upcoming bookings.
- * A closed weekday has no open window, so it uses the after-hours greeting.
+ * A day the barber marked off has its own greeting.
  */
 export function dashboardEmptyCopy(
   nowMins: number,
   shift: { enabled: boolean; startMins: number; endMins: number },
 ): DashboardEmptyCopy {
+  if (!shift.enabled) {
+    return {
+      phase: "after",
+      title: "Xayrli kun! Bugun sizda dam olish kuni.",
+      subtitle: "Ertangi kun rejalari va bo'sh joylarni kalendardan ko'rishingiz mumkin.",
+      showActions: false,
+    };
+  }
+
   const before = shift.enabled && nowMins < shift.startMins;
   const during = shift.enabled && nowMins >= shift.startMins && nowMins < shift.endMins;
 

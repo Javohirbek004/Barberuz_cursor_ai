@@ -103,6 +103,7 @@ function calcNextBookingInfo(
   const clock = tashkentClock(now);
   const nowMins = clock.mins;
   const today = clock.date;
+  if (!shift.enabled) return { main: "Bugun dam olish kuni", sub: "", nextId: null };
   for (const b of upcomingBookings) {
     if (bookingDay(b.date) !== today) continue;
     const start = toMins(b.startTime);
@@ -257,7 +258,7 @@ function InteractiveCard({
         {loading ? (
           <div className="h-8 w-20 rounded-lg bg-white/5 animate-pulse mb-3" />
         ) : (
-          <div className="font-display font-bold text-white text-2xl leading-tight mb-3">{value}</div>
+          <div className={`font-display font-bold text-white leading-tight mb-3 ${value.length > 10 ? "text-lg" : "text-2xl"}`}>{value}</div>
         )}
         <DetailsPill label={pillLabel} />
       </Card>
@@ -391,9 +392,10 @@ function TodayStatsModal({ open, onClose, total, completed, remaining, cancelled
 }
 
 // ── Free Slot Modal ───────────────────────────────────────────────────────────
-function FreeSlotModal({ open, onClose, slots }: {
+function FreeSlotModal({ open, onClose, slots, dayOff = false }: {
   open: boolean; onClose: () => void;
   slots: string[];
+  dayOff?: boolean;
 }) {
   const [period, setPeriod] = useState<SlotPeriod>("all");
   const [picked, setPicked] = useState<string | null>(null);
@@ -413,6 +415,12 @@ function FreeSlotModal({ open, onClose, slots }: {
           <h2 className="text-base font-bold text-foreground">⏱ Bugungi bo'sh vaqtlar</h2>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/8 text-muted-foreground transition-colors text-lg">✖</button>
         </div>
+        {dayOff ? (
+          <p className="text-sm text-foreground text-center py-10" data-testid="free-slots-day-off">
+            Bugun dam olish kuni, bo'sh vaqtlar mavjud emas
+          </p>
+        ) : (
+        <>
         <p className="text-xs text-muted-foreground mb-4" data-testid="free-slot-count">
           Jami {shownCount} ta bo'sh slot mavjud
         </p>
@@ -443,6 +451,8 @@ function FreeSlotModal({ open, onClose, slots }: {
               </div>
             )}
           </>
+        )}
+        </>
         )}
         <div className="mt-5">
           <button onClick={onClose} className="w-full py-3.5 rounded-2xl bg-primary/15 border border-primary/20 text-primary font-semibold text-sm">
@@ -687,7 +697,7 @@ function IndividualDashboard() {
         {/* Card 3: Bo'sh joylar */}
         <InteractiveCard
           label="Bo'sh joylar"
-          value={`${freeSlots} ta`}
+          value={isOffDay ? "Dam olish kuni" : `${freeSlots} ta`}
           pillLabel="Ko'rish"
           icon={Timer}
           iconColor="text-blue-400"
@@ -866,6 +876,7 @@ function IndividualDashboard() {
         open={showSlotModal}
         onClose={() => setShowSlotModal(false)}
         slots={freeSlotList}
+        dayOff={isOffDay}
       />
 
       <BookingFlowDialog open={addOpen} onOpenChange={setAddOpen} />

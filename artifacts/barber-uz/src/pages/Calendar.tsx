@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { useListBookings, useGetDashboardStats, useUpdateBooking, getListClientsQueryKey } from "@workspace/api-client-react";
+import { useListBookings, useGetDashboardStats, useGetProfile, useUpdateBooking, getListClientsQueryKey } from "@workspace/api-client-react";
+import { isWorkingDate, type ScheduleSource } from "@/lib/schedule";
 import type { Booking } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -69,12 +70,14 @@ function MonthNav({
   unresolvedDates,
   unresolvedCount,
   jumpIso,
+  isClosed,
 }: {
   selected: Date;
   onSelect: (d: Date) => void;
   unresolvedDates: Set<string>;
   unresolvedCount: number;
   jumpIso: string | null;
+  isClosed?: (iso: string) => boolean;
 }) {
   const today = tashkentTodayDate();
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -164,6 +167,7 @@ function MonthNav({
           const dowIdx = day.getDay();
           const iso = toISO(day);
           const showDot = !isToday && day < today && unresolvedDates.has(iso);
+          const closed = isClosed?.(iso) ?? false;
 
           return (
             <button
@@ -171,8 +175,13 @@ function MonthNav({
               ref={(el) => { pillRefs.current[iso] = el; }}
               onClick={() => onSelect(day)}
               data-testid={`cal-pill-${iso}`}
+              data-closed={closed ? "1" : "0"}
               className={`relative flex flex-col items-center min-w-[3rem] py-2.5 px-1 rounded-2xl transition-all flex-shrink-0 ${
-                isSelected
+                closed
+                  ? isSelected
+                    ? "bg-white/8 border border-dashed border-white/30 text-muted-foreground"
+                    : "bg-white/4 border border-dashed border-white/10 text-muted-foreground/50"
+                  : isSelected
                   ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
                   : isToday
                   ? "bg-primary/15 border border-primary/35 text-primary"
@@ -189,10 +198,11 @@ function MonthNav({
                 {UZ_DAY_SHORT[dowIdx]}
               </span>
               <span className={`text-lg font-bold ${
-                isSelected ? "text-primary-foreground" : isToday ? "text-primary" : "text-foreground"
+                closed ? "text-muted-foreground/60" : isSelected ? "text-primary-foreground" : isToday ? "text-primary" : "text-foreground"
               }`}>
                 {day.getDate()}
               </span>
+              {closed && <span className="text-[8px] font-semibold uppercase tracking-wide mt-0.5">OFF</span>}
             </button>
           );
         })}
@@ -214,6 +224,10 @@ function IndividualCalendar() {
 
   const selectedISO = toISO(selectedDate);
   useEffect(() => { setReviewOpen(true); }, [selectedISO]);
+  const { data: profile } = useGetProfile();
+  const schedule = (profile ?? {}) as ScheduleSource;
+  const dayClosed = (iso: string) => !!profile && !isWorkingDate(schedule, iso);
+  const selectedClosed = dayClosed(selectedISO);
   const { data: bookingsData, isLoading, refetch } = useListBookings({ date: selectedISO });
   const { data: overdueData, refetch: refetchOverdue } = useListBookings({ date: "overdue" as any });
   const { refetch: refetchStats } = useGetDashboardStats();
@@ -296,6 +310,7 @@ function IndividualCalendar() {
         unresolvedDates={unresolvedDates}
         unresolvedCount={unresolvedCount}
         jumpIso={jumpIso}
+        isClosed={dayClosed}
       />
 
       {droppedCount > 0 && (
@@ -378,7 +393,15 @@ function IndividualCalendar() {
           </section>
         )}
 
-        {isLoading ? (
+        {selectedClosed ? (
+          <div
+            data-testid="calendar-day-off"
+            className="flex flex-col items-center justify-center py-16 text-center rounded-3xl border border-dashed border-white/15 bg-white/[0.03]"
+          >
+            <p className="text-base font-semibold text-foreground">Dam olish kuni</p>
+            <p className="text-xs text-muted-foreground/70 mt-1.5 max-w-[240px]">Bu kunda ish vaqti yo‘q</p>
+          </div>
+        ) : isLoading ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin mb-3" />
             <p className="text-sm text-muted-foreground">Yuklanmoqda...</p>
