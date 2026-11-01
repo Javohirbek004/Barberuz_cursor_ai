@@ -1,5 +1,5 @@
 import "leaflet/dist/leaflet.css";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import { APP_ORIGIN } from "@/lib/config";
 import { PageLinkPanel } from "@/components/PageLinkPanel";
 import { PageTabs } from "@/components/PageTabs";
@@ -1177,6 +1177,72 @@ function AsosiyTab({
 
 // ServiceForm is imported from @/components/ServiceForm
 
+function useViewportFrame() {
+  const [frame, setFrame] = useState({ inset: 0, visible: 800 });
+
+  useEffect(() => {
+    function read() {
+      const vv = window.visualViewport;
+      if (!vv) {
+        setFrame({ inset: 0, visible: window.innerHeight });
+        return;
+      }
+      setFrame({
+        inset: Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)),
+        visible: Math.round(vv.height),
+      });
+    }
+    read();
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", read);
+    vv?.addEventListener("scroll", read);
+    window.addEventListener("resize", read);
+    return () => {
+      vv?.removeEventListener("resize", read);
+      vv?.removeEventListener("scroll", read);
+      window.removeEventListener("resize", read);
+    };
+  }, []);
+
+  return frame;
+}
+
+function ServiceSheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const { inset, visible } = useViewportFrame();
+  const keyboardOpen = inset > 80;
+  const height = keyboardOpen ? Math.max(280, visible - 12) : Math.round(visible * 0.75);
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end justify-center">
+      <motion.button
+        type="button"
+        aria-label="Yopish"
+        data-testid="service-sheet-backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <motion.div
+        data-testid="service-sheet"
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 30, stiffness: 280 }}
+        className="relative w-full max-w-md bg-card rounded-t-3xl border-t border-white/8 flex flex-col shadow-2xl"
+        style={{ height, marginBottom: inset }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 shrink-0" />
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 pt-4 pb-8">
+          {children}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // XIZMATLAR TAB — real API CRUD
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1268,18 +1334,14 @@ function XizmatlarTab({
     } finally { setDeleteLoading(false); }
   }
 
-  if (addingOrEditing !== null) {
-    const editing = addingOrEditing !== "new" ? services.find(s => s.id === addingOrEditing) : undefined;
-    const initial: Partial<ServiceFormData> | undefined = editing
+  const editing = addingOrEditing !== null && addingOrEditing !== "new"
+    ? services.find(s => s.id === addingOrEditing)
+    : undefined;
+  const formInitial: Partial<ServiceFormData> | undefined = addingOrEditing === null
+    ? undefined
+    : editing
       ? { id: editing.id, name: editing.name, categoryId: editing.categoryId, duration: editing.duration, price: editing.price, description: editing.description }
       : { categoryId: activeCat };
-    return (
-      <>
-        {error && <p className="text-xs text-destructive bg-destructive/10 rounded-xl px-3 py-2 mb-3">{error}</p>}
-        <ServiceForm initial={initial} onSave={handleSave} onCancel={() => setAddingOrEditing(null)} saving={saving} />
-      </>
-    );
-  }
 
   return (
     <div className="pb-10">
@@ -1395,6 +1457,21 @@ function XizmatlarTab({
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {addingOrEditing !== null && (
+          <ServiceSheet onClose={() => { if (!saving) setAddingOrEditing(null); }}>
+            {error && <p className="text-xs text-destructive bg-destructive/10 rounded-xl px-3 py-2 mb-3">{error}</p>}
+            <ServiceForm
+              key={addingOrEditing}
+              initial={formInitial}
+              onSave={handleSave}
+              onCancel={() => { if (!saving) setAddingOrEditing(null); }}
+              saving={saving}
+            />
+          </ServiceSheet>
         )}
       </AnimatePresence>
 
