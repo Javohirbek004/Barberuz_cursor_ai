@@ -13,7 +13,7 @@ import {
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { bookingDay, bookingStartMs, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
-import { BookingStatusBadge, bookingLook } from "@/components/BookingStatusBadge";
+import { BookingStatusBadge, BotUnlinkedNote, bookingLook } from "@/components/BookingStatusBadge";
 import { Layout } from "@/components/Layout";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 import { Card } from "@/components/ui/card";
@@ -747,6 +747,7 @@ function IndividualDashboard() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-foreground truncate">{b.clientName}</div>
+                        <BotUnlinkedNote booking={b} />
                         <div className="text-xs text-muted-foreground truncate">
                           {serviceNames(b.serviceName).join(", ") || t("dash.service_fallback")}
                         </div>

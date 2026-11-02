@@ -11,7 +11,7 @@ import type { Booking } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { isOpenBooking } from "@/lib/booking-feed";
-import { BookingStatusBadge, bookingLook } from "@/components/BookingStatusBadge";
+import { BookingStatusBadge, BotUnlinkedNote, bookingLook } from "@/components/BookingStatusBadge";
 import { BookingDetailModal } from "@/components/BookingDetailModal";
 import { BookingNoteBadge } from "@/components/BookingNoteBadge";
 import { noteFromBooking } from "@/lib/booking-note";
@@ -357,7 +357,10 @@ function IndividualCalendar() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
-                          <span className="font-bold truncate text-foreground">{b.clientName}</span>
+                          <div className="min-w-0">
+                            <span className="font-bold truncate text-foreground block">{b.clientName}</span>
+                            <BotUnlinkedNote booking={b} />
+                          </div>
                           <BookingStatusBadge booking={b} />
                         </div>
                         <div className="flex items-center justify-between mt-0.5">
@@ -444,9 +447,12 @@ function IndividualCalendar() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
-                  <span className="font-bold truncate text-foreground">
-                    {b.clientName}
-                  </span>
+                  <div className="min-w-0">
+                    <span className="font-bold truncate text-foreground block">
+                      {b.clientName}
+                    </span>
+                    <BotUnlinkedNote booking={b} />
+                  </div>
                   <BookingStatusBadge booking={shown} testId={`cal-status-${b.id}`} />
                 </div>
                 <div className="flex items-center justify-between mt-0.5">
