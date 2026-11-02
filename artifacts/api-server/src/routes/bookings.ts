@@ -32,7 +32,11 @@ function extractUserNotes(raw: string | null | undefined): string {
   return raw.trim();
 }
 
-function formatBooking(b: typeof bookingsTable.$inferSelect, clientNotes?: string | null) {
+function formatBooking(
+  b: typeof bookingsTable.$inferSelect,
+  clientNotes?: string | null,
+  botLinked?: boolean,
+) {
   return {
     id: b.id,
     barberId: b.barberId,
@@ -47,6 +51,7 @@ function formatBooking(b: typeof bookingsTable.$inferSelect, clientNotes?: strin
     status: b.status,
     notes: b.notes,
     clientNotes: clientNotes ?? null,
+    botLinked: botLinked === true,
     createdAt: b.createdAt,
   };
 }
@@ -109,6 +114,7 @@ router.get("/", authenticate, async (req, res) => {
       .select({
         booking: bookingsTable,
         clientNotes: clientsTable.notes,
+        savedClientTelegramId: clientsTable.telegramId,
       })
       .from(bookingsTable)
       .leftJoin(clientsTable, eq(bookingsTable.clientId, clientsTable.id))
@@ -116,7 +122,11 @@ router.get("/", authenticate, async (req, res) => {
       .orderBy(bookingsTable.date, bookingsTable.startTime);
 
     res.json({
-      bookings: rows.map((row) => formatBooking(row.booking, row.clientNotes)),
+      bookings: rows.map((row) => formatBooking(
+        row.booking,
+        row.clientNotes,
+        Boolean(row.booking.clientTelegramId?.trim() || row.savedClientTelegramId?.trim()),
+      )),
       total: rows.length,
     });
   } catch (err) {

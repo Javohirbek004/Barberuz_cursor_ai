@@ -47,6 +47,17 @@ export function bookingLook(
   return { ...view, ...LOOK[view.key] };
 }
 
+export function isBotLinked(booking: object): boolean {
+  return (booking as { botLinked?: boolean }).botLinked === true;
+}
+
+export function BotUnlinkedNote({ booking }: { booking: object }) {
+  if (isBotLinked(booking)) return null;
+  return (
+    <div className="text-xs font-semibold text-yellow-300 mt-0.5">! Botga ulanmagan</div>
+  );
+}
+
 export function BookingStatusBadge({
   booking,
   now,
