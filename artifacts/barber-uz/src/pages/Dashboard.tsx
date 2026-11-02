@@ -13,7 +13,7 @@ import {
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { bookingDay, bookingStartMs, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
-import { BookingStatusBadge, BotUnlinkedNote, bookingLook } from "@/components/BookingStatusBadge";
+import { BookingStatusBadge, BotUnlinkedBang, BotUnlinkedNote, bookingLook, showsBotGap } from "@/components/BookingStatusBadge";
 import { Layout } from "@/components/Layout";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 import { Card } from "@/components/ui/card";
@@ -729,6 +729,7 @@ function IndividualDashboard() {
               <div className="space-y-2">
                 {upcomingBookings.map((b) => {
                   const look = bookingLook(b, now.getTime());
+                  const botGap = showsBotGap(b);
                   return (
                   <motion.div
                     key={b.id}
@@ -746,8 +747,11 @@ function IndividualDashboard() {
                         <span className="text-sm whitespace-nowrap">{b.startTime.slice(0, 5)}</span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-foreground truncate">{b.clientName}</div>
-                        <BotUnlinkedNote booking={b} />
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span className="font-semibold text-foreground truncate">{b.clientName}</span>
+                          <BotUnlinkedBang show={botGap} />
+                        </div>
+                        <BotUnlinkedNote show={botGap} />
                         <div className="text-xs text-muted-foreground truncate">
                           {serviceNames(b.serviceName).join(", ") || t("dash.service_fallback")}
                         </div>

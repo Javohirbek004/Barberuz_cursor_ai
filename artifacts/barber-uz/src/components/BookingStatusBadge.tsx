@@ -47,15 +47,22 @@ export function bookingLook(
   return { ...view, ...LOOK[view.key] };
 }
 
-export function isBotLinked(booking: object): boolean {
-  return (booking as { botLinked?: boolean }).botLinked === true;
+/** Yellow mark for a client the bot does not know: no Telegram link. */
+export function showsBotGap(record: object): boolean {
+  const row = record as { botLinked?: boolean; telegramId?: string | null };
+  if (row.botLinked === true) return false;
+  if (row.telegramId?.trim()) return false;
+  return true;
 }
 
-export function BotUnlinkedNote({ booking }: { booking: object }) {
-  if (isBotLinked(booking)) return null;
-  return (
-    <div className="text-xs font-semibold text-yellow-300 mt-0.5">! Botga ulanmagan</div>
-  );
+export function BotUnlinkedBang({ show }: { show: boolean }) {
+  if (!show) return null;
+  return <span className="shrink-0 font-black leading-none text-yellow-300" aria-hidden>!</span>;
+}
+
+export function BotUnlinkedNote({ show }: { show: boolean }) {
+  if (!show) return null;
+  return <div className="text-xs font-semibold text-yellow-300 mt-0.5">Botga ulanmagan</div>;
 }
 
 export function BookingStatusBadge({

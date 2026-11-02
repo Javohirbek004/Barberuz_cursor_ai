@@ -4,6 +4,7 @@ import { useTranslation } from "@/i18n/LanguageContext";
 import { Layout } from "@/components/Layout";
 import { useListClients } from "@workspace/api-client-react";
 import { Search, ChevronRight, Phone, Users, UserX } from "lucide-react";
+import { BotUnlinkedBang, BotUnlinkedNote, showsBotGap } from "@/components/BookingStatusBadge";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
 import { SEGMENT_META, type Segment } from "@/data/mockClients";
@@ -16,6 +17,7 @@ interface ClientItem {
   id: string;
   name: string;
   phone: string;
+  telegramId: string | null;
   lastVisit: string | null;
   visitCount: number;
   segment: Segment;
@@ -47,6 +49,7 @@ function ClientCard({
   const { t } = useTranslation();
   const seg = SEGMENT_META[client.segment];
   const segLabel = t(`segment.${client.segment}` as `segment.regular` | `segment.new` | `segment.lost`);
+  const botGap = showsBotGap(client);
 
   return (
     <motion.div
@@ -61,14 +64,16 @@ function ClientCard({
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
+            <div className="flex items-center gap-2 mb-0.5 min-w-0">
               <span className="font-bold text-foreground text-base truncate">
                 {client.name}
               </span>
+              <BotUnlinkedBang show={botGap} />
               <span className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full border ${seg.bg} ${seg.color}`}>
                 {seg.emoji} {segLabel}
               </span>
             </div>
+            <BotUnlinkedNote show={botGap} />
 
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               {client.phone && (
@@ -185,6 +190,7 @@ function useClients(search: string, segment: SegmentFilter) {
     id: c.id,
     name: c.name,
     phone: c.phone ?? "",
+    telegramId: c.telegramId ?? null,
     lastVisit: c.lastVisit ? formatLastVisit(c.lastVisit) : null,
     visitCount: c.visitCount,
     segment: (c.status as Segment) ?? "new",

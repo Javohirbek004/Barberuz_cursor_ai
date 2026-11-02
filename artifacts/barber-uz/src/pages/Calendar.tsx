@@ -11,7 +11,7 @@ import type { Booking } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { isOpenBooking } from "@/lib/booking-feed";
-import { BookingStatusBadge, BotUnlinkedNote, bookingLook } from "@/components/BookingStatusBadge";
+import { BookingStatusBadge, BotUnlinkedBang, BotUnlinkedNote, bookingLook, showsBotGap } from "@/components/BookingStatusBadge";
 import { BookingDetailModal } from "@/components/BookingDetailModal";
 import { BookingNoteBadge } from "@/components/BookingNoteBadge";
 import { noteFromBooking } from "@/lib/booking-note";
@@ -357,12 +357,13 @@ function IndividualCalendar() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <span className="font-bold truncate text-foreground block">{b.clientName}</span>
-                            <BotUnlinkedNote booking={b} />
+                          <div className="min-w-0 flex items-center gap-1">
+                            <span className="font-bold truncate text-foreground">{b.clientName}</span>
+                            <BotUnlinkedBang show={showsBotGap(b)} />
                           </div>
                           <BookingStatusBadge booking={b} />
                         </div>
+                        <BotUnlinkedNote show={showsBotGap(b)} />
                         <div className="flex items-center justify-between mt-0.5">
                           <span className="text-sm truncate text-muted-foreground">{b.serviceName ?? "—"}</span>
                           <span className="text-sm font-semibold ml-2 shrink-0 text-primary">{b.price.toLocaleString()} so'm</span>
@@ -447,21 +448,22 @@ function IndividualCalendar() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className="font-bold truncate text-foreground block">
+                  <div className="min-w-0 flex items-center gap-1">
+                    <span className="font-bold truncate text-foreground">
                       {b.clientName}
                     </span>
-                    <BotUnlinkedNote booking={b} />
+                    <BotUnlinkedBang show={showsBotGap(b)} />
                   </div>
-                  <BookingStatusBadge booking={shown} testId={`cal-status-${b.id}`} />
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <BookingStatusBadge booking={shown} testId={`cal-status-${b.id}`} />
+                    <span className={`text-sm font-semibold ${view.price}`}>
+                      {b.price.toLocaleString()} so'm
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between mt-0.5">
-                  <span className="text-sm truncate text-muted-foreground">
-                    {b.serviceName ?? "—"}
-                  </span>
-                  <span className={`text-sm font-semibold ml-2 shrink-0 ${view.price}`}>
-                    {b.price.toLocaleString()} so'm
-                  </span>
+                <BotUnlinkedNote show={showsBotGap(b)} />
+                <div className="text-sm truncate text-muted-foreground mt-0.5">
+                  {b.serviceName ?? "—"}
                 </div>
                 <BookingNoteBadge
                   note={noteFromBooking(b)}
