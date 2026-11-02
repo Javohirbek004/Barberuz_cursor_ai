@@ -165,15 +165,14 @@ function completeLocalPhone(phone: string): string | null {
 type PhoneLookupView = "idle" | "searching" | "found" | "new";
 
 function phoneLookupView(input: {
-  typedLength: number;
   lookupReady: boolean;
   busy: boolean;
   foundName: string;
   currentName: string;
   nameJustFilled: boolean;
 }): PhoneLookupView {
-  if (input.typedLength === 0) return "idle";
-  if (!input.lookupReady || input.busy) return "searching";
+  if (!input.lookupReady) return "idle";
+  if (input.busy) return "searching";
   if (input.nameJustFilled) return "idle";
   if (input.foundName && input.currentName.trim() !== input.foundName) return "found";
   if (!input.foundName) return "new";
@@ -1151,7 +1150,6 @@ function BookingFormContent({
   );
   const foundName = foundClient?.name?.trim() ?? "";
   const lookupView = phoneLookupView({
-    typedLength: localPhoneDigits(form.phone).length,
     lookupReady: lookupKey !== null,
     busy: lookupKey !== null && (isFetching || isLoading),
     foundName,
@@ -1234,12 +1232,9 @@ function BookingFormContent({
         {nameFilledNote && (
           <p className="text-xs text-green-400 mt-2">✅ Mijoz ismi avtomatik kiritildi</p>
         )}
-        {lookupView === "searching" && (
-          <p className="mt-2 text-xs text-muted-foreground">🔄 Mijoz qidirilmoqda...</p>
-        )}
         {lookupView === "new" && (
           <p className="mt-2 inline-flex text-xs text-muted-foreground bg-white/5 border border-white/10 rounded-full px-2.5 py-1">
-            ✨ Yangi mijoz (bron qilingach bazaga qoʻshiladi)
+            ✨ Bu yangi mijoz. Bron qilingach bazaga qoʻshiladi.
           </p>
         )}
       </div>
@@ -1265,6 +1260,12 @@ function BookingFormContent({
           className={`${INPUT_BASE} ${fieldErrors.phone ? INPUT_ERR : INPUT_OK}`}
         />
         <FieldError message={fieldErrors.phone} />
+        {lookupView === "searching" && (
+          <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-block h-3.5 w-3.5 shrink-0 rounded-full border-2 border-current border-t-transparent animate-spin" />
+            Mijoz bazadan qidirilmoqda...
+          </p>
+        )}
       </div>
 
       {/* 3. Xizmat turi */}
