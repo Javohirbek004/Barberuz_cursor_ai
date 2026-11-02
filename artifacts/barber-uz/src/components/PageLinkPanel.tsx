@@ -244,14 +244,14 @@ function QrStudio({
           slug={slug}
           canvasRef={canvasRef}
           className="h-11 rounded-xl bg-primary text-black text-xs font-bold"
-          idle="📥 PNG Yuklash"
+          idle="Rasm"
         />
         <QrDownloadLink
           kind="pdf"
           slug={slug}
           canvasRef={canvasRef}
           className="h-11 rounded-xl bg-white/8 text-xs font-bold"
-          idle="🖨 PDF Yuklash"
+          idle="PDF"
         />
       </div>
     </div>
@@ -386,39 +386,60 @@ function QrDownloadLink({
   className: string;
   idle: string;
 }) {
-  const [step, setStep] = useState<"idle" | "loading" | "done">("idle");
-  const lock = useRef(false);
+  const [href, setHref] = useState("");
+  const [busy, setBusy] = useState(false);
   const name = `barber-qr-${slug}.${kind}`;
 
-  function onClick() {
+  function fileBlob(): Blob | null {
     const canvas = canvasRef.current;
-    if (!canvas || lock.current) return;
-    lock.current = true;
-    flushSync(() => setStep("loading"));
-    try {
-      const blob = kind === "png" ? canvasToPngBlob(canvas) : canvasToPdf(canvas);
-      saveBlob(blob, name);
-      window.setTimeout(() => setStep("done"), 500);
-      window.setTimeout(() => {
-        setStep("idle");
-        lock.current = false;
-      }, 2500);
-    } catch {
-      setStep("idle");
-      lock.current = false;
-    }
+    if (!canvas) return null;
+    return kind === "png" ? canvasToPngBlob(canvas) : canvasToPdf(canvas);
+  }
+
+  function attach(anchor: HTMLAnchorElement, blob: Blob) {
+    const url = URL.createObjectURL(blob);
+    setHref((prev) => {
+      if (prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return url;
+    });
+    anchor.href = url;
+    anchor.download = name;
   }
 
   return (
-    <button
-      type="button"
+    <a
+      href={href || undefined}
+      download={name}
       data-testid={kind === "png" ? "qr-download-png" : "qr-download-pdf"}
-      onClick={onClick}
-      className={className}
+      className={`${className} flex items-center justify-center no-underline`}
+      onPointerDown={(event) => {
+        const blob = fileBlob();
+        if (!blob) return;
+        flushSync(() => {
+          attach(event.currentTarget, blob);
+          setBusy(true);
+        });
+        event.currentTarget.href = hrefFrom(event.currentTarget) || event.currentTarget.href;
+        event.currentTarget.download = name;
+      }}
+      onClick={(event) => {
+        const anchor = event.currentTarget;
+        if (!anchor.href.startsWith("blob:")) {
+          event.preventDefault();
+          const blob = fileBlob();
+          if (blob) saveBlob(blob, name);
+        }
+        setBusy(false);
+      }}
     >
-      {step === "loading" ? "Yuklanmoqda..." : step === "done" ? "Yuklandi" : idle}
-    </button>
+      {busy ? "Yuklanmoqda..." : idle}
+    </a>
   );
+}
+
+function hrefFrom(anchor: HTMLAnchorElement): string {
+  const raw = anchor.getAttribute("href") || "";
+  return raw.startsWith("blob:") ? raw : "";
 }
 
 function saveBlob(blob: Blob, name: string) {
@@ -426,12 +447,11 @@ function saveBlob(blob: Blob, name: string) {
   const link = document.createElement("a");
   link.href = url;
   link.download = name;
-  link.rel = "noopener";
   document.body.appendChild(link);
   link.click();
   window.setTimeout(() => {
     link.remove();
     URL.revokeObjectURL(url);
-  }, 20000);
+  }, 30000);
 }
 
