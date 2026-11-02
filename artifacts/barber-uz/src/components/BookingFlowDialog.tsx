@@ -30,6 +30,7 @@ import {
   useCreateService,
   useCreateBooking,
   useListBookings,
+  useListClients,
   useGetProfile,
   getGetDashboardStatsQueryKey,
   getListServicesQueryKey,
@@ -150,6 +151,16 @@ const FIELD_ORDER: (keyof typeof FIELD_ERROR_TEXT)[] = [
   "date",
   "time",
 ];
+
+function completeLocalPhone(phone: string): string | null {
+  const digits = phone.replace(/\D/g, "");
+  const local = (digits.startsWith("998") ? digits.slice(3) : digits).slice(0, 9);
+  return local.length === 9 ? local : null;
+}
+
+function phoneEndsWithLocal(phone: string | null | undefined, local: string): boolean {
+  return (phone ?? "").replace(/\D/g, "").endsWith(local);
+}
 
 function collectFieldErrors(form: FormState): FieldErrors {
   const errors: FieldErrors = {};
@@ -1106,6 +1117,30 @@ function BookingFormContent({
   onPickDate: (date: string) => void;
 }) {
   const readyForSlots = Boolean(form.serviceId && form.date);
+  const lookupKey = completeLocalPhone(form.phone);
+  const [nameFilledNote, setNameFilledNote] = useState(false);
+  const { data: knownClients } = useListClients(
+    { search: lookupKey ?? "", limit: 20 },
+    { query: { enabled: lookupKey !== null } },
+  );
+  const foundClient = (knownClients?.clients ?? []).find(
+    (client: { name?: string | null; phone?: string | null }) =>
+      lookupKey !== null && phoneEndsWithLocal(client.phone, lookupKey) && Boolean(client.name?.trim()),
+  );
+  const foundName = foundClient?.name?.trim() ?? "";
+  const showFound = Boolean(foundName) && form.name.trim() !== foundName && !nameFilledNote;
+
+  useEffect(() => {
+    if (!nameFilledNote) return;
+    const timer = window.setTimeout(() => setNameFilledNote(false), 1000);
+    return () => window.clearTimeout(timer);
+  }, [nameFilledNote]);
+
+  function fillFoundName() {
+    if (!foundName) return;
+    onChange({ name: foundName });
+    setNameFilledNote(true);
+  }
 
   useEffect(() => {
     if (!scrollKey) return;
@@ -1143,9 +1178,32 @@ function BookingFormContent({
           value={form.name}
           onChange={(e) => onChange({ name: e.target.value })}
           placeholder="Aziz"
-          className={`${INPUT_BASE} ${fieldErrors.name ? INPUT_ERR : INPUT_OK}`}
+          className={`${INPUT_BASE} ${
+            fieldErrors.name
+              ? INPUT_ERR
+              : showFound
+                ? "border-primary focus:border-primary focus:ring-primary/40 shadow-[0_0_18px_hsl(var(--primary)/0.45)]"
+                : INPUT_OK
+          }`}
         />
         <FieldError message={fieldErrors.name} />
+        {showFound && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <p className="text-xs text-foreground/90 leading-snug">
+              💡 Bu raqam bilan “{foundName}” ismli mijoz topildi
+            </p>
+            <button
+              type="button"
+              onClick={fillFoundName}
+              className="shrink-0 h-8 px-3 rounded-xl text-xs font-semibold border border-primary/40 bg-primary/15 text-primary"
+            >
+              🔄 Ismni toʻldirish
+            </button>
+          </div>
+        )}
+        {nameFilledNote && (
+          <p className="text-xs text-green-400 mt-2">✅ Mijoz ismi avtomatik kiritildi</p>
+        )}
       </div>
 
       {/* 2. Telefon */}
