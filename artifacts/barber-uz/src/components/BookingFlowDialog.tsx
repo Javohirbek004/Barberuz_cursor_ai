@@ -54,6 +54,7 @@ import {
   type ScheduleSource,
   type SlotPeriod,
 } from "@/lib/schedule";
+import { localPhoneDigits, phoneReadyOrEmpty } from "@/lib/booking-phone";
 
 type ProfileSchedule = ScheduleSource & {
   lunchBreakEnabled?: boolean | null;
@@ -154,8 +155,7 @@ const FIELD_ORDER: (keyof typeof FIELD_ERROR_TEXT)[] = [
 function collectFieldErrors(form: FormState): FieldErrors {
   const errors: FieldErrors = {};
   if (!form.name.trim()) errors.name = FIELD_ERROR_TEXT.name;
-  const digits = form.phone.replace(/\D/g, "");
-  if (digits.length < 12) errors.phone = FIELD_ERROR_TEXT.phone;
+  if (!phoneReadyOrEmpty(form.phone)) errors.phone = FIELD_ERROR_TEXT.phone;
   if (!form.serviceId) errors.service = FIELD_ERROR_TEXT.service;
   if (!form.date) errors.date = FIELD_ERROR_TEXT.date;
   if (!form.time) errors.time = FIELD_ERROR_TEXT.time;
@@ -1149,7 +1149,7 @@ function BookingFormContent({
 
       {/* 2. Telefon */}
       <div data-booking-field="phone">
-        <FieldLabel required>Telefon raqam</FieldLabel>
+        <FieldLabel optional>Telefon raqam</FieldLabel>
         <input
           value={form.phone}
           onChange={(e) => onChange({ phone: applyPhoneMask(e.target.value) })}
@@ -1465,7 +1465,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
     const endMins = toMins(form.time) + (selectedSvc?.duration ?? 30);
 
     // Encode phone in notes so BookingDetailModal can display it
-    const phoneDigitsLocal = form.phone.replace(/\D/g, "").slice(3); // remove 998
+    const phoneDigitsLocal = localPhoneDigits(form.phone);
     const hasValidPhone = phoneDigitsLocal.length >= 9;
     const encodedNotes = [
       hasValidPhone ? `Tel: ${form.phone}` : null,
@@ -1474,8 +1474,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
       .filter(Boolean)
       .join("\n") || null;
 
-    const phoneDigitsForApi = form.phone.replace(/\D/g, "");
-    const clientPhoneForApi = phoneDigitsForApi.length >= 12 ? form.phone.trim() : undefined;
+    const clientPhoneForApi = hasValidPhone ? form.phone.trim() : undefined;
 
     createBookingMut.mutate(
       {
