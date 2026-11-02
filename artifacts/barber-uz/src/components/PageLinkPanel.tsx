@@ -244,14 +244,14 @@ function QrStudio({
           slug={slug}
           canvasRef={canvasRef}
           className="h-11 rounded-xl bg-primary text-black text-xs font-bold"
-          idle="📥 RASM"
+          idle="📥 RASM ni Yuklash"
         />
         <QrDownloadLink
           kind="pdf"
           slug={slug}
           canvasRef={canvasRef}
           className="h-11 rounded-xl bg-white/8 text-xs font-bold"
-          idle="🖨 PDF"
+          idle="🖨 PDF ni Yuklash"
         />
       </div>
     </div>
