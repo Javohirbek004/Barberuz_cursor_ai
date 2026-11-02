@@ -155,7 +155,8 @@ function collectFieldErrors(form: FormState): FieldErrors {
   const errors: FieldErrors = {};
   if (!form.name.trim()) errors.name = FIELD_ERROR_TEXT.name;
   const digits = form.phone.replace(/\D/g, "");
-  if (digits.length < 12) errors.phone = FIELD_ERROR_TEXT.phone;
+  const local = digits.startsWith("998") ? digits.slice(3) : digits;
+  if (local.length > 0 && local.length < 9) errors.phone = FIELD_ERROR_TEXT.phone;
   if (!form.serviceId) errors.service = FIELD_ERROR_TEXT.service;
   if (!form.date) errors.date = FIELD_ERROR_TEXT.date;
   if (!form.time) errors.time = FIELD_ERROR_TEXT.time;
@@ -1149,7 +1150,7 @@ function BookingFormContent({
 
       {/* 2. Telefon */}
       <div data-booking-field="phone">
-        <FieldLabel required>Telefon raqam</FieldLabel>
+        <FieldLabel optional>Telefon raqam</FieldLabel>
         <input
           value={form.phone}
           onChange={(e) => onChange({ phone: applyPhoneMask(e.target.value) })}
