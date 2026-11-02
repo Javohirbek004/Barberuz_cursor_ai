@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import QRCode from "react-qr-code";
 import { APP_DISPLAY_HOST, APP_ORIGIN } from "@/lib/config";
-import { QR_CARD, canvasToPdf, drawQrPoster, qrCenterRatio } from "@/lib/qr-poster";
+import { QR_CARD, canvasToPdf, canvasToPngBlob, drawQrPoster, qrCenterRatio } from "@/lib/qr-poster";
 
 const MONTHS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
 const DEFAULT_CTA = "Onlayn navbat olish uchun skanerlang";
@@ -227,21 +228,15 @@ function QrStudio({
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [scanUrl, cta, logo]);
 
-  async function download(kind: "png" | "pdf") {
+  function download(kind: "png" | "pdf") {
     const canvas = canvasRef.current;
     if (!canvas || downloadLock.current) return;
     downloadLock.current = true;
-    const started = Date.now();
-    setDownloading(kind);
-    await waitForPaint();
+    flushSync(() => setDownloading(kind));
     try {
-      const blob = kind === "png"
-        ? await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"))
-        : await canvasToPdf(canvas);
-      if (blob) saveBlob(blob, `barber-qr-${slug}.${kind}`);
+      const blob = kind === "png" ? canvasToPngBlob(canvas) : canvasToPdf(canvas);
+      saveBlob(blob, `barber-qr-${slug}.${kind}`);
     } finally {
-      const remain = 400 - (Date.now() - started);
-      if (remain > 0) await new Promise((resolve) => window.setTimeout(resolve, remain));
       downloadLock.current = false;
       setDownloading(null);
     }
@@ -398,7 +393,7 @@ function SlugEditor({
               ℹ️ Manzil qoidalari: Faqat lotin harflari (a-z), raqamlar (0-9), '-' va '_' belgilaridan foydalaning (3–24 belgi). Probel va kirill harflari mumkin emas.
             </p>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              💡 30 kunlik qoida: Sahifa manzilini 30 kunda 1 marta o‘zgartirish mumkin. Sahifa manzilingiz o‘zgargan taqdirda ham, chop etilgan ushbu QR-kod 30 kun davomida yangi havolangizga avtomatik ravishda o‘tib turadi.
+              💡 30 kunlik qoida: Sahifa manzilini 30 kunda 1 marta o‘zgartirish mumkin. Sahifa manzilingiz o‘zgargan taqdirda ham, chop etilgan eski QR-kod 30 kun davomida yangi havolangizga avtomatik ravishda yoʻnaltirib turadi.
             </p>
             {status === "ok" && draft.toLowerCase() !== currentSlug && (
               <p className="mt-3 text-xs text-emerald-400">✅ Ajoyib! Bu manzil bo‘sh va foydalanishga tayyor.</p>
@@ -435,21 +430,18 @@ function SlugEditor({
   );
 }
 
-function waitForPaint() {
-  return new Promise<void>((resolve) => {
-    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()));
-  });
-}
-
 function saveBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = name;
+  link.rel = "noopener";
   document.body.appendChild(link);
   link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  window.setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 20000);
 }
 
 function resizeLogo(file: File): Promise<string> {

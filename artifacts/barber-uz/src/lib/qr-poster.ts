@@ -45,12 +45,20 @@ export async function drawQrPoster(
   wrapText(ctx, opts.cta.trim(), width / 2, qrY + qrSize + 56, width - 140, 58);
 }
 
-export async function canvasToPdf(canvas: HTMLCanvasElement): Promise<Blob> {
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((file) => file ? resolve(file) : reject(new Error("jpeg")), "image/jpeg", 0.92);
-  });
-  const jpeg = new Uint8Array(await blob.arrayBuffer());
+export function canvasToPngBlob(canvas: HTMLCanvasElement): Blob {
+  return new Blob([dataUrlToBytes(canvas.toDataURL("image/png"))], { type: "image/png" });
+}
+
+export function canvasToPdf(canvas: HTMLCanvasElement): Blob {
+  const jpeg = dataUrlToBytes(canvas.toDataURL("image/jpeg", 0.92));
   return jpegToA6Pdf(jpeg, canvas.width, canvas.height);
+}
+
+function dataUrlToBytes(dataUrl: string): Uint8Array {
+  const binary = atob(dataUrl.slice(dataUrl.indexOf(",") + 1));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
