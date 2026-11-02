@@ -210,8 +210,6 @@ function QrStudio({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const qrRef = useRef<HTMLDivElement>(null);
   const ctaRef = useRef<HTMLInputElement>(null);
-  const downloadLock = useRef(false);
-  const [downloading, setDownloading] = useState<null | "png" | "pdf">(null);
   const scanUrl = `${APP_ORIGIN}/${slug}?qr=1`;
   const center = `${qrCenterRatio() * 100}%`;
   const pencilTop = `calc(${center} + ${(88 / QR_CARD.height) * 100}% + 8px)`;
@@ -227,20 +225,6 @@ function QrStudio({
     }, 60);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [scanUrl, cta, logo]);
-
-  function download(kind: "png" | "pdf") {
-    const canvas = canvasRef.current;
-    if (!canvas || downloadLock.current) return;
-    downloadLock.current = true;
-    flushSync(() => setDownloading(kind));
-    try {
-      const blob = kind === "png" ? canvasToPngBlob(canvas) : canvasToPdf(canvas);
-      saveBlob(blob, `barber-qr-${slug}.${kind}`);
-    } finally {
-      downloadLock.current = false;
-      setDownloading(null);
-    }
-  }
 
   async function pickLogo(file: File) {
     const data = await resizeLogo(file);
@@ -292,24 +276,20 @@ function QrStudio({
         </button>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          data-testid="qr-download-png"
-          disabled={downloading !== null}
-          onClick={() => void download("png")}
-          className="h-11 rounded-xl bg-primary text-black text-xs font-bold disabled:opacity-70"
-        >
-          {downloading === "png" ? "Yuklanmoqda..." : "📥 PNG Yuklash"}
-        </button>
-        <button
-          type="button"
-          data-testid="qr-download-pdf"
-          disabled={downloading !== null}
-          onClick={() => void download("pdf")}
-          className="h-11 rounded-xl bg-white/8 text-xs font-bold disabled:opacity-70"
-        >
-          {downloading === "pdf" ? "Yuklanmoqda..." : "🖨 PDF Yuklash"}
-        </button>
+        <QrDownloadLink
+          kind="png"
+          slug={slug}
+          canvasRef={canvasRef}
+          className="h-11 rounded-xl bg-primary text-black text-xs font-bold"
+          idle="📥 PNG Yuklash"
+        />
+        <QrDownloadLink
+          kind="pdf"
+          slug={slug}
+          canvasRef={canvasRef}
+          className="h-11 rounded-xl bg-white/8 text-xs font-bold"
+          idle="🖨 PDF Yuklash"
+        />
       </div>
     </div>
   );
@@ -427,6 +407,122 @@ function SlugEditor({
         )}
       </div>
     </div>
+  );
+}
+
+function wantsSystemShare(): boolean {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/i.test(ua)) return true;
+  const tg = (window as Window & { Telegram?: { WebApp?: unknown } }).Telegram?.WebApp;
+  return !!tg;
+}
+
+function canShareFile(file: File): boolean {
+  if (typeof navigator.share !== "function" || typeof navigator.canShare !== "function") return false;
+  try {
+    return navigator.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
+}
+
+function QrDownloadLink({
+  kind,
+  slug,
+  canvasRef,
+  className,
+  idle,
+}: {
+  kind: "png" | "pdf";
+  slug: string;
+  canvasRef: { current: HTMLCanvasElement | null };
+  className: string;
+  idle: string;
+}) {
+  const [step, setStep] = useState<"idle" | "loading" | "done">("idle");
+  const [href, setHref] = useState("");
+  const fileRef = useRef<File | null>(null);
+  const lock = useRef(false);
+  const name = `barber-qr-${slug}.${kind}`;
+
+  function build(): File | null {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const blob = kind === "png" ? canvasToPngBlob(canvas) : canvasToPdf(canvas);
+    return new File([blob], name, { type: blob.type || (kind === "png" ? "image/png" : "application/pdf") });
+  }
+
+  function arm() {
+    const file = build();
+    if (!file) return;
+    fileRef.current = file;
+    const url = URL.createObjectURL(file);
+    setHref((prev) => {
+      if (prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return url;
+    });
+  }
+
+  function showSaved() {
+    setStep("done");
+    window.setTimeout(() => {
+      setStep("idle");
+      lock.current = false;
+    }, 2200);
+  }
+
+  return (
+    <a
+      href={href || undefined}
+      download={name}
+      data-testid={kind === "png" ? "qr-download-png" : "qr-download-pdf"}
+      className={`${className} flex items-center justify-center no-underline`}
+      onPointerDown={() => {
+        if (lock.current) return;
+        flushSync(() => {
+          arm();
+          setStep("loading");
+        });
+      }}
+      onClick={(event) => {
+        if (lock.current) {
+          event.preventDefault();
+          return;
+        }
+        lock.current = true;
+        const file = fileRef.current ?? build();
+        const link = event.currentTarget;
+        if (!file) {
+          event.preventDefault();
+          lock.current = false;
+          setStep("idle");
+          return;
+        }
+        fileRef.current = file;
+        if (wantsSystemShare() && canShareFile(file)) {
+          event.preventDefault();
+          void navigator.share({ files: [file], title: name })
+            .then(() => showSaved())
+            .catch((err: unknown) => {
+              if (err instanceof DOMException && err.name === "AbortError") {
+                setStep("idle");
+                lock.current = false;
+                return;
+              }
+              saveBlob(file, name);
+              showSaved();
+            });
+          return;
+        }
+        if (!link.href.startsWith("blob:")) {
+          event.preventDefault();
+          saveBlob(file, name);
+        }
+        window.setTimeout(showSaved, 600);
+      }}
+    >
+      {step === "loading" ? "Yuklanmoqda..." : step === "done" ? "Yuklandi" : idle}
+    </a>
   );
 }
 
