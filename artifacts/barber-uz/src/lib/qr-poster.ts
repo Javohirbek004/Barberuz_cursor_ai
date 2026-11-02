@@ -5,13 +5,9 @@ export const QR_CARD = {
   qrY: 80,
 };
 
-export function qrCenterRatio() {
-  return (QR_CARD.qrY + QR_CARD.qrSize / 2) / QR_CARD.height;
-}
-
 export async function drawQrPoster(
   canvas: HTMLCanvasElement,
-  opts: { cta: string; logoUrl?: string | null; qrSvg: SVGSVGElement },
+  opts: { cta: string; qrSvg: SVGSVGElement },
 ) {
   const { width, height, qrSize, qrY } = QR_CARD;
   canvas.width = width;
@@ -24,19 +20,6 @@ export async function drawQrPoster(
   const qr = await svgToImage(opts.qrSvg);
   const qrX = (width - qrSize) / 2;
   ctx.drawImage(qr, qrX, qrY, qrSize, qrSize);
-
-  if (opts.logoUrl) {
-    try {
-      const logo = await loadImage(opts.logoUrl);
-      const badge = 176;
-      const badgeX = qrX + (qrSize - badge) / 2;
-      const badgeY = qrY + (qrSize - badge) / 2;
-      roundRect(ctx, badgeX, badgeY, badge, badge, 36, "#ffffff");
-      drawContain(ctx, logo, badgeX + 18, badgeY + 18, badge - 36, badge - 36);
-    } catch {
-      // A broken upload must not put a default mark back in the middle.
-    }
-  }
 
   ctx.fillStyle = "#1a1a1a";
   ctx.font = "600 44px sans-serif";
@@ -77,35 +60,6 @@ function svgToImage(svg: SVGSVGElement): Promise<HTMLImageElement> {
   const xml = new XMLSerializer().serializeToString(clone);
   const url = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
   return loadImage(url).finally(() => URL.revokeObjectURL(url));
-}
-
-function drawContain(
-  ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-) {
-  const scale = Math.min(w / img.width, h / img.height);
-  const dw = img.width * scale;
-  const dh = img.height * scale;
-  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
-}
-
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-  fill: string,
-) {
-  ctx.fillStyle = fill;
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
-  ctx.fill();
 }
 
 function wrapText(

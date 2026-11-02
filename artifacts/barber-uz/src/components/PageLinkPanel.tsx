@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import QRCode from "react-qr-code";
 import { APP_DISPLAY_HOST, APP_ORIGIN } from "@/lib/config";
-import { QR_CARD, canvasToPdf, canvasToPngBlob, drawQrPoster, qrCenterRatio } from "@/lib/qr-poster";
+import { QR_CARD, canvasToPdf, canvasToPngBlob, drawQrPoster } from "@/lib/qr-poster";
 
 const MONTHS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
 const DEFAULT_CTA = "Onlayn navbat olish uchun skanerlang";
@@ -79,7 +79,6 @@ export function PageLinkPanel({
   const [changedAt, setChangedAt] = useState<string | null>(null);
   const [nextAt, setNextAt] = useState<string | null>(null);
   const [cta, setCta] = useState(DEFAULT_CTA);
-  const [logo, setLogo] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [copied, setCopied] = useState(false);
@@ -103,7 +102,6 @@ export function PageLinkPanel({
           rememberSlug(data.username);
         }
         if (typeof data.qrCta === "string" && data.qrCta.trim()) setCta(data.qrCta);
-        if (typeof data.qrLogo === "string" && data.qrLogo) setLogo(data.qrLogo);
         qrReady.current = true;
       })
       .catch(() => {});
@@ -114,7 +112,7 @@ export function PageLinkPanel({
   const pageUrl = `${APP_ORIGIN}/${slug}`;
   const address = displayAddress(slug);
 
-  async function saveQr(next: { cta?: string; logo?: string | null }) {
+  async function saveQr(next: { cta?: string }) {
     await fetch("/api/settings/qr", {
       method: "PATCH",
       headers: authHeaders(),
@@ -164,13 +162,7 @@ export function PageLinkPanel({
         )}
       </div>
 
-      <QrStudio
-        slug={slug}
-        cta={cta}
-        logo={logo}
-        onCta={setCta}
-        onLogo={(value) => { setLogo(value); void saveQr({ logo: value }); }}
-      />
+      <QrStudio slug={slug} cta={cta} onCta={setCta} />
 
       {editorOpen && (
         <SlugEditor
@@ -199,20 +191,16 @@ export function PageLinkPanel({
 }
 
 function QrStudio({
-  slug, cta, logo, onCta, onLogo,
+  slug, cta, onCta,
 }: {
   slug: string;
   cta: string;
-  logo: string | null;
   onCta: (value: string) => void;
-  onLogo: (value: string | null) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const qrRef = useRef<HTMLDivElement>(null);
   const ctaRef = useRef<HTMLInputElement>(null);
   const scanUrl = `${APP_ORIGIN}/${slug}?qr=1`;
-  const center = `${qrCenterRatio() * 100}%`;
-  const pencilTop = `calc(${center} + ${(88 / QR_CARD.height) * 100}% + 8px)`;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -221,42 +209,17 @@ function QrStudio({
     let cancelled = false;
     const timer = window.setTimeout(() => {
       if (cancelled) return;
-      drawQrPoster(canvas, { cta, logoUrl: logo, qrSvg: svg }).catch(() => {});
+      drawQrPoster(canvas, { cta, qrSvg: svg }).catch(() => {});
     }, 60);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [scanUrl, cta, logo]);
-
-  async function pickLogo(file: File) {
-    const data = await resizeLogo(file);
-    onLogo(data);
-  }
+  }, [scanUrl, cta]);
 
   return (
     <div className="bg-card border border-white/6 rounded-2xl p-4 space-y-4">
-      <div className="relative">
-        <canvas ref={canvasRef} data-testid="qr-canvas" className="w-full rounded-2xl bg-white" style={{ aspectRatio: `${QR_CARD.width} / ${QR_CARD.height}` }} />
-        <label
-          data-testid="qr-logo-upload"
-          aria-label="Logoni o‘zgartirish"
-          className="absolute left-1/2 z-10 flex h-9 w-9 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full border border-white/80 bg-black/80 text-base text-white shadow-md"
-          style={{ top: pencilTop }}
-        >
-          <span aria-hidden>✎</span>
-          <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = "";
-            if (file) void pickLogo(file);
-          }} />
-        </label>
-      </div>
+      <canvas ref={canvasRef} data-testid="qr-canvas" className="w-full rounded-2xl bg-white" style={{ aspectRatio: `${QR_CARD.width} / ${QR_CARD.height}` }} />
       <div ref={qrRef} className="absolute h-0 w-0 overflow-hidden" aria-hidden>
         <QRCode value={scanUrl} size={680} level="H" bgColor="#ffffff" fgColor="#111111" />
       </div>
-      {logo && (
-        <button type="button" onClick={() => onLogo(null)} className="text-xs text-muted-foreground underline underline-offset-2">
-          Logoni olib tashlash
-        </button>
-      )}
       <div className="relative">
         <input
           ref={ctaRef}
@@ -410,22 +373,6 @@ function SlugEditor({
   );
 }
 
-function wantsSystemShare(): boolean {
-  const ua = navigator.userAgent;
-  if (/iPhone|iPad|iPod/i.test(ua)) return true;
-  const tg = (window as Window & { Telegram?: { WebApp?: unknown } }).Telegram?.WebApp;
-  return !!tg;
-}
-
-function canShareFile(file: File): boolean {
-  if (typeof navigator.share !== "function" || typeof navigator.canShare !== "function") return false;
-  try {
-    return navigator.canShare({ files: [file] });
-  } catch {
-    return false;
-  }
-}
-
 function QrDownloadLink({
   kind,
   slug,
@@ -440,89 +387,37 @@ function QrDownloadLink({
   idle: string;
 }) {
   const [step, setStep] = useState<"idle" | "loading" | "done">("idle");
-  const [href, setHref] = useState("");
-  const fileRef = useRef<File | null>(null);
   const lock = useRef(false);
   const name = `barber-qr-${slug}.${kind}`;
 
-  function build(): File | null {
+  function onClick() {
     const canvas = canvasRef.current;
-    if (!canvas) return null;
-    const blob = kind === "png" ? canvasToPngBlob(canvas) : canvasToPdf(canvas);
-    return new File([blob], name, { type: blob.type || (kind === "png" ? "image/png" : "application/pdf") });
-  }
-
-  function arm() {
-    const file = build();
-    if (!file) return;
-    fileRef.current = file;
-    const url = URL.createObjectURL(file);
-    setHref((prev) => {
-      if (prev.startsWith("blob:")) URL.revokeObjectURL(prev);
-      return url;
-    });
-  }
-
-  function showSaved() {
-    setStep("done");
-    window.setTimeout(() => {
+    if (!canvas || lock.current) return;
+    lock.current = true;
+    flushSync(() => setStep("loading"));
+    try {
+      const blob = kind === "png" ? canvasToPngBlob(canvas) : canvasToPdf(canvas);
+      saveBlob(blob, name);
+      window.setTimeout(() => setStep("done"), 500);
+      window.setTimeout(() => {
+        setStep("idle");
+        lock.current = false;
+      }, 2500);
+    } catch {
       setStep("idle");
       lock.current = false;
-    }, 2200);
+    }
   }
 
   return (
-    <a
-      href={href || undefined}
-      download={name}
+    <button
+      type="button"
       data-testid={kind === "png" ? "qr-download-png" : "qr-download-pdf"}
-      className={`${className} flex items-center justify-center no-underline`}
-      onPointerDown={() => {
-        if (lock.current) return;
-        flushSync(() => {
-          arm();
-          setStep("loading");
-        });
-      }}
-      onClick={(event) => {
-        if (lock.current) {
-          event.preventDefault();
-          return;
-        }
-        lock.current = true;
-        const file = fileRef.current ?? build();
-        const link = event.currentTarget;
-        if (!file) {
-          event.preventDefault();
-          lock.current = false;
-          setStep("idle");
-          return;
-        }
-        fileRef.current = file;
-        if (wantsSystemShare() && canShareFile(file)) {
-          event.preventDefault();
-          void navigator.share({ files: [file], title: name })
-            .then(() => showSaved())
-            .catch((err: unknown) => {
-              if (err instanceof DOMException && err.name === "AbortError") {
-                setStep("idle");
-                lock.current = false;
-                return;
-              }
-              saveBlob(file, name);
-              showSaved();
-            });
-          return;
-        }
-        if (!link.href.startsWith("blob:")) {
-          event.preventDefault();
-          saveBlob(file, name);
-        }
-        window.setTimeout(showSaved, 600);
-      }}
+      onClick={onClick}
+      className={className}
     >
       {step === "loading" ? "Yuklanmoqda..." : step === "done" ? "Yuklandi" : idle}
-    </a>
+    </button>
   );
 }
 
@@ -540,26 +435,3 @@ function saveBlob(blob: Blob, name: string) {
   }, 20000);
 }
 
-function resizeLogo(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const size = 256;
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) { reject(new Error("canvas")); return; }
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, size, size);
-      const scale = Math.min(size / img.width, size / img.height);
-      const w = img.width * scale;
-      const h = img.height * scale;
-      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
-      resolve(canvas.toDataURL("image/jpeg", 0.85));
-      URL.revokeObjectURL(img.src);
-    };
-    img.onerror = () => reject(new Error("image"));
-    img.src = URL.createObjectURL(file);
-  });
-}
