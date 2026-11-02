@@ -60,9 +60,9 @@ export function BotUnlinkedBang({ show }: { show: boolean }) {
   return <span className="shrink-0 font-black leading-none text-yellow-300" aria-hidden>!</span>;
 }
 
-export function BotUnlinkedNote({ show }: { show: boolean }) {
+export function BotUnlinkedNote({ show, className = "mt-0.5" }: { show: boolean; className?: string }) {
   if (!show) return null;
-  return <div className="text-xs font-semibold text-yellow-300 mt-0.5">Botga ulanmagan</div>;
+  return <div className={`text-xs font-semibold text-yellow-300 ${className}`}>Botga ulanmagan</div>;
 }
 
 export function BookingStatusBadge({
