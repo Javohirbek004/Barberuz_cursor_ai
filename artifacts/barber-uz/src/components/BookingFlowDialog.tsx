@@ -152,10 +152,32 @@ const FIELD_ORDER: (keyof typeof FIELD_ERROR_TEXT)[] = [
   "time",
 ];
 
-function completeLocalPhone(phone: string): string | null {
+function localPhoneDigits(phone: string): string {
   const digits = phone.replace(/\D/g, "");
-  const local = (digits.startsWith("998") ? digits.slice(3) : digits).slice(0, 9);
+  return (digits.startsWith("998") ? digits.slice(3) : digits).slice(0, 9);
+}
+
+function completeLocalPhone(phone: string): string | null {
+  const local = localPhoneDigits(phone);
   return local.length === 9 ? local : null;
+}
+
+type PhoneLookupView = "idle" | "searching" | "found" | "new";
+
+function phoneLookupView(input: {
+  typedLength: number;
+  lookupReady: boolean;
+  busy: boolean;
+  foundName: string;
+  currentName: string;
+  nameJustFilled: boolean;
+}): PhoneLookupView {
+  if (input.typedLength === 0) return "idle";
+  if (!input.lookupReady || input.busy) return "searching";
+  if (input.nameJustFilled) return "idle";
+  if (input.foundName && input.currentName.trim() !== input.foundName) return "found";
+  if (!input.foundName) return "new";
+  return "idle";
 }
 
 function phoneEndsWithLocal(phone: string | null | undefined, local: string): boolean {
@@ -1119,7 +1141,7 @@ function BookingFormContent({
   const readyForSlots = Boolean(form.serviceId && form.date);
   const lookupKey = completeLocalPhone(form.phone);
   const [nameFilledNote, setNameFilledNote] = useState(false);
-  const { data: knownClients } = useListClients(
+  const { data: knownClients, isFetching, isLoading } = useListClients(
     { search: lookupKey ?? "", limit: 20 },
     { query: { enabled: lookupKey !== null } },
   );
@@ -1128,7 +1150,15 @@ function BookingFormContent({
       lookupKey !== null && phoneEndsWithLocal(client.phone, lookupKey) && Boolean(client.name?.trim()),
   );
   const foundName = foundClient?.name?.trim() ?? "";
-  const showFound = Boolean(foundName) && form.name.trim() !== foundName && !nameFilledNote;
+  const lookupView = phoneLookupView({
+    typedLength: localPhoneDigits(form.phone).length,
+    lookupReady: lookupKey !== null,
+    busy: lookupKey !== null && (isFetching || isLoading),
+    foundName,
+    currentName: form.name,
+    nameJustFilled: nameFilledNote,
+  });
+  const showFound = lookupView === "found";
 
   useEffect(() => {
     if (!nameFilledNote) return;
@@ -1203,6 +1233,14 @@ function BookingFormContent({
         )}
         {nameFilledNote && (
           <p className="text-xs text-green-400 mt-2">✅ Mijoz ismi avtomatik kiritildi</p>
+        )}
+        {lookupView === "searching" && (
+          <p className="mt-2 text-xs text-muted-foreground">🔄 Mijoz qidirilmoqda...</p>
+        )}
+        {lookupView === "new" && (
+          <p className="mt-2 inline-flex text-xs text-muted-foreground bg-white/5 border border-white/10 rounded-full px-2.5 py-1">
+            ✨ Yangi mijoz (bron qilingach bazaga qoʻshiladi)
+          </p>
         )}
       </div>
 
