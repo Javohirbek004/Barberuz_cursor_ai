@@ -428,6 +428,7 @@ function IndividualCalendar() {
               ? { ...b, status: "confirmed" as Booking["status"], date: "2099-01-01", startTime: "23:59" }
               : b;
             const view = bookingLook(shown);
+            const botGap = showsBotGap(b);
             return (
             <motion.button
               key={b.id}
@@ -452,19 +453,27 @@ function IndividualCalendar() {
                     <span className="font-bold truncate text-foreground">
                       {b.clientName}
                     </span>
-                    <BotUnlinkedBang show={showsBotGap(b)} />
+                    <BotUnlinkedBang show={botGap} />
                   </div>
                   <BookingStatusBadge booking={shown} testId={`cal-status-${b.id}`} />
                 </div>
                 <div className="flex items-center justify-between gap-2 mt-0.5">
-                  <BotUnlinkedNote show={showsBotGap(b)} className="truncate" />
+                  {botGap ? (
+                    <BotUnlinkedNote show className="truncate" />
+                  ) : (
+                    <span className="text-sm truncate text-muted-foreground">
+                      {b.serviceName ?? "—"}
+                    </span>
+                  )}
                   <span className={`text-sm font-semibold shrink-0 ml-auto ${view.price}`}>
                     {b.price.toLocaleString()} so'm
                   </span>
                 </div>
-                <div className="text-sm truncate text-muted-foreground mt-0.5">
-                  {b.serviceName ?? "—"}
-                </div>
+                {botGap && (
+                  <div className="text-sm truncate text-muted-foreground mt-0.5">
+                    {b.serviceName ?? "—"}
+                  </div>
+                )}
                 <BookingNoteBadge
                   note={noteFromBooking(b)}
                   muted={b.status === "completed" || b.status === "cancelled" || b.status === "auto_cancelled"}
