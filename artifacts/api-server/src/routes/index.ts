@@ -12,6 +12,7 @@ import telegramRouter from "./telegram";
 import feedbackRouter from "./feedback";
 import publicRouter from "./public";
 import expensesRouter from "./expenses";
+import qrFileRouter from "./qr-file";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use("/telegram", telegramRouter);
 router.use("/feedback", feedbackRouter);
 router.use("/public", publicRouter);
 router.use("/expenses", expensesRouter);
+router.use("/qr-file", qrFileRouter);
 
 export default router;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import QRCode from "react-qr-code";
 import { APP_DISPLAY_HOST, APP_ORIGIN } from "@/lib/config";
-import { QR_CARD, canvasToPdf, canvasToPngBlob, drawQrPoster } from "@/lib/qr-poster";
+import { QR_CARD, canvasToPdfBase64, canvasToPngBase64, drawQrPoster } from "@/lib/qr-poster";
 
 const MONTHS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
 const DEFAULT_CTA = "Onlayn navbat olish uchun skanerlang";
@@ -386,72 +386,72 @@ function QrDownloadLink({
   className: string;
   idle: string;
 }) {
-  const [href, setHref] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<"idle" | "loading" | "done">("idle");
+  const lock = useRef(false);
   const name = `barber-qr-${slug}.${kind}`;
 
-  function fileBlob(): Blob | null {
+  function onClick() {
     const canvas = canvasRef.current;
-    if (!canvas) return null;
-    return kind === "png" ? canvasToPngBlob(canvas) : canvasToPdf(canvas);
+    if (!canvas || lock.current) return;
+    lock.current = true;
+    flushSync(() => setPhase("loading"));
+    try {
+      const data = kind === "png" ? canvasToPngBase64(canvas) : canvasToPdfBase64(canvas);
+      if (!data) throw new Error("empty");
+      postQrDownload(kind, name, data);
+      window.setTimeout(() => setPhase("done"), 700);
+      window.setTimeout(() => {
+        setPhase("idle");
+        lock.current = false;
+      }, 2500);
+    } catch {
+      setPhase("idle");
+      lock.current = false;
+    }
   }
 
-  function attach(anchor: HTMLAnchorElement, blob: Blob) {
-    const url = URL.createObjectURL(blob);
-    setHref((prev) => {
-      if (prev.startsWith("blob:")) URL.revokeObjectURL(prev);
-      return url;
-    });
-    anchor.href = url;
-    anchor.download = name;
-  }
+  const label = phase === "loading" ? "Yuklanmoqda..." : phase === "done" ? "Yuklab olindi" : idle;
 
   return (
-    <a
-      href={href || undefined}
-      download={name}
+    <button
+      type="button"
       data-testid={kind === "png" ? "qr-download-png" : "qr-download-pdf"}
-      className={`${className} flex items-center justify-center no-underline`}
-      onPointerDown={(event) => {
-        const blob = fileBlob();
-        if (!blob) return;
-        flushSync(() => {
-          attach(event.currentTarget, blob);
-          setBusy(true);
-        });
-        event.currentTarget.href = hrefFrom(event.currentTarget) || event.currentTarget.href;
-        event.currentTarget.download = name;
-      }}
-      onClick={(event) => {
-        const anchor = event.currentTarget;
-        if (!anchor.href.startsWith("blob:")) {
-          event.preventDefault();
-          const blob = fileBlob();
-          if (blob) saveBlob(blob, name);
-        }
-        setBusy(false);
-      }}
+      onClick={onClick}
+      className={`${className} flex items-center justify-center`}
     >
-      {busy ? "Yuklanmoqda..." : idle}
-    </a>
+      {label}
+    </button>
   );
 }
 
-function hrefFrom(anchor: HTMLAnchorElement): string {
-  const raw = anchor.getAttribute("href") || "";
-  return raw.startsWith("blob:") ? raw : "";
+function postQrDownload(kind: "png" | "pdf", name: string, data: string) {
+  const frame = downloadFrame();
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = "/api/qr-file";
+  form.target = /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "_blank" : frame.name;
+  form.style.display = "none";
+  for (const [key, value] of Object.entries({ kind, name, data })) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = key;
+    input.value = value;
+    form.appendChild(input);
+  }
+  document.body.appendChild(form);
+  form.submit();
+  window.setTimeout(() => form.remove(), 30000);
 }
 
-function saveBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  document.body.appendChild(link);
-  link.click();
-  window.setTimeout(() => {
-    link.remove();
-    URL.revokeObjectURL(url);
-  }, 30000);
+function downloadFrame(): HTMLIFrameElement {
+  const existing = document.getElementById("qr-download-frame");
+  if (existing instanceof HTMLIFrameElement) return existing;
+  const frame = document.createElement("iframe");
+  frame.id = "qr-download-frame";
+  frame.name = "qr-download-frame";
+  frame.hidden = true;
+  frame.setAttribute("aria-hidden", "true");
+  document.body.appendChild(frame);
+  return frame;
 }
 

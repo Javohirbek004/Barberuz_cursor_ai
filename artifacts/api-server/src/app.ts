@@ -24,6 +24,8 @@ function siteDir(): string | null {
 
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));       // large enough for import payloads
+// QR download posts the picture in one form field. The default parser stops at 100kb.
+app.use("/api/qr-file", express.urlencoded({ extended: false, limit: "4mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/", (_req, res) => {

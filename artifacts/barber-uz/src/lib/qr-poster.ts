@@ -32,9 +32,32 @@ export function canvasToPngBlob(canvas: HTMLCanvasElement): Blob {
   return new Blob([dataUrlToBytes(canvas.toDataURL("image/png"))], { type: "image/png" });
 }
 
+export function canvasToPngBase64(canvas: HTMLCanvasElement): string {
+  const dataUrl = canvas.toDataURL("image/png");
+  const comma = dataUrl.indexOf(",");
+  return comma >= 0 ? dataUrl.slice(comma + 1) : "";
+}
+
 export function canvasToPdf(canvas: HTMLCanvasElement): Blob {
+  return new Blob([canvasPdfBytes(canvas)], { type: "application/pdf" });
+}
+
+export function canvasToPdfBase64(canvas: HTMLCanvasElement): string {
+  return bytesToBase64(canvasPdfBytes(canvas));
+}
+
+function canvasPdfBytes(canvas: HTMLCanvasElement): Uint8Array {
   const jpeg = dataUrlToBytes(canvas.toDataURL("image/jpeg", 0.92));
   return jpegToA6Pdf(jpeg, canvas.width, canvas.height);
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 
 function dataUrlToBytes(dataUrl: string): Uint8Array {
@@ -86,7 +109,7 @@ function wrapText(
   if (line) ctx.fillText(line, x, cursor);
 }
 
-function jpegToA6Pdf(jpeg: Uint8Array, imgW: number, imgH: number): Blob {
+function jpegToA6Pdf(jpeg: Uint8Array, imgW: number, imgH: number): Uint8Array {
   const pageW = 297.64;
   const pageH = 419.53;
   const margin = 16;
@@ -139,5 +162,5 @@ function jpegToA6Pdf(jpeg: Uint8Array, imgW: number, imgH: number): Blob {
     out.set(part, cursor);
     cursor += part.length;
   }
-  return new Blob([out], { type: "application/pdf" });
+  return out;
 }
