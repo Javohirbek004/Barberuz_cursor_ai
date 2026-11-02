@@ -57,7 +57,7 @@ export function showsBotGap(record: object): boolean {
 
 export function BotUnlinkedBang({ show }: { show: boolean }) {
   if (!show) return null;
-  return <span className="shrink-0 font-black leading-none text-yellow-300" aria-hidden>!</span>;
+  return <span className="shrink-0 text-sm leading-none" aria-hidden>⚠️</span>;
 }
 
 export function BotUnlinkedNote({ show, className = "mt-0.5" }: { show: boolean; className?: string }) {
