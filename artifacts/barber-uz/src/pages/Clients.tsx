@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { Layout } from "@/components/Layout";
 import { useListClients } from "@workspace/api-client-react";
 import { Search, ChevronRight, Phone, Users, UserX } from "lucide-react";
 import { BotUnlinkedBang, showsBotGap } from "@/components/BookingStatusBadge";
+import { Switch } from "@/components/ui/switch";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
 import { SEGMENT_META, type Segment } from "@/data/mockClients";
@@ -158,6 +159,32 @@ function SegmentChips({
   );
 }
 
+function BotUnlinkedFilter({
+  count,
+  checked,
+  onChange,
+}: {
+  count: number;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  if (count === 0) return null;
+  return (
+    <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-card px-3.5 py-3">
+      <span className="text-[13px] font-semibold leading-snug text-foreground">
+        Botga ulanmaganlar ⚠️ 🔕 ({count})
+      </span>
+      <Switch
+        checked={checked}
+        onCheckedChange={onChange}
+        data-testid="clients-unlinked-toggle"
+        aria-label="Faqat botga ulanmagan mijozlarni ko'rsatish"
+        className="data-[state=unchecked]:bg-white/25 data-[state=checked]:bg-primary"
+      />
+    </label>
+  );
+}
+
 function EmptyState({ isSearch }: { isSearch: boolean }) {
   const { t } = useTranslation();
   return (
@@ -203,8 +230,15 @@ function IndividualView() {
   const { t } = useTranslation();
   const [segment, setSegment] = useState<SegmentFilter>("all");
   const [search, setSearch] = useState("");
+  const [onlyUnlinked, setOnlyUnlinked] = useState(false);
 
   const { clients, isLoading, total } = useClients(search, segment);
+  const unlinkedCount = clients.filter((client) => showsBotGap(client)).length;
+  const shown = onlyUnlinked ? clients.filter((client) => showsBotGap(client)) : clients;
+
+  useEffect(() => {
+    if (unlinkedCount === 0 && onlyUnlinked) setOnlyUnlinked(false);
+  }, [unlinkedCount, onlyUnlinked]);
 
   return (
     <>
@@ -219,6 +253,7 @@ function IndividualView() {
 
       <div className="mb-4">
         <SegmentChips value={segment} onChange={setSegment} />
+        <BotUnlinkedFilter count={unlinkedCount} checked={onlyUnlinked} onChange={setOnlyUnlinked} />
       </div>
 
       {isLoading ? (
@@ -227,12 +262,12 @@ function IndividualView() {
             <div key={i} className="h-20 rounded-2xl bg-card border border-white/5 animate-pulse" />
           ))}
         </div>
-      ) : clients.length === 0 ? (
-        <EmptyState isSearch={!!(search || segment !== "all")} />
+      ) : shown.length === 0 ? (
+        <EmptyState isSearch={!!(search || segment !== "all" || onlyUnlinked)} />
       ) : (
         <AnimatePresence mode="popLayout">
           <div className="space-y-3">
-            {clients.map((c, i) => (
+            {shown.map((c, i) => (
               <ClientCard key={c.id} client={c} showBarber={false} index={i} />
             ))}
           </div>
@@ -247,12 +282,19 @@ function TeamView() {
   const [segment, setSegment] = useState<SegmentFilter>("all");
   const [barber, setBarber] = useState<string>("__all__");
   const [search, setSearch] = useState("");
+  const [onlyUnlinked, setOnlyUnlinked] = useState(false);
 
   const { clients: allClients, isLoading, total } = useClients(search, segment);
 
   const clients = allClients.filter(
     (c) => barber === "__all__" || c.barber === barber
   );
+  const unlinkedCount = clients.filter((client) => showsBotGap(client)).length;
+  const shown = onlyUnlinked ? clients.filter((client) => showsBotGap(client)) : clients;
+
+  useEffect(() => {
+    if (unlinkedCount === 0 && onlyUnlinked) setOnlyUnlinked(false);
+  }, [unlinkedCount, onlyUnlinked]);
 
   const allBarberLabel = t("team.all");
   const barberList = [allBarberLabel, ...TEAM_BARBER_NAMES];
@@ -271,6 +313,7 @@ function TeamView() {
 
       <div className="mb-3">
         <SegmentChips value={segment} onChange={setSegment} />
+        <BotUnlinkedFilter count={unlinkedCount} checked={onlyUnlinked} onChange={setOnlyUnlinked} />
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1 mb-4 scrollbar-none">
@@ -298,12 +341,12 @@ function TeamView() {
             <div key={i} className="h-20 rounded-2xl bg-card border border-white/5 animate-pulse" />
           ))}
         </div>
-      ) : clients.length === 0 ? (
-        <EmptyState isSearch={!!(search || segment !== "all")} />
+      ) : shown.length === 0 ? (
+        <EmptyState isSearch={!!(search || segment !== "all" || onlyUnlinked)} />
       ) : (
         <AnimatePresence mode="popLayout">
           <div className="space-y-3">
-            {clients.map((c, i) => (
+            {shown.map((c, i) => (
               <ClientCard key={c.id} client={c} showBarber={true} index={i} />
             ))}
           </div>
