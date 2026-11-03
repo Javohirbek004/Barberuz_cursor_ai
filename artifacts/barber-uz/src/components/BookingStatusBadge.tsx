@@ -57,12 +57,12 @@ export function showsBotGap(record: object): boolean {
 
 export function BotUnlinkedBang({ show }: { show: boolean }) {
   if (!show) return null;
-  return <span className="shrink-0 text-sm leading-none" aria-hidden>⚠️</span>;
-}
-
-export function BotUnlinkedNote({ show, className = "mt-0.5" }: { show: boolean; className?: string }) {
-  if (!show) return null;
-  return <div className={`text-xs font-semibold text-yellow-300 ${className}`}>Botga ulanmagan</div>;
+  return (
+    <span className="shrink-0 inline-flex items-center gap-0.5 text-sm leading-none" aria-hidden>
+      <span>⚠️</span>
+      <span>🔕</span>
+    </span>
+  );
 }
 
 export function BookingStatusBadge({

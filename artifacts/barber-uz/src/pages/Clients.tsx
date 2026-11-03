@@ -4,7 +4,7 @@ import { useTranslation } from "@/i18n/LanguageContext";
 import { Layout } from "@/components/Layout";
 import { useListClients } from "@workspace/api-client-react";
 import { Search, ChevronRight, Phone, Users, UserX } from "lucide-react";
-import { BotUnlinkedBang, BotUnlinkedNote, showsBotGap } from "@/components/BookingStatusBadge";
+import { BotUnlinkedBang, showsBotGap } from "@/components/BookingStatusBadge";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
 import { SEGMENT_META, type Segment } from "@/data/mockClients";
@@ -59,7 +59,7 @@ function ClientCard({
     >
       <Link href={`/client/${client.id}`}>
         <div className="bg-card border border-white/5 p-4 rounded-2xl flex items-center gap-4 hover:bg-white/[0.03] hover:border-white/10 transition-all cursor-pointer group">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/20 font-display font-bold text-primary text-lg uppercase shrink-0">
+          <div className={`w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center font-display font-bold text-primary text-lg uppercase shrink-0 ${botGap ? "ring-2 ring-primary" : "border border-primary/20"}`}>
             {client.name.charAt(0)}
           </div>
 
@@ -73,7 +73,6 @@ function ClientCard({
                 {seg.emoji} {segLabel}
               </span>
             </div>
-            <BotUnlinkedNote show={botGap} />
 
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               {client.phone && (
