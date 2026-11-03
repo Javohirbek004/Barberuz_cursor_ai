@@ -69,17 +69,19 @@ export function BookingStatusBadge({
   booking,
   now,
   testId,
+  className,
 }: {
   booking: { status: string; date: string; startTime: string };
   now?: number;
   testId?: string;
+  className?: string;
 }) {
   const view = bookingLook(booking, now);
   const Icon = view.Icon;
   return (
     <span
       data-testid={testId}
-      className={`inline-flex items-center gap-1 max-w-[9.5rem] px-2 py-0.5 rounded-full text-[11px] font-semibold leading-tight ${view.badge}`}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold leading-tight ${className ?? "max-w-[9.5rem]"} ${view.badge}`}
     >
       <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden />
       <span className="text-left">{view.label}</span>

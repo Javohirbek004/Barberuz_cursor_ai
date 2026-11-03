@@ -424,10 +424,8 @@ function IndividualCalendar() {
             <p data-testid="calendar-day-off" className="text-center text-sm font-semibold text-muted-foreground py-1">Dam olish kuni</p>
           )}
           {visibleBookings.map((b, i) => {
-            const shown = bookingStatus(b.status) === "confirmed" || bookingStatus(b.status) === "pending" || bookingStatus(b.status) === "pending_action"
-              ? { ...b, status: "confirmed" as Booking["status"], date: "2099-01-01", startTime: "23:59" }
-              : b;
-            const view = bookingLook(shown);
+            const view = bookingLook(b);
+            const waiting = view.key === "pending_action";
             const botGap = showsBotGap(b);
             return (
             <motion.button
@@ -455,10 +453,14 @@ function IndividualCalendar() {
                     </span>
                     <BotUnlinkedBang show={botGap} />
                   </div>
-                  <BookingStatusBadge booking={shown} testId={`cal-status-${b.id}`} />
+                  <BookingStatusBadge
+                    booking={b}
+                    testId={`cal-status-${b.id}`}
+                    className={waiting ? "shrink-0 whitespace-nowrap" : undefined}
+                  />
                 </div>
                 <div className="flex items-center justify-between gap-2 mt-0.5">
-                  {botGap ? (
+                  {botGap && !waiting ? (
                     <BotUnlinkedNote show className="truncate" />
                   ) : (
                     <span className="text-sm truncate text-muted-foreground">
@@ -469,11 +471,12 @@ function IndividualCalendar() {
                     {b.price.toLocaleString()} so'm
                   </span>
                 </div>
-                {botGap && (
+                {botGap && !waiting && (
                   <div className="text-sm truncate text-muted-foreground mt-0.5">
                     {b.serviceName ?? "—"}
                   </div>
                 )}
+                {botGap && waiting && <BotUnlinkedNote show className="truncate" />}
                 <BookingNoteBadge
                   note={noteFromBooking(b)}
                   muted={b.status === "completed" || b.status === "cancelled" || b.status === "auto_cancelled"}
