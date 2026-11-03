@@ -183,6 +183,16 @@ router.post("/", authenticate, async (req, res) => {
       } catch (err) {
         console.warn("[Bookings] findOrCreateClient failed:", (err as Error).message);
       }
+    } else if (!resolvedClientId && clientName.trim()) {
+      // A booking without a phone still belongs to a person in the client list.
+      const [created] = await db.insert(clientsTable).values({
+        barberId: user.id,
+        name: clientName.trim(),
+        status: "new",
+        visitCount: 0,
+        totalSpent: "0",
+      }).returning({ id: clientsTable.id });
+      resolvedClientId = created?.id ?? null;
     }
 
     if (resolvedClientId) {
