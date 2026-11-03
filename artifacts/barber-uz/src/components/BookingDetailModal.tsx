@@ -13,7 +13,7 @@ import {
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { bookingStartMs } from "@/lib/booking-feed";
-import { BookingStatusBadge, bookingLook } from "@/components/BookingStatusBadge";
+import { BookingStatusBadge, BotLinkPrompt, bookingLook, showsBotGap } from "@/components/BookingStatusBadge";
 import { noteFromBooking, parseBookingNotes } from "@/lib/booking-note";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 
@@ -411,6 +411,10 @@ export function BookingDetailModal({
   const needsReview = isActive && bookingStartMs(booking.date, booking.startTime) < Date.now();
   const dateLabel = formatBookingDate(booking.date);
   const phone = clientData?.phone ?? parsedPhone;
+  const bookingLink = booking as { botLinked?: boolean };
+  const botGap = showsBotGap({
+    botLinked: bookingLink.botLinked === true || Boolean(clientData?.telegramId?.trim()),
+  });
 
   return (
     <div className="fixed inset-0 z-[200] flex items-end">
@@ -468,6 +472,8 @@ export function BookingDetailModal({
               <BookingStatusBadge booking={booking} />
             </SheetRow>
           </div>
+
+          <BotLinkPrompt show={botGap} />
 
           {/* ── Section 3: Note (view/edit toggle) ── */}
           {booking.clientId ? (

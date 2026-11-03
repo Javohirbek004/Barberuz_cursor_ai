@@ -55,6 +55,32 @@ export function showsBotGap(record: object): boolean {
   return true;
 }
 
+/** Inside a booking or a client profile. The button does nothing until the copy step is added. */
+export function BotLinkPrompt({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <div
+      data-testid="bot-link-box"
+      className="mt-3 rounded-2xl border border-primary/45 bg-primary/10 px-3 py-3"
+    >
+      <p className="mb-2 text-xs text-muted-foreground">Bot holati</p>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-bold text-primary">⚠️ Botga ulanmagan</span>
+        <button
+          type="button"
+          data-testid="bot-link-button"
+          className="shrink-0 rounded-xl bg-primary px-3.5 py-2 text-sm font-extrabold text-primary-foreground"
+        >
+          Botga ulash
+        </button>
+      </div>
+      <p className="mt-2 text-[13px] font-medium leading-snug text-muted-foreground">
+        Mijozga eslatmalar borishi uchun botga ulang!
+      </p>
+    </div>
+  );
+}
+
 export function BotUnlinkedBang({ show }: { show: boolean }) {
   if (!show) return null;
   return (

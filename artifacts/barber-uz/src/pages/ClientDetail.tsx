@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SEGMENT_META } from "@/data/mockClients";
+import { BotLinkPrompt, showsBotGap } from "@/components/BookingStatusBadge";
 import { bookingVisualStatus, type BookingVisualKey } from "@/lib/booking-feed";
 
 type Segment = "regular" | "new" | "lost";
@@ -572,6 +573,10 @@ function ClientDetailInner({ id }: { id: string }) {
           </div>
         </div>
       )}
+
+      <div className="mb-4">
+        <BotLinkPrompt show={showsBotGap(client)} />
+      </div>
 
       <div className="mb-4">
         <NotesField
