@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { db, bookingsTable, bookingSessionsTable, servicesTable, clientsTable } from "@workspace/db";
 import { eq, and, gte, lt, lte, inArray, isNull } from "drizzle-orm";
 import { authenticate, getUser } from "../lib/auth";
-import { editBarberBookingCancelled, eraseBookingAndFreeSlot, sendDirectBookingNotification } from "../lib/telegram-bot";
+import { editBarberBookingCancelled, sendDirectBookingNotification } from "../lib/telegram-bot";
 import { deliverBookingReceipt, notifyClientOfBarberChange } from "../lib/client-notifications";
 import { syncClientMetrics } from "../lib/client-metrics";
 import { findOrCreateClientByPhone } from "../lib/client-lookup";
@@ -388,8 +388,8 @@ async function updateBooking(req: Request, res: Response) {
         console.warn("[Bookings] cancel notice failed:", (err as Error).message));
       await editBarberBookingCancelled(before).catch((err) =>
         console.warn("[Bookings] barber cancel edit failed:", (err as Error).message));
-      await eraseBookingAndFreeSlot(before.id);
-      res.json(formatBooking({ ...before, status: "cancelled", updatedAt: new Date() }, await readClientNotes(before.clientId)));
+      // The visit stays on the calendar as cancelled, so the barber can show it again.
+      res.json(formatBooking(booking, await readClientNotes(booking.clientId)));
       return;
     } else if (wasOpen && isOpenStatus(booking.status) && timeMoved) {
       notifyClientOfBarberChange(booking.id, {
