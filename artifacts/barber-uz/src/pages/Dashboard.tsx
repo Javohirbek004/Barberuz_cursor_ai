@@ -115,6 +115,7 @@ function calcNextBookingInfo(
   }
   if (!shift.enabled) return { main: "Bugun bronlar yo'q", sub: "", nextId: null };
   const beforeOpen = shift.enabled && nowMins < shift.startMins;
+  if (beforeOpen && hadCompletedToday) return { main: "Kutilayotgan bron yo'q", sub: "", nextId: null };
   if (beforeOpen) return { main: "Ish vaqti hali boshlanmadi", sub: "", nextId: null };
   const duringHours = shift.enabled && nowMins < shift.endMins;
   if (duringHours && !hadCompletedToday) return { main: "Hali bron yo'q", sub: "", nextId: null };
