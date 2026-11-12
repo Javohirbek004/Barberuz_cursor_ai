@@ -24,6 +24,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { moneyLabel, monthNames, pick } from "@/i18n/pick";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListServices,
@@ -183,15 +185,22 @@ function phoneEndsWithLocal(phone: string | null | undefined, local: string): bo
   return (phone ?? "").replace(/\D/g, "").endsWith(local);
 }
 
-function collectFieldErrors(form: FormState): FieldErrors {
+function collectFieldErrors(form: FormState, lang = "uz"): FieldErrors {
   const errors: FieldErrors = {};
-  if (!form.name.trim()) errors.name = FIELD_ERROR_TEXT.name;
+  const text = {
+    name: pick(lang, FIELD_ERROR_TEXT.name, "Введите имя"),
+    phone: pick(lang, FIELD_ERROR_TEXT.phone, "Введите полный номер телефона"),
+    service: pick(lang, FIELD_ERROR_TEXT.service, "Выберите услугу"),
+    date: pick(lang, FIELD_ERROR_TEXT.date, "Выберите дату"),
+    time: pick(lang, FIELD_ERROR_TEXT.time, "Выберите время"),
+  };
+  if (!form.name.trim()) errors.name = text.name;
   const digits = form.phone.replace(/\D/g, "");
   const local = digits.startsWith("998") ? digits.slice(3) : digits;
-  if (local.length > 0 && local.length < 9) errors.phone = FIELD_ERROR_TEXT.phone;
-  if (!form.serviceId) errors.service = FIELD_ERROR_TEXT.service;
-  if (!form.date) errors.date = FIELD_ERROR_TEXT.date;
-  if (!form.time) errors.time = FIELD_ERROR_TEXT.time;
+  if (local.length > 0 && local.length < 9) errors.phone = text.phone;
+  if (!form.serviceId) errors.service = text.service;
+  if (!form.date) errors.date = text.date;
+  if (!form.time) errors.time = text.time;
   return errors;
 }
 
@@ -279,6 +288,7 @@ function AfterHoursWarning({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { lang } = useTranslation();
   return (
     <motion.div
       className="fixed inset-0 z-[200] flex items-center justify-center px-5"
@@ -302,25 +312,24 @@ function AfterHoursWarning({
             <AlertTriangle className="w-5 h-5 text-amber-400" />
           </div>
           <h3 className="font-bold text-foreground text-base leading-snug">
-            Ish vaqtidan tashqari
+            {pick(lang, "Ish vaqtidan tashqari", "Вне рабочего времени")}
           </h3>
         </div>
         <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
-          Siz ish vaqtidan tashqari vaqtga bron qo'shmoqdasiz. Baribir davom
-          ettirasizmi?
+          {pick(lang, "Siz ish vaqtidan tashqari vaqtga bron qo'shmoqdasiz. Baribir davom ettirasizmi?", "Вы добавляете запись вне рабочего времени. Всё равно продолжить?")}
         </p>
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={onCancel}
             className="py-3 rounded-2xl bg-white/6 border border-white/10 text-sm font-semibold text-foreground hover:bg-white/10 transition-all"
           >
-            Bekor qilish
+            {pick(lang, "Bekor qilish", "Отмена")}
           </button>
           <button
             onClick={onConfirm}
             className="py-3 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 text-sm font-semibold hover:bg-amber-500/25 transition-all"
           >
-            Ha, davom etish
+            {pick(lang, "Ha, davom etish", "Да, продолжить")}
           </button>
         </div>
       </motion.div>
@@ -338,14 +347,15 @@ function FieldLabel({
   required?: boolean;
   optional?: boolean;
 }) {
+  const { lang } = useTranslation();
   return (
     <label className="block text-sm font-medium text-muted-foreground mb-1.5">
       {children}
       {required && (
-        <span className="text-xs font-normal text-primary ml-1">(majburiy)</span>
+        <span className="text-xs font-normal text-primary ml-1">{pick(lang, "(majburiy)", "(обязательно)")}</span>
       )}
       {optional && (
-        <span className="text-xs font-normal text-muted-foreground/55 ml-1">(ixtiyoriy)</span>
+        <span className="text-xs font-normal text-muted-foreground/55 ml-1">{pick(lang, "(ixtiyoriy)", "(необязательно)")}</span>
       )}
     </label>
   );
@@ -374,6 +384,7 @@ function ServicePicker({
   onChange: (id: string) => void;
   onAddNew: () => void;
 }) {
+  const { lang } = useTranslation();
   const [activeCat, setActiveCat] = useState<string | null>(null);
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState("");
@@ -428,14 +439,14 @@ function ServicePicker({
   if (services.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 py-6 border border-dashed border-white/10 rounded-2xl">
-        <p className="text-sm text-muted-foreground">Hali xizmatlar qo'shilmagan</p>
+        <p className="text-sm text-muted-foreground">{pick(lang, "Hali xizmatlar qo'shilmagan", "Услуги ещё не добавлены")}</p>
         <button
           type="button"
           onClick={onAddNew}
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/15 border border-primary/30 text-primary text-sm font-semibold hover:bg-primary/25 transition-all"
         >
           <Plus className="w-4 h-4" />
-          Yangi xizmat qo'shish
+          {pick(lang, "Yangi xizmat qo'shish", "Добавить услугу")}
         </button>
       </div>
     );
@@ -450,7 +461,7 @@ function ServicePicker({
           onClick={() => setActiveCat(null)}
           className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${activeCat === null ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground hover:text-foreground"}`}
         >
-          Hammasi
+          {pick(lang, "Hammasi", "Все")}
         </button>
         {categories.map((c: ServiceCategory) => (
           <button
@@ -469,7 +480,7 @@ function ServicePicker({
               value={newCatName}
               onChange={(e) => setNewCatName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleCreateCat()}
-              placeholder="Yangi kategoriya"
+              placeholder={pick(lang, "Yangi kategoriya", "Новая категория")}
               className="h-7 w-28 px-2 rounded-full text-xs bg-white/5 border border-white/15 focus:outline-none focus:border-primary/50"
             />
             <button
@@ -506,7 +517,7 @@ function ServicePicker({
       {/* 2-row horizontal scroll grid */}
       {filtered.length === 0 ? (
         <div className="text-center py-6 border border-dashed border-white/8 rounded-2xl text-sm text-muted-foreground">
-          Bu kategoriyada xizmat yo'q
+          {pick(lang, "Bu kategoriyada xizmat yo'q", "В этой категории нет услуг")}
         </div>
       ) : (
         <div className="overflow-x-auto scrollbar-hide">
@@ -531,7 +542,7 @@ function ServicePicker({
               >
                 <span className="text-sm font-semibold leading-tight truncate w-full">{s.name}</span>
                 <span className="text-xs mt-1 opacity-60 truncate w-full">
-                  {s.duration} daqiqa • {s.price.toLocaleString()} so'm
+                  {s.duration} {pick(lang, "daqiqa", "мин")} • {moneyLabel(lang, s.price)}
                 </span>
               </button>
             ))}
@@ -542,7 +553,7 @@ function ServicePicker({
               className="flex flex-col items-center justify-center gap-1 p-3 rounded-2xl border border-dashed border-white/15 text-muted-foreground/50 hover:border-primary/35 hover:text-primary hover:bg-primary/5 transition-all"
             >
               <Plus className="w-4 h-4" />
-              <span className="text-xs font-medium">Qo'shish</span>
+              <span className="text-xs font-medium">{pick(lang, "Qo'shish", "Добавить")}</span>
             </button>
           </div>
         </div>
@@ -571,6 +582,7 @@ function TimePicker({
   onChange: (t: string) => void;
   workEndStr: string;
 }) {
+  const { lang } = useTranslation();
   const [period, setPeriod] = useState<SlotPeriod>("all");
   const allStandard = standardSlots;
   const allAfter = afterSlots;
@@ -583,20 +595,20 @@ function TimePicker({
   return (
     <div>
       <ShopTimeHint />
-      {hasAnySlots && <SlotPeriodTabs value={period} onChange={setPeriod} />}
+      {hasAnySlots && <SlotPeriodTabs value={period} onChange={setPeriod} lang={lang} />}
 
       {todayPassed && !hasStandard && (
         <p
           data-testid="today-passed-notice"
           className="text-sm text-muted-foreground py-2 text-center"
         >
-          {TODAY_PASSED_MESSAGE}
+          {pick(lang, TODAY_PASSED_MESSAGE, "На сегодня рабочее время закончилось. Выберите завтра.")}
         </p>
       )}
 
       {!todayPassed && !hasStandard && !showAfterHours && (
         <p className="text-sm text-muted-foreground py-2 text-center">
-          {allStandard.length > 0 ? "Bu vaqt oralig'ida bo'sh joy yo'q" : "Ish vaqtida bo'sh joy qolmadi"}
+          {allStandard.length > 0 ? pick(lang, "Bu vaqt oralig'ida bo'sh joy yo'q", "В этом промежутке нет свободного времени") : pick(lang, "Ish vaqtida bo'sh joy qolmadi", "В рабочее время мест не осталось")}
         </p>
       )}
 
@@ -640,8 +652,8 @@ function TimePicker({
           ) : (
             <p className="text-xs text-muted-foreground/60 py-1">
               {allAfter.length > 0
-                ? "Bu vaqt oralig'ida bo'sh joy yo'q"
-                : `${workEndStr} dan keyin bo'sh joy yo'q`}
+                ? pick(lang, "Bu vaqt oralig'ida bo'sh joy yo'q", "В этом промежутке нет свободного времени")
+                : pick(lang, `${workEndStr} dan keyin bo'sh joy yo'q`, `После ${workEndStr} свободного времени нет`)}
             </p>
           )}
         </div>
@@ -663,8 +675,8 @@ function TimePicker({
           }`}
         />
         {showAfterHours
-          ? "Ish vaqtidan tashqarini yashirish"
-          : "Ish vaqtidan tashqari xizmat"}
+          ? pick(lang, "Ish vaqtidan tashqarini yashirish", "Скрыть время вне работы")
+          : pick(lang, "Ish vaqtidan tashqari xizmat", "Услуга вне рабочего времени")}
       </button>
     </div>
   );
@@ -690,6 +702,7 @@ function DatePicker({ form, onPick, hasError, isClosed }: {
   hasError?: boolean;
   isClosed: (iso: string) => boolean;
 }) {
+  const { lang } = useTranslation();
   const todayVal = todayStr();
   const tomorrowVal = tomorrowStr();
   const isCustom = Boolean(form.date) && form.date !== todayVal && form.date !== tomorrowVal;
@@ -733,7 +746,7 @@ function DatePicker({ form, onPick, hasError, isClosed }: {
                       ? "bg-background/60 border-red-500/70 text-muted-foreground hover:bg-white/5"
                       : "bg-background/60 border-white/10 text-muted-foreground hover:bg-white/5"
               }`}>
-              {i === 0 ? "Bugun" : "Ertaga"}
+              {i === 0 ? pick(lang, "Bugun", "Сегодня") : pick(lang, "Ertaga", "Завтра")}
             </button>
           );
         })}
@@ -742,22 +755,22 @@ function DatePicker({ form, onPick, hasError, isClosed }: {
         <button type="button" data-testid="master-other-date" onClick={() => setOpen((value) => !value)}
           className="text-sm flex items-center gap-1.5 py-1 transition-colors"
           style={{ color: isCustom ? "#FACC15" : "rgba(250,204,21,0.65)" }}>
-          📅 {isCustom ? `${fmtDateUzShort(form.date)} tanlandi` : "Boshqa sana ➔"}
+          📅 {isCustom ? pick(lang, `${fmtDateUzShort(form.date)} tanlandi`, `${fmtDateUzShort(form.date)} выбрано`) : pick(lang, "Boshqa sana ➔", "Другая дата ➔")}
         </button>
       </div>
       {open && (
         <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3" data-testid="master-date-grid">
           <div className="mb-2 flex items-center justify-between">
-            <button type="button" disabled={atStart} onClick={() => shift(-1)} aria-label="Oldingi oy" className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground disabled:opacity-30">
+            <button type="button" disabled={atStart} onClick={() => shift(-1)} aria-label={pick(lang, "Oldingi oy", "Предыдущий месяц")} className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground disabled:opacity-30">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <p className="text-sm font-semibold">{MASTER_MONTHS[view.month - 1]} {view.year}</p>
-            <button type="button" disabled={atEnd} onClick={() => shift(1)} aria-label="Keyingi oy" className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground disabled:opacity-30">
+            <p className="text-sm font-semibold">{monthNames(lang)[view.month - 1]} {view.year}</p>
+            <button type="button" disabled={atEnd} onClick={() => shift(1)} aria-label={pick(lang, "Keyingi oy", "Следующий месяц")} className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground disabled:opacity-30">
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
           <div className="mb-1 grid grid-cols-7 text-center text-[10px] font-semibold uppercase text-muted-foreground/60">
-            {MASTER_WEEKDAYS.map((label) => <span key={label}>{label}</span>)}
+            {(lang === "ru" ? ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"] : MASTER_WEEKDAYS).map((label) => <span key={label}>{label}</span>)}
           </div>
           <div className="grid grid-cols-7 gap-1">
             {monthCells(view.year, view.month).map((iso, index) => {
@@ -793,6 +806,7 @@ function DatePicker({ form, onPick, hasError, isClosed }: {
 }
 
 function OffDayWarning({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  const { lang } = useTranslation();
   return (
     <motion.div
       className="fixed inset-0 z-[200] flex items-center justify-center px-5"
@@ -812,19 +826,19 @@ function OffDayWarning({ onConfirm, onCancel }: { onConfirm: () => void; onCance
           <div className="w-10 h-10 rounded-2xl bg-amber-500/15 flex items-center justify-center shrink-0">
             <AlertTriangle className="w-5 h-5 text-amber-400" />
           </div>
-          <h3 className="font-bold text-foreground text-base leading-snug">Diqqat!</h3>
+          <h3 className="font-bold text-foreground text-base leading-snug">{pick(lang, "Diqqat!", "Внимание!")}</h3>
         </div>
         <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
-          Bu kun dam olish kuni deb belgilangan. Baribir bron qo'shmoqchimisiz?
+          {pick(lang, "Bu kun dam olish kuni deb belgilangan. Baribir bron qo'shmoqchimisiz?", "Этот день отмечен как выходной. Всё равно добавить запись?")}
         </p>
         <div className="grid grid-cols-2 gap-3">
           <button type="button" data-testid="off-day-cancel" onClick={onCancel}
             className="py-3 rounded-2xl bg-white/6 border border-white/10 text-sm font-semibold text-foreground">
-            Bekor qilish
+            {pick(lang, "Bekor qilish", "Отмена")}
           </button>
           <button type="button" data-testid="off-day-confirm" onClick={onConfirm}
             className="py-3 rounded-2xl bg-primary/15 border border-primary/30 text-primary text-sm font-semibold">
-            Baribir qo'shish
+            {pick(lang, "Baribir qo'shish", "Всё равно добавить")}
           </button>
         </div>
       </motion.div>
@@ -841,8 +855,24 @@ const EXPENSE_CAT_PLACEHOLDERS: Record<string, string> = {
   "🍔 Shaxsiy":            "Masalan: Tushlik, kofe...",
   "📦 Boshqa":             "Masalan: Kutilmagan xarajat...",
 };
-function getExpensePlaceholder(cat: string): string {
+function getExpensePlaceholder(cat: string, lang = "uz"): string {
+  const ru: Record<string, string> = {
+    "✂️ Ish qurollari": "Например: машинка, расчёска...",
+    "🏢 Ijara va Kommunal": "Например: аренда, свет, вода...",
+    "🍔 Shaxsiy": "Например: обед, кофе...",
+    "📦 Boshqa": "Например: непредвиденный расход...",
+  };
+  if (lang === "ru") return ru[cat] ?? "Введите название расхода...";
   return EXPENSE_CAT_PLACEHOLDERS[cat] ?? "Xarajat nomini kiriting...";
+}
+
+function expenseCatLabel(lang: string, cat: string): string {
+  if (lang !== "ru") return cat;
+  if (cat.includes("Ish qurollari")) return "✂️ Инструменты";
+  if (cat.includes("Ijara")) return "🏢 Аренда и коммуналка";
+  if (cat.includes("Shaxsiy")) return "🍔 Личное";
+  if (cat.includes("Boshqa")) return "📦 Другое";
+  return cat;
 }
 
 function getToken() {
@@ -852,6 +882,7 @@ function getToken() {
 // onClose kept in signature for future use; X button lives in the shared tab row
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void }) {
+  const { lang } = useTranslation();
   const [title, setTitle]           = useState("");
   const [amountRaw, setAmountRaw]   = useState(""); // raw digits only
   const [category, setCategory]     = useState("✂️ Ish qurollari");
@@ -922,8 +953,8 @@ function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void })
   async function handleSave() {
     if (saving || saved) return;
     const errors: { title?: string; amount?: string } = {};
-    if (!title.trim()) errors.title = "Nomini kiriting";
-    if (amountNum <= 0) errors.amount = "Miqdorni kiriting";
+    if (!title.trim()) errors.title = pick(lang, "Nomini kiriting", "Введите название");
+    if (amountNum <= 0) errors.amount = pick(lang, "Miqdorni kiriting", "Введите сумму");
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       setScrollKey((n) => n + 1);
@@ -938,11 +969,11 @@ function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void })
       });
       if (!res.ok) throw new Error("save_error");
       setSaved(true);
-      toast({ title: "Xarajat saqlandi ✓", description: `${title.trim()} — ${amountNum.toLocaleString()} so'm` });
+      toast({ title: pick(lang, "Xarajat saqlandi ✓", "Расход сохранён ✓"), description: `${title.trim()} — ${moneyLabel(lang, amountNum)}` });
       setTimeout(() => onSaved(), 700);
     } catch {
       setSaving(false);
-      toast({ title: "Xatolik", description: "Xarajat saqlanmadi", variant: "destructive" });
+      toast({ title: pick(lang, "Xatolik", "Ошибка"), description: pick(lang, "Xarajat saqlanmadi", "Расход не сохранился"), variant: "destructive" });
     }
   }
 
@@ -954,21 +985,21 @@ function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void })
           <motion.div initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
             className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
             <CheckCircle2 className="w-6 h-6 text-amber-400 shrink-0" />
-            <span className="font-bold text-amber-400 text-lg">Saqlandi!</span>
+            <span className="font-bold text-amber-400 text-lg">{pick(lang, "Saqlandi!", "Сохранено!")}</span>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Title */}
       <div data-expense-field="title">
-        <FieldLabel required>Nomi</FieldLabel>
+        <FieldLabel required>{pick(lang, "Nomi", "Название")}</FieldLabel>
         <input
           value={title}
           onChange={e => {
             setTitle(e.target.value);
             if (e.target.value.trim()) setFieldErrors((prev) => ({ ...prev, title: undefined }));
           }}
-          placeholder={getExpensePlaceholder(category)}
+          placeholder={getExpensePlaceholder(category, lang)}
           className={`${INPUT_BASE} ${fieldErrors.title ? INPUT_ERR : INPUT_OK}`}
         />
         <FieldError message={fieldErrors.title} />
@@ -976,7 +1007,7 @@ function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void })
 
       {/* Amount — formatted display with thousands separator */}
       <div data-expense-field="amount">
-        <FieldLabel required>Miqdor (so'm)</FieldLabel>
+        <FieldLabel required>{pick(lang, "Miqdor (so'm)", "Сумма (сум)")}</FieldLabel>
         <input
           inputMode="numeric"
           value={amountDisplay}
@@ -995,7 +1026,7 @@ function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void })
 
       {/* Category chips — 2-row flex wrap, max 2 columns feel */}
       <div>
-        <FieldLabel>Kategoriya</FieldLabel>
+        <FieldLabel>{pick(lang, "Kategoriya", "Категория")}</FieldLabel>
         <div className="flex flex-wrap gap-2">
           {allCats.map(c => (
             <button key={c} type="button" onClick={() => setCategory(c)}
@@ -1004,13 +1035,13 @@ function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void })
                   ? "bg-primary/15 border-primary/30 text-primary"
                   : "bg-white/4 border-white/8 text-muted-foreground hover:bg-white/8 hover:text-foreground"
               }`}>
-              {c}
+              {expenseCatLabel(lang, c)}
             </button>
           ))}
           {showNewCat ? (
             <div className="flex items-center gap-1">
               <input autoFocus value={newCatName} onChange={e => setNewCatName(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleAddCategory()} placeholder="Yangi"
+                onKeyDown={e => e.key === "Enter" && handleAddCategory()} placeholder={pick(lang, "Yangi", "Новая")}
                 className="h-8 w-24 px-2 rounded-xl text-xs bg-white/5 border border-white/15 focus:outline-none focus:border-primary/40" />
               <button type="button" onClick={handleAddCategory}
                 className="h-8 w-8 rounded-xl bg-primary/15 border border-primary/30 text-primary flex items-center justify-center">
@@ -1024,7 +1055,7 @@ function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void })
           ) : (
             <button type="button" onClick={() => setShowNewCat(true)}
               className="h-8 px-2.5 rounded-xl text-xs border border-dashed border-white/15 text-muted-foreground/60 hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-all flex items-center gap-1">
-              <Plus className="w-3 h-3" /> Yangi
+              <Plus className="w-3 h-3" /> {pick(lang, "Yangi", "Новая")}
             </button>
           )}
         </div>
@@ -1032,7 +1063,7 @@ function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void })
 
       {/* Date — Bugun + Boshqa sana calendar trigger only */}
       <div>
-        <FieldLabel>Sana</FieldLabel>
+        <FieldLabel>{pick(lang, "Sana", "Дата")}</FieldLabel>
         <div className="flex gap-2 items-center">
           <button type="button"
             onClick={() => { setUseCustomDate(false); setCustomDate(""); }}
@@ -1041,7 +1072,7 @@ function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void })
                 ? "bg-primary/15 border-primary/30 text-primary"
                 : "bg-background/60 border-white/10 text-muted-foreground hover:bg-white/5"
             }`}>
-            Bugun
+            {pick(lang, "Bugun", "Сегодня")}
           </button>
           <button type="button"
             onClick={() => calRef.current?.showPicker()}
@@ -1050,7 +1081,7 @@ function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void })
                 ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
                 : "bg-background/60 border-white/10 text-muted-foreground hover:bg-white/5"
             }`}>
-            {useCustomDate && customDate ? `📅 ${fmtDateUzShort(customDate)}` : "📅 Boshqa sana"}
+            {useCustomDate && customDate ? `📅 ${fmtDateUzShort(customDate)}` : pick(lang, "📅 Boshqa sana", "📅 Другая дата")}
           </button>
           <input ref={calRef} type="date" aria-hidden="true" className="sr-only"
             value={customDate}
@@ -1061,18 +1092,18 @@ function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void })
       </div>
 
       <div>
-        <FieldLabel optional>Izoh</FieldLabel>
+        <FieldLabel optional>{pick(lang, "Izoh", "Комментарий")}</FieldLabel>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Qo'shimcha ma'lumotlar..."
+          placeholder={pick(lang, "Qo'shimcha ma'lumotlar...", "Дополнительно...")}
           rows={2}
           className="w-full px-4 py-3 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm resize-none"
         />
       </div>
 
       <p className="text-xs text-muted-foreground/80 text-center leading-relaxed px-1">
-        ⚠️ Iltimos, barcha majburiy maydonlarni to'ldiring.
+        {pick(lang, "⚠️ Iltimos, barcha majburiy maydonlarni to'ldiring.", "⚠️ Заполните все обязательные поля.")}
       </p>
       <button
         type="button"
@@ -1083,9 +1114,9 @@ function ExpenseForm({ onSaved }: { onClose?: () => void; onSaved: () => void })
             : "bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/20 hover:-translate-y-0.5"
         }`}
       >
-        {saving ? <><Loader2 className="w-5 h-5 animate-spin" /> Saqlanmoqda...</>
-          : saved ? <><CheckCircle2 className="w-5 h-5" /> Saqlandi!</>
-          : "Xarajatni saqlash"}
+        {saving ? <><Loader2 className="w-5 h-5 animate-spin" /> {pick(lang, "Saqlanmoqda...", "Сохраняется...")}</>
+          : saved ? <><CheckCircle2 className="w-5 h-5" /> {pick(lang, "Saqlandi!", "Сохранено!")}</>
+          : pick(lang, "Xarajatni saqlash", "Сохранить расход")}
       </button>
     </div>
   );
@@ -1137,6 +1168,7 @@ function BookingFormContent({
   isClosed: (iso: string) => boolean;
   onPickDate: (date: string) => void;
 }) {
+  const { lang } = useTranslation();
   const readyForSlots = Boolean(form.serviceId && form.date);
   const lookupKey = completeLocalPhone(form.phone);
   const [nameFilledNote, setNameFilledNote] = useState(false);
@@ -1194,14 +1226,14 @@ function BookingFormContent({
             className="flex items-center gap-3 bg-green-500/10 border border-green-500/30 rounded-2xl p-4"
           >
             <CheckCircle2 className="w-6 h-6 text-green-400 shrink-0" />
-            <span className="font-bold text-green-400 text-lg">Saqlandi!</span>
+            <span className="font-bold text-green-400 text-lg">{pick(lang, "Saqlandi!", "Сохранено!")}</span>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* 1. Ism */}
       <div data-booking-field="name">
-        <FieldLabel required>Ism</FieldLabel>
+        <FieldLabel required>{pick(lang, "Ism", "Имя")}</FieldLabel>
         <input
           value={form.name}
           onChange={(e) => onChange({ name: e.target.value })}
@@ -1218,30 +1250,30 @@ function BookingFormContent({
         {showFound && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <p className="text-xs text-foreground/90 leading-snug">
-              💡 Bu raqam bilan “{foundName}” ismli mijoz topildi
+              {pick(lang, `💡 Bu raqam bilan “${foundName}” ismli mijoz topildi`, `💡 По этому номеру найден клиент «${foundName}»`)}
             </p>
             <button
               type="button"
               onClick={fillFoundName}
               className="shrink-0 h-8 px-3 rounded-xl text-xs font-semibold border border-primary/40 bg-primary/15 text-primary"
             >
-              🔄 Ismni toʻldirish
+              {pick(lang, "🔄 Ismni toʻldirish", "🔄 Подставить имя")}
             </button>
           </div>
         )}
         {nameFilledNote && (
-          <p className="text-xs text-green-400 mt-2">✅ Mijoz ismi avtomatik kiritildi</p>
+          <p className="text-xs text-green-400 mt-2">{pick(lang, "✅ Mijoz ismi avtomatik kiritildi", "✅ Имя клиента подставлено")}</p>
         )}
         {lookupView === "new" && (
           <p className="mt-2 inline-flex text-xs text-muted-foreground bg-white/5 border border-white/10 rounded-full px-2.5 py-1">
-            ✨ Bu yangi mijoz. Bron qilingach bazaga qoʻshiladi.
+            {pick(lang, "✨ Bu yangi mijoz. Bron qilingach bazaga qoʻshiladi.", "✨ Это новый клиент. После записи он добавится в базу.")}
           </p>
         )}
       </div>
 
       {/* 2. Telefon */}
       <div data-booking-field="phone">
-        <FieldLabel optional>Telefon raqam</FieldLabel>
+        <FieldLabel optional>{pick(lang, "Telefon raqam", "Номер телефона")}</FieldLabel>
         <input
           value={form.phone}
           onChange={(e) => onChange({ phone: applyPhoneMask(e.target.value) })}
@@ -1263,14 +1295,14 @@ function BookingFormContent({
         {lookupView === "searching" && (
           <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
             <span className="inline-block h-3.5 w-3.5 shrink-0 rounded-full border-2 border-current border-t-transparent animate-spin" />
-            Mijoz bazadan qidirilmoqda...
+            {pick(lang, "Mijoz bazadan qidirilmoqda...", "Ищем клиента в базе...")}
           </p>
         )}
       </div>
 
       {/* 3. Xizmat turi */}
       <div data-booking-field="service">
-        <FieldLabel required>Xizmat turi</FieldLabel>
+        <FieldLabel required>{pick(lang, "Xizmat turi", "Услуга")}</FieldLabel>
         <div className={fieldErrors.service ? "rounded-2xl ring-1 ring-red-500/70 p-1" : ""}>
           <ServicePicker
             services={services}
@@ -1285,7 +1317,7 @@ function BookingFormContent({
 
       {/* 4. Sana */}
       <div data-booking-field="date">
-        <FieldLabel required>Sana</FieldLabel>
+        <FieldLabel required>{pick(lang, "Sana", "Дата")}</FieldLabel>
         <DatePicker form={form} onPick={onPickDate} hasError={Boolean(fieldErrors.date)} isClosed={isClosed} />
         <FieldError message={fieldErrors.date} />
       </div>
@@ -1295,10 +1327,10 @@ function BookingFormContent({
         <FieldLabel required>
           <span className="flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5" />
-            Vaqt
+            {pick(lang, "Vaqt", "Время")}
             {selectedSvc && (
               <span className="text-xs text-primary ml-1">
-                ({selectedSvc.duration} daqiqa)
+                ({selectedSvc.duration} {pick(lang, "daqiqa", "мин")})
               </span>
             )}
           </span>
@@ -1309,7 +1341,7 @@ function BookingFormContent({
               fieldErrors.time ? "border-red-500/70" : "border-white/10"
             }`}
           >
-            Oldin xizmat va sanani tanlang
+            {pick(lang, "Oldin xizmat va sanani tanlang", "Сначала выберите услугу и дату")}
           </p>
         ) : (
           <div className={fieldErrors.time ? "rounded-2xl ring-1 ring-red-500/70 p-2" : ""}>
@@ -1330,11 +1362,11 @@ function BookingFormContent({
 
       {/* 6. Izoh */}
       <div>
-        <FieldLabel optional>Izoh</FieldLabel>
+        <FieldLabel optional>{pick(lang, "Izoh", "Комментарий")}</FieldLabel>
         <textarea
           value={form.notes}
           onChange={(e) => onChange({ notes: e.target.value })}
-          placeholder="Qo'shimcha ma'lumotlar..."
+          placeholder={pick(lang, "Qo'shimcha ma'lumotlar...", "Дополнительно...")}
           rows={2}
           className="w-full px-4 py-3 rounded-2xl bg-background/60 border border-white/10 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all text-sm resize-none"
         />
@@ -1342,7 +1374,7 @@ function BookingFormContent({
 
       {/* Save */}
       <p className="text-xs text-muted-foreground/80 text-center leading-relaxed px-1">
-        ⚠️ Iltimos, barcha majburiy maydonlarni to'ldiring.
+        {pick(lang, "⚠️ Iltimos, barcha majburiy maydonlarni to'ldiring.", "⚠️ Заполните все обязательные поля.")}
       </p>
       <button
         type="button"
@@ -1356,15 +1388,15 @@ function BookingFormContent({
         {saving ? (
           <>
             <Loader2 className="w-5 h-5 animate-spin" />
-            Saqlanmoqda...
+            {pick(lang, "Saqlanmoqda...", "Сохраняется...")}
           </>
         ) : saved ? (
           <>
             <CheckCircle2 className="w-5 h-5" />
-            Saqlandi!
+            {pick(lang, "Saqlandi!", "Сохранено!")}
           </>
         ) : (
-          "Saqlash"
+          pick(lang, "Saqlash", "Сохранить")
         )}
       </button>
     </div>
@@ -1382,6 +1414,7 @@ type ActiveTab = "bron" | "xarajat";
 
 // ── Main dialog export ────────────────────────────────────────────────────────
 export function BookingFlowDialog({ open, onOpenChange }: Props) {
+  const { lang } = useTranslation();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState<ActiveTab>("bron");
@@ -1533,7 +1566,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
     setForm(nextForm);
     setFieldErrors((prev) => {
       if (Object.keys(prev).length === 0) return prev;
-      const stillInvalid = collectFieldErrors(nextForm);
+      const stillInvalid = collectFieldErrors(nextForm, lang);
       const next: FieldErrors = {};
       for (const key of FIELD_ORDER) {
         if (prev[key] && stillInvalid[key]) next[key] = prev[key];
@@ -1544,7 +1577,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
 
   function handleSave() {
     if (saving || saved) return;
-    const errors = collectFieldErrors(form);
+    const errors = collectFieldErrors(form, lang);
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       setScrollKey((n) => n + 1);
@@ -1610,8 +1643,8 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
           setSaving(false);
           if ((err as { status?: number } | null)?.status === 409) {
             toast({
-              title: "Bu vaqt band",
-              description: "Boshqa vaqtni tanlang — tanaffus vaqti ham hisobga olinadi.",
+              title: pick(lang, "Bu vaqt band", "Это время занято"),
+              description: pick(lang, "Boshqa vaqtni tanlang — tanaffus vaqti ham hisobga olinadi.", "Выберите другое время — перерыв тоже учитывается."),
               variant: "destructive",
             });
           }
@@ -1666,7 +1699,7 @@ export function BookingFlowDialog({ open, onOpenChange }: Props) {
                         : "bg-background/40 border-white/8 text-muted-foreground hover:bg-white/5"
                     }`}
                   >
-                    {key === "bron" ? "📅 Bron" : "💸 Xarajat"}
+                    {key === "bron" ? pick(lang, "📅 Bron", "📅 Запись") : pick(lang, "💸 Xarajat", "💸 Расход")}
                   </button>
                 ))}
                 {/* Close button lives here, inline with tabs */}

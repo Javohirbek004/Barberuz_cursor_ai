@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { countLabel, moneyLabel, pick } from "@/i18n/pick";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
 import {
@@ -101,9 +103,15 @@ function PeriodFilter({
   onChange: (p: Period) => void;
   className?: string;
 }) {
+  const { lang } = useTranslation();
+  const labels: Record<Period, string> = {
+    bugun: pick(lang, "Bugun", "Сегодня"),
+    hafta: pick(lang, "Hafta", "Неделя"),
+    oy: pick(lang, "Oy", "Месяц"),
+  };
   return (
     <div className={`flex gap-1.5 bg-card p-1 rounded-2xl border border-white/6 ${className}`}>
-      {PERIODS.map(({ key, label }) => (
+      {PERIODS.map(({ key }) => (
         <button
           key={key}
           onClick={() => onChange(key)}
@@ -113,7 +121,7 @@ function PeriodFilter({
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          {label}
+          {labels[key]}
         </button>
       ))}
     </div>
@@ -144,6 +152,7 @@ function AnalyticsEntryCard({
   testId: string;
   onClick: () => void;
 }) {
+  const { lang } = useTranslation();
   const t = ENTRY_TONES[tone];
   return (
     <motion.button
@@ -161,7 +170,7 @@ function AnalyticsEntryCard({
       </div>
       <div>
         <div className="font-display font-bold text-base text-foreground">{title}</div>
-        <div className="text-xs text-primary/80 font-medium mt-1">Tahlilni ko'rish ➔</div>
+        <div className="text-xs text-primary/80 font-medium mt-1">{pick(lang, "Tahlilni ko'rish ➔", "Смотреть анализ ➔")}</div>
       </div>
     </motion.button>
   );
@@ -238,6 +247,7 @@ function Section({
 // ── YAKKA MODE UI ─────────────────────────────────────────────────────────────
 
 function YakkaAnalytics() {
+  const { lang } = useTranslation();
   const [activeModal, setActiveModal] = useState<ModalKind>(null);
   const close = () => setActiveModal(null);
 
@@ -245,19 +255,19 @@ function YakkaAnalytics() {
     <>
       <div className="grid grid-cols-2 gap-3" data-testid="analytics-cards">
         <AnalyticsEntryCard
-          index={0} icon={Wallet} tone="amber" title="Daromad"
+          index={0} icon={Wallet} tone="amber" title={pick(lang, "Daromad", "Доход")}
           testId="card-daromad" onClick={() => setActiveModal("daromad")}
         />
         <AnalyticsEntryCard
-          index={1} icon={Users} tone="blue" title="Mijozlar"
+          index={1} icon={Users} tone="blue" title={pick(lang, "Mijozlar", "Клиенты")}
           testId="card-mijozlar" onClick={() => setActiveModal("mijozlar")}
         />
         <AnalyticsEntryCard
-          index={2} icon={Receipt} tone="red" title="Xarajatlar"
+          index={2} icon={Receipt} tone="red" title={pick(lang, "Xarajatlar", "Расходы")}
           testId="card-xarajatlar" onClick={() => setActiveModal("xarajatlar")}
         />
         <AnalyticsEntryCard
-          index={3} icon={TrendingUp} tone="green" title="Sof foyda"
+          index={3} icon={TrendingUp} tone="green" title={pick(lang, "Sof foyda", "Чистая прибыль")}
           testId="card-sof-foyda" onClick={() => setActiveModal("sof-foyda")}
         />
       </div>
@@ -283,6 +293,7 @@ function YakkaAnalytics() {
 // ── JAMOA MODE UI ─────────────────────────────────────────────────────────────
 
 function JamoaAnalytics({ period }: { period: Period }) {
+  const { lang } = useTranslation();
   const [data, setData] = useState<TeamData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -297,21 +308,21 @@ function JamoaAnalytics({ period }: { period: Period }) {
   if (loading) return <SkeletonKPI />;
   if (!data) return (
     <div className="text-center py-10 text-sm text-muted-foreground">
-      Ma'lumot yuklanmadi
+      {pick(lang, "Ma'lumot yuklanmadi", "Не удалось загрузить")}
     </div>
   );
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <ClickableKpiCard index={0} emoji="💰" label="Umumiy daromad" value={fmtFull(data.revenue)} onClick={() => {}} />
-        <ClickableKpiCard index={1} emoji="👥" label="Jami mijozlar"  value={`${data.clients} ta`}  onClick={() => {}} />
-        <ClickableKpiCard index={2} emoji="❌" label="Bekor qilingan" value={`${data.cancelled} ta`} onClick={() => {}} />
-        <ClickableKpiCard index={3} emoji="📅" label="Jami bronlar"   value={`${data.totalBookings} ta`} onClick={() => {}} />
+        <ClickableKpiCard index={0} emoji="💰" label={pick(lang, "Umumiy daromad", "Общий доход")} value={moneyLabel(lang, data.revenue)} onClick={() => {}} />
+        <ClickableKpiCard index={1} emoji="👥" label={pick(lang, "Jami mijozlar", "Всего клиентов")}  value={countLabel(lang, data.clients)}  onClick={() => {}} />
+        <ClickableKpiCard index={2} emoji="❌" label={pick(lang, "Bekor qilingan", "Отменённые")} value={countLabel(lang, data.cancelled)} onClick={() => {}} />
+        <ClickableKpiCard index={3} emoji="📅" label={pick(lang, "Jami bronlar", "Всего записей")}   value={countLabel(lang, data.totalBookings)} onClick={() => {}} />
       </div>
 
       {data.barbers.length > 0 && (
-        <Section title="👨‍✂️ Ustalar statistikasi" index={1}>
+        <Section title={pick(lang, "👨‍✂️ Ustalar statistikasi", "👨‍✂️ Статистика мастеров")} index={1}>
           <div className="space-y-1">
             {data.barbers.map(b => (
               <Link key={b.id} href={`/settings/analytics/barber/${encodeURIComponent(b.id)}`}>
@@ -319,7 +330,7 @@ function JamoaAnalytics({ period }: { period: Period }) {
                   <span className="text-lg w-7 shrink-0">{b.medal}</span>
                   <span className="font-semibold text-sm flex-1 text-foreground">{b.name}</span>
                   <span className="text-sm text-primary font-bold">{fmt(b.revenue)}</span>
-                  <span className="text-xs text-muted-foreground w-12 text-right">{b.clients} ta</span>
+                  <span className="text-xs text-muted-foreground w-12 text-right">{countLabel(lang, b.clients)}</span>
                   <ChevronRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-primary transition-colors shrink-0" />
                 </div>
               </Link>
@@ -329,13 +340,13 @@ function JamoaAnalytics({ period }: { period: Period }) {
       )}
 
       {(data.bestBarber || data.mostNoshow) && (
-        <Section title="📈 Ko'rsatkich" index={2}>
+        <Section title={pick(lang, "📈 Ko'rsatkich", "📈 Показатели")} index={2}>
           <div className="space-y-3">
             {data.bestBarber && (
               <div className="flex items-start gap-3">
                 <span className="text-lg">🏆</span>
                 <div>
-                  <div className="text-xs text-muted-foreground">Eng yaxshi usta</div>
+                  <div className="text-xs text-muted-foreground">{pick(lang, "Eng yaxshi usta", "Лучший мастер")}</div>
                   <div className="font-bold text-foreground">{data.bestBarber}</div>
                 </div>
               </div>
@@ -345,7 +356,7 @@ function JamoaAnalytics({ period }: { period: Period }) {
               <div className="flex items-start gap-3">
                 <span className="text-lg">⚠️</span>
                 <div>
-                  <div className="text-xs text-muted-foreground">Eng ko'p bekor qilish</div>
+                  <div className="text-xs text-muted-foreground">{pick(lang, "Eng ko'p bekor qilish", "Больше всего отмен")}</div>
                   <div className="font-bold text-red-400">{data.mostNoshow}</div>
                 </div>
               </div>
@@ -360,14 +371,15 @@ function JamoaAnalytics({ period }: { period: Period }) {
 // ── Empty state ────────────────────────────────────────────────────────────────
 
 function EmptyState() {
+  const { lang } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center px-6">
       <div className="text-5xl mb-4">📊</div>
-      <div className="font-bold text-foreground mb-2">Hozircha ma'lumot yo'q</div>
+      <div className="font-bold text-foreground mb-2">{pick(lang, "Hozircha ma'lumot yo'q", "Пока нет данных")}</div>
       <div className="text-sm text-muted-foreground">
-        Birinchi bronni qabul qiling
+        {pick(lang, "Birinchi bronni qabul qiling", "Примите первую запись")}
         <br />
-        va statistikani ko'ring ✂️
+        {pick(lang, "va statistikani ko'ring ✂️", "и посмотрите статистику ✂️")}
       </div>
     </div>
   );
@@ -377,6 +389,7 @@ function EmptyState() {
 
 export default function AnalyticsPage() {
   const { user, isLoading } = useAuth();
+  const { lang } = useTranslation();
   const [period, setPeriod] = useState<Period>("bugun");
 
   const isTeam = user?.mode === "team";
@@ -390,7 +403,7 @@ export default function AnalyticsPage() {
           </button>
         </Link>
         <h1 className="text-xl font-display font-bold text-foreground">
-          📊 Tahlil
+          {pick(lang, "📊 Tahlil va statistika", "📊 Аналитика и статистика")}
         </h1>
       </div>
 

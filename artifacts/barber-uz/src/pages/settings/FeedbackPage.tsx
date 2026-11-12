@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { pick } from "@/i18n/pick";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
 import { ChevronLeft, Send, CheckCircle2 } from "lucide-react";
@@ -12,7 +14,7 @@ const CATEGORIES = [
 ];
 
 // ── Simple in-page toast ──────────────────────────────────────────────────────
-function SuccessToast({ visible }: { visible: boolean }) {
+function SuccessToast({ visible, text }: { visible: boolean; text: string }) {
   return (
     <AnimatePresence>
       {visible && (
@@ -24,7 +26,7 @@ function SuccessToast({ visible }: { visible: boolean }) {
           className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl bg-green-500/90 backdrop-blur-sm shadow-xl shadow-green-500/20 text-white font-semibold text-sm whitespace-nowrap"
         >
           <CheckCircle2 className="w-5 h-5 shrink-0" />
-          Rahmat! Fikringiz qabul qilindi 🙌
+          {text}
         </motion.div>
       )}
     </AnimatePresence>
@@ -33,9 +35,15 @@ function SuccessToast({ visible }: { visible: boolean }) {
 
 export default function FeedbackPage() {
   const { user } = useAuth();
+  const { lang } = useTranslation();
+  const categories = [
+    { value: "💡 Taklif", label: pick(lang, "💡 Taklif", "💡 Предложение") },
+    { value: "🐞 Xatolik", label: pick(lang, "🐞 Xatolik", "🐞 Ошибка") },
+    { value: "⚡ Muammo", label: pick(lang, "⚡ Muammo", "⚡ Проблема") },
+  ];
 
   const [text, setText] = useState("");
-  const [category, setCategory] = useState(CATEGORIES[0].value);
+  const [category, setCategory] = useState(categories[0].value);
   const [loading, setLoading] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,17 +66,17 @@ export default function FeedbackPage() {
 
       const body = await res.json().catch(() => null) as { message?: string; sent?: boolean } | null;
       if (!res.ok || body?.sent === false) {
-        throw new Error(body?.message || "Yuborishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.");
+        throw new Error(body?.message || pick(lang, "Yuborishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.", "Не отправилось. Попробуйте ещё раз."));
       }
 
       // Success
       setText("");
-      setCategory(CATEGORIES[0].value);
+      setCategory(categories[0].value);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3500);
     } catch (err) {
       console.error("[Feedback] submit error:", err);
-      setError(err instanceof Error ? err.message : "Yuborishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.");
+      setError(err instanceof Error ? err.message : pick(lang, "Yuborishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring.", "Не отправилось. Попробуйте ещё раз."));
     } finally {
       setLoading(false);
     }
@@ -86,21 +94,21 @@ export default function FeedbackPage() {
             <ChevronLeft className="w-5 h-5" />
           </button>
         </Link>
-        <h1 className="text-xl font-display font-bold text-foreground">💬 Fikr va takliflar</h1>
+        <h1 className="text-xl font-display font-bold text-foreground">{pick(lang, "💬 Fikr va takliflar", "💬 Отзывы и предложения")}</h1>
       </div>
 
       {/* Subtext */}
       <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-        Sizning fikringiz ilovani yaxshilashga yordam beradi
+        {pick(lang, "Sizning fikringiz ilovani yaxshilashga yordam beradi", "Ваше мнение помогает улучшить приложение")}
       </p>
 
       {/* Category selector */}
       <div className="mb-4">
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">
-          Kategoriya
+          {pick(lang, "Kategoriya", "Категория")}
         </label>
         <div className="flex gap-2">
-          {CATEGORIES.map((cat) => (
+          {categories.map((cat) => (
             <button
               key={cat.value}
               onClick={() => setCategory(cat.value)}
@@ -119,13 +127,13 @@ export default function FeedbackPage() {
       {/* Textarea */}
       <div className="mb-5">
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">
-          Xabar
+          {pick(lang, "Xabar", "Сообщение")}
         </label>
         <div className="relative">
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Fikringizni yozing... (xatolik, taklif yoki muammo)"
+            placeholder={pick(lang, "Fikringizni yozing... (xatolik, taklif yoki muammo)", "Напишите мнение... (ошибка, идея или проблема)")}
             rows={6}
             maxLength={1000}
             className="w-full px-4 py-3.5 rounded-2xl bg-card border border-white/8 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/15 text-sm resize-none transition-all leading-relaxed"
@@ -144,7 +152,7 @@ export default function FeedbackPage() {
           </div>
           <div className="text-xs text-muted-foreground">
             <span className="text-foreground font-semibold">{user.name || user.username}</span>
-            {" "}nomidan yuborilyapti
+            {" "}{pick(lang, "nomidan yuborilyapti", "отправит сообщение")}
           </div>
         </div>
       )}
@@ -168,18 +176,18 @@ export default function FeedbackPage() {
         {loading ? (
           <span className="flex items-center gap-2">
             <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-            Yuborilmoqda...
+            {pick(lang, "Yuborilmoqda...", "Отправляется...")}
           </span>
         ) : (
           <>
             <Send className="w-5 h-5" />
-            Yuborish
+            {pick(lang, "Yuborish", "Отправить")}
           </>
         )}
       </motion.button>
 
       {/* Toast */}
-      <SuccessToast visible={showToast} />
+      <SuccessToast visible={showToast} text={pick(lang, "Rahmat! Fikringiz qabul qilindi 🙌", "Спасибо! Мы получили ваше сообщение 🙌")} />
     </Layout>
   );
 }

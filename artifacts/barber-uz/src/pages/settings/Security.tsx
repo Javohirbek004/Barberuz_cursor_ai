@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "@/i18n/LanguageContext";
+import { pick } from "@/i18n/pick";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
@@ -68,7 +69,7 @@ function accountRole(mode: string | undefined): string {
 }
 
 export default function SecuritySettings() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const { user } = useAuth();
   const { toast } = useToast();
   const updatePasswordMutation = useUpdatePassword();
@@ -146,7 +147,7 @@ export default function SecuritySettings() {
       onSuccess: (data) => {
         const token = (data as { token?: string } | undefined)?.token;
         if (token) localStorage.setItem("barber_token", token);
-        toast({ title: "Parol yangilandi" });
+        toast({ title: pick(lang, "Parol yangilandi", "Пароль обновлён") });
         setOldPassword("");
         setNewPassword("");
         setConfirmPassword("");
@@ -154,7 +155,7 @@ export default function SecuritySettings() {
       },
       onError: () => {
         setOldState("bad");
-        toast({ title: "Eski parol noto'g'ri", variant: "destructive" });
+        toast({ title: pick(lang, "Eski parol noto'g'ri", "Старый пароль неверный"), variant: "destructive" });
       },
     });
   };
@@ -213,7 +214,7 @@ export default function SecuritySettings() {
               autoComplete="current-password"
             />
             {oldState === "bad" && (
-              <p data-testid="security-old-error" className="text-red-400 text-xs mt-2">❌ Eski parol noto'g'ri</p>
+              <p data-testid="security-old-error" className="text-red-400 text-xs mt-2">{pick(lang, "❌ Eski parol noto'g'ri", "❌ Старый пароль неверный")}</p>
             )}
           </div>
           <PasswordField
@@ -226,20 +227,20 @@ export default function SecuritySettings() {
           />
           <ul className="space-y-1 px-1">
             <li data-testid="security-rule-len" className={`text-xs ${longEnough ? "text-emerald-400" : "text-muted-foreground"}`}>
-              {longEnough ? "✓" : "•"} Kamida 6 ta belgi
+              {longEnough ? "✓" : "•"} {pick(lang, "Kamida 6 ta belgi", "Минимум 6 символов")}
             </li>
             <li data-testid="security-rule-mix" className={`text-xs ${mixed ? "text-emerald-400" : "text-muted-foreground"}`}>
-              {mixed ? "✓" : "•"} Raqam va harflar
+              {mixed ? "✓" : "•"} {pick(lang, "Raqam va harflar", "Цифры и буквы")}
             </li>
           </ul>
           <PasswordField
-            label="Yangi parolni qayta kiriting"
+            label={pick(lang, "Yangi parolni qayta kiriting", "Повторите новый пароль")}
             value={confirmPassword}
             onChange={setConfirmPassword}
             testId="security-confirm"
             autoComplete="new-password"
           />
-          {mismatch && <p data-testid="security-mismatch" className="text-red-400 text-xs">Parollar mos kelmadi</p>}
+          {mismatch && <p data-testid="security-mismatch" className="text-red-400 text-xs">{pick(lang, "Parollar mos kelmadi", "Пароли не совпали")}</p>}
         </div>
 
         <Button
@@ -249,13 +250,13 @@ export default function SecuritySettings() {
           className="w-full h-14 text-lg font-bold rounded-xl bg-[#FACC15] hover:bg-[#FDE047] text-black transition-all shadow-lg shadow-[#FACC15]/20 disabled:opacity-40"
         >
           {updatePasswordMutation.isPending && <Loader2 className="w-5 h-5 animate-spin mr-2" />}
-          Parolni yangilash
+          {pick(lang, "Parolni yangilash", "Обновить пароль")}
         </Button>
       </form>
 
       <section className="mt-8" data-testid="active-devices">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 px-1 mb-3">
-          Faol qurilmalar
+          {pick(lang, "Faol qurilmalar", "Активные устройства")}
         </p>
         <div data-testid="device-current" className="bg-card/50 px-4 py-4 rounded-2xl border border-white/5">
           <div className="flex flex-wrap items-center gap-2">
@@ -264,14 +265,14 @@ export default function SecuritySettings() {
               data-testid="device-badge"
               className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 shadow-[0_0_14px_rgba(52,211,153,0.55)]"
             >
-              🟢 Bu sizning telefoningiz
+              {pick(lang, "🟢 Bu sizning telefoningiz", "🟢 Это ваш телефон")}
             </span>
           </div>
           <p data-testid="device-identity" className="text-xs text-foreground/90 mt-2">
             {(user?.name || "").trim() || "Barber"} • {accountRole(user?.mode)}
           </p>
           <p data-testid="device-place" className="text-xs text-muted-foreground mt-1">
-            Toshkent, O'zbekiston • Hozir faol
+            {pick(lang, "Toshkent, O'zbekiston • Hozir faol", "Ташкент, Узбекистан • Сейчас активен")}
           </p>
         </div>
         <button
@@ -281,7 +282,7 @@ export default function SecuritySettings() {
           onClick={() => setConfirmLogout(true)}
           className="w-full h-12 mt-3 rounded-2xl border border-red-500/40 bg-transparent text-red-400 text-sm font-semibold disabled:opacity-40"
         >
-          {loggingOut ? "Chiqilmoqda..." : "Barcha boshqa qurilmalardan chiqish"}
+          {loggingOut ? pick(lang, "Chiqilmoqda...", "Выходим...") : pick(lang, "Barcha boshqa qurilmalardan chiqish", "Выйти на всех других устройствах")}
         </button>
       </section>
 
@@ -294,9 +295,9 @@ export default function SecuritySettings() {
             onClick={() => setConfirmLogout(false)}
           />
           <div className="relative w-full max-w-sm bg-card border border-white/10 rounded-3xl p-6 shadow-2xl">
-            <h2 className="text-lg font-bold text-foreground text-center mb-2">⚠️ Barcha seanslardan chiqasizmi?</h2>
+            <h2 className="text-lg font-bold text-foreground text-center mb-2">{pick(lang, "⚠️ Barcha seanslardan chiqasizmi?", "⚠️ Выйти из всех сеансов?")}</h2>
             <p className="text-sm text-muted-foreground text-center leading-relaxed mb-6">
-              Ushbu qurilmadan tashqari barcha boshqa telefon va kompyuterlardagi hisobingiz yakunlanadi.
+              {pick(lang, "Ushbu qurilmadan tashqari barcha boshqa telefon va kompyuterlardagi hisobingiz yakunlanadi.", "На всех телефонах и компьютерах, кроме этого, аккаунт закроется.")}
             </p>
             <div className="flex gap-3">
               <button
@@ -305,7 +306,7 @@ export default function SecuritySettings() {
                 onClick={() => setConfirmLogout(false)}
                 className="flex-1 py-3 rounded-2xl bg-white/6 border border-white/10 text-foreground font-semibold text-sm"
               >
-                Bekor qilish
+                {pick(lang, "Bekor qilish", "Отмена")}
               </button>
               <button
                 type="button"
@@ -313,7 +314,7 @@ export default function SecuritySettings() {
                 onClick={() => { void logoutOthers(); }}
                 className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm"
               >
-                Ha, chiqilsin
+                {pick(lang, "Ha, chiqilsin", "Да, выйти")}
               </button>
             </div>
           </div>

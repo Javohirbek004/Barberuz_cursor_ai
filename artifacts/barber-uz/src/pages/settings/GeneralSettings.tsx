@@ -5,6 +5,7 @@ import { Link } from "wouter";
 import { ChevronLeft, ChevronRight, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "@/i18n/LanguageContext";
+import { pick } from "@/i18n/pick";
 import { useTheme, type Theme } from "@/hooks/useTheme";
 import type { Language } from "@/i18n/translations";
 
@@ -40,11 +41,11 @@ const LANG_NAMES: Record<Language, string> = {
   ru: "Русский",
 };
 
-const THEME_NAMES: Record<Theme, string> = {
-  system: "Tizim bo'yicha",
-  light: "Yorqin rejim",
-  dark: "Qorong'u rejim",
-};
+function themeName(lang: string, theme: Theme): string {
+  if (theme === "light") return pick(lang, "Yorqin rejim", "Светлая тема");
+  if (theme === "dark") return pick(lang, "Qorong'u rejim", "Тёмная тема");
+  return pick(lang, "Tizim bo'yicha", "Как в системе");
+}
 
 export default function GeneralSettings() {
   const { logout } = useAuth();
@@ -66,14 +67,14 @@ export default function GeneralSettings() {
             <ChevronLeft className="w-5 h-5" />
           </button>
         </Link>
-        <h1 className="text-xl font-display font-bold text-foreground">Umumiy sozlamalar</h1>
+        <h1 className="text-xl font-display font-bold text-foreground">{pick(lang, "Umumiy sozlamalar", "Общие настройки")}</h1>
       </div>
 
       <div className="space-y-2">
-        <LinkRow index={0} href="/settings/notifications" emoji="🔔" label="Bildirishnomalar" sub="Xabarnoma sozlamalari" />
-        <LinkRow index={1} href="/settings/security"      emoji="🔐" label="Xavfsizlik"       sub="Parol va himoya" />
-        <LinkRow index={2} href="/settings/language"      emoji="🌐" label="Til"              sub={LANG_NAMES[lang]} />
-        <LinkRow index={3} href="/settings/theme"         emoji="🎨" label="Ilova dizayni"    sub={THEME_NAMES[theme]} />
+        <LinkRow index={0} href="/settings/notifications" emoji="🔔" label={pick(lang, "Bildirishnomalar", "Уведомления")} sub={pick(lang, "Xabarnoma sozlamalari", "Настройки сообщений")} />
+        <LinkRow index={1} href="/settings/security"      emoji="🔐" label={pick(lang, "Xavfsizlik", "Безопасность")}       sub={pick(lang, "Parol va himoya", "Пароль и защита")} />
+        <LinkRow index={2} href="/settings/language"      emoji="🌐" label={pick(lang, "Til", "Язык")}              sub={LANG_NAMES[lang]} />
+        <LinkRow index={3} href="/settings/theme"         emoji="🎨" label={pick(lang, "Ilova dizayni", "Оформление")}    sub={themeName(lang, theme)} />
       </div>
 
       <div className="mt-10 pt-6 border-t border-white/8">
@@ -85,7 +86,7 @@ export default function GeneralSettings() {
           className="w-full p-4 rounded-2xl bg-destructive/10 text-destructive font-bold text-base flex items-center justify-center gap-2.5 hover:bg-destructive/20 transition-all border border-destructive/20"
         >
           <LogOut className="w-5 h-5" />
-          Chiqish
+          {pick(lang, "Chiqish", "Выйти")}
         </motion.button>
       </div>
 
@@ -112,23 +113,23 @@ export default function GeneralSettings() {
                 <LogOut className="w-6 h-6 text-destructive" />
               </div>
               <h2 className="text-lg font-bold text-foreground text-center mb-1.5">
-                Akkauntdan chiqmoqchimisiz?
+                {pick(lang, "Akkauntdan chiqmoqchimisiz?", "Выйти из аккаунта?")}
               </h2>
               <p className="text-sm text-muted-foreground text-center mb-6">
-                Chiqsangiz, qayta kirish talab qilinadi.
+                {pick(lang, "Chiqsangiz, qayta kirish talab qilinadi.", "После выхода нужно будет войти снова.")}
               </p>
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowConfirm(false)}
                   className="flex-1 py-3 rounded-2xl bg-white/6 border border-white/10 text-foreground font-semibold text-sm hover:bg-white/10 transition-all"
                 >
-                  Yo'q
+                  {pick(lang, "Yo'q", "Нет")}
                 </button>
                 <button
                   onClick={handleLogoutConfirm}
                   className="flex-1 py-3 rounded-2xl bg-destructive text-white font-semibold text-sm hover:bg-destructive/85 transition-all"
                 >
-                  Ha, chiqish
+                  {pick(lang, "Ha, chiqish", "Да, выйти")}
                 </button>
               </div>
             </motion.div>

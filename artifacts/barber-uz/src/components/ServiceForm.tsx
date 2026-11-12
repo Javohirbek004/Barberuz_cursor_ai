@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { pick } from "@/i18n/pick";
 import { ArrowLeft } from "lucide-react";
 import {
   useListCategories,
@@ -40,6 +42,7 @@ export function ServiceForm({
   onCancel: () => void;
   saving?: boolean;
 }) {
+  const { lang } = useTranslation();
   const [name, setName] = useState(initial?.name ?? "");
   const [categoryId, setCategoryId] = useState<string | null>(initial?.categoryId ?? null);
   const [duration, setDuration] = useState(String(initial?.duration ?? 30));
@@ -86,25 +89,25 @@ export function ServiceForm({
           <ArrowLeft className="w-4 h-4" />
         </button>
         <h3 className="font-bold text-foreground">
-          {initial?.id ? "Xizmatni tahrirlash" : "Yangi xizmat"}
+          {initial?.id ? pick(lang, "Xizmatni tahrirlash", "Изменить услугу") : pick(lang, "Yangi xizmat", "Новая услуга")}
         </h3>
       </div>
 
       {/* Name */}
       <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-muted-foreground">Nomi *</label>
+        <label className="text-xs font-semibold text-muted-foreground">{pick(lang, "Nomi *", "Название *")}</label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           onFocus={focusField}
-          placeholder="Masalan: Soch olish, Soqol tekislash..."
+          placeholder={pick(lang, "Masalan: Soch olish, Soqol tekislash...", "Например: стрижка, борода...")}
           className="w-full h-12 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50"
         />
       </div>
 
       {/* Category — horizontal pill chips */}
       <div className="space-y-2">
-        <label className="text-xs font-semibold text-muted-foreground">Kategoriya</label>
+        <label className="text-xs font-semibold text-muted-foreground">{pick(lang, "Kategoriya", "Категория")}</label>
         <div className="flex flex-wrap gap-2">
           {categories.map((c: ServiceCategory) => {
             const active = categoryId === c.id;
@@ -129,7 +132,7 @@ export function ServiceForm({
       {/* Duration + Price */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-muted-foreground">Davomiylik (min)</label>
+          <label className="text-xs font-semibold text-muted-foreground">{pick(lang, "Davomiylik (min)", "Длительность (мин)")}</label>
           <input
             type="number"
             value={duration}
@@ -140,7 +143,7 @@ export function ServiceForm({
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-muted-foreground">Narxi (so'm) *</label>
+          <label className="text-xs font-semibold text-muted-foreground">{pick(lang, "Narxi (so'm) *", "Цена (сум) *")}</label>
           <input
             type="text"
             inputMode="numeric"
@@ -161,12 +164,12 @@ export function ServiceForm({
         {saving ? (
           <>
             <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-            Saqlanmoqda...
+            {pick(lang, "Saqlanmoqda...", "Сохраняется...")}
           </>
         ) : initial?.id ? (
-          "Saqlash"
+          pick(lang, "Saqlash", "Сохранить")
         ) : (
-          "Qo'shish"
+          pick(lang, "Qo'shish", "Добавить")
         )}
       </button>
     </div>

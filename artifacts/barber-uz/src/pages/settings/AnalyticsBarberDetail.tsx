@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { countLabel, moneyLabel, pick } from "@/i18n/pick";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
@@ -110,9 +112,15 @@ const PERIODS: { key: Period; label: string }[] = [
 ];
 
 function PeriodFilter({ period, onChange }: { period: Period; onChange: (p: Period) => void }) {
+  const { lang } = useTranslation();
+  const labels: Record<Period, string> = {
+    bugun: pick(lang, "Bugun", "Сегодня"),
+    hafta: pick(lang, "Hafta", "Неделя"),
+    oy: pick(lang, "Oy", "Месяц"),
+  };
   return (
     <div className="flex gap-1.5 bg-card p-1 rounded-2xl border border-white/6 mb-6">
-      {PERIODS.map(({ key, label }) => (
+      {PERIODS.map(({ key }) => (
         <button
           key={key}
           onClick={() => onChange(key)}
@@ -122,7 +130,7 @@ function PeriodFilter({ period, onChange }: { period: Period; onChange: (p: Peri
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          {label}
+          {labels[key]}
         </button>
       ))}
     </div>
@@ -137,6 +145,7 @@ interface Props {
 
 export default function AnalyticsBarberDetail({ params }: Props) {
   useAuth();
+  const { lang } = useTranslation();
   const barberId = decodeURIComponent(params?.barberId ?? "");
   const [period, setPeriod] = useState<Period>("bugun");
   const [stats, setStats] = useState<BarberStats | null>(null);
@@ -159,11 +168,11 @@ export default function AnalyticsBarberDetail({ params }: Props) {
         <Link href="/settings/analytics">
           <button className="flex items-center gap-1.5 h-10 px-3 rounded-2xl bg-card border border-white/8 hover:bg-white/5 transition-colors text-sm font-semibold">
             <ChevronLeft className="w-4 h-4" />
-            Orqaga
+            {pick(lang, "Orqaga", "Назад")}
           </button>
         </Link>
         <h1 className="text-xl font-display font-bold text-foreground">
-          📊 {displayName} — Tahlil
+          📊 {displayName} — {pick(lang, "Tahlil", "Анализ")}
         </h1>
       </div>
 
@@ -173,22 +182,22 @@ export default function AnalyticsBarberDetail({ params }: Props) {
         <Skeleton />
       ) : !stats ? (
         <div className="text-center py-10 text-sm text-muted-foreground">
-          Ma'lumot yuklanmadi
+          {pick(lang, "Ma'lumot yuklanmadi", "Не удалось загрузить")}
         </div>
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <KpiCard index={0} emoji="💰" label="Daromad" value={fmtFull(stats.revenue)} />
-            <KpiCard index={1} emoji="👥" label="Mijozlar" value={`${stats.clients} ta`} />
-            <KpiCard index={2} emoji="❌" label="Bekor" value={`${stats.cancelled} ta`} />
-            <KpiCard index={3} emoji="📅" label="Jami bronlar" value={`${stats.totalBookings} ta`} />
+            <KpiCard index={0} emoji="💰" label={pick(lang, "Daromad", "Доход")} value={moneyLabel(lang, stats.revenue)} />
+            <KpiCard index={1} emoji="👥" label={pick(lang, "Mijozlar", "Клиенты")} value={countLabel(lang, stats.clients)} />
+            <KpiCard index={2} emoji="❌" label={pick(lang, "Bekor", "Отмена")} value={countLabel(lang, stats.cancelled)} />
+            <KpiCard index={3} emoji="📅" label={pick(lang, "Jami bronlar", "Всего записей")} value={countLabel(lang, stats.totalBookings)} />
           </div>
 
           {stats.topService && (
-            <Section title="🏆 Faoliyat" index={1}>
+            <Section title={pick(lang, "🏆 Faoliyat", "🏆 Работа")} index={1}>
               <div className="space-y-3">
                 <div>
-                  <div className="text-xs text-muted-foreground">Eng ko'p xizmat</div>
+                  <div className="text-xs text-muted-foreground">{pick(lang, "Eng ko'p xizmat", "Самая частая услуга")}</div>
                   <div className="font-bold text-foreground mt-0.5">
                     {stats.topService.name} — {stats.topService.count} ta
                   </div>
@@ -197,7 +206,7 @@ export default function AnalyticsBarberDetail({ params }: Props) {
                   <>
                     <div className="h-px bg-white/6" />
                     <div>
-                      <div className="text-xs text-muted-foreground">Eng band vaqt</div>
+                      <div className="text-xs text-muted-foreground">{pick(lang, "Eng band vaqt", "Самое занятое время")}</div>
                       <div className="font-bold text-foreground mt-0.5">🕒 {stats.busiestTime}</div>
                     </div>
                   </>
@@ -207,12 +216,12 @@ export default function AnalyticsBarberDetail({ params }: Props) {
           )}
 
           {stats.daily.length > 0 && (
-            <Section title="📅 Oxirgi kunlar" index={2}>
+            <Section title={pick(lang, "📅 Oxirgi kunlar", "📅 Последние дни")} index={2}>
               <div className="space-y-1">
                 {stats.daily.map((d, i) => (
                   <div key={i} className="flex items-center justify-between py-2">
                     <span className="text-sm text-muted-foreground w-28">{d.day}</span>
-                    <span className="text-sm text-foreground flex-1 text-center">{d.clients} mijoz</span>
+                    <span className="text-sm text-foreground flex-1 text-center">{countLabel(lang, d.clients)} {pick(lang, "mijoz", "клиент")}</span>
                     <span className="text-sm font-semibold text-primary text-right">{fmtShort(d.revenue)}</span>
                   </div>
                 ))}
@@ -221,9 +230,9 @@ export default function AnalyticsBarberDetail({ params }: Props) {
           )}
 
           {stats.daily.length === 0 && (
-            <Section title="📅 Oxirgi kunlar" index={2}>
+            <Section title={pick(lang, "📅 Oxirgi kunlar", "📅 Последние дни")} index={2}>
               <div className="text-sm text-muted-foreground text-center py-4">
-                Bu davr uchun ma'lumot yo'q
+                {pick(lang, "Bu davr uchun ma'lumot yo'q", "За этот период данных нет")}
               </div>
             </Section>
           )}
