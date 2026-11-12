@@ -1,5 +1,7 @@
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { pick } from "@/i18n/pick";
 
 export function NoShowConfirmModal({
   open,
@@ -12,6 +14,7 @@ export function NoShowConfirmModal({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const { lang } = useTranslation();
   if (typeof document === "undefined") return null;
   return createPortal(
     <AnimatePresence>
@@ -32,10 +35,10 @@ export function NoShowConfirmModal({
             className="relative z-10 w-full max-w-sm rounded-3xl border border-white/15 bg-[#2a2a32] p-5 shadow-2xl"
           >
             <p className="text-[15px] font-semibold text-foreground leading-snug">
-              Mijoz salonga kelmadi deb belgilashni tasdiqlaysizmi?
+              {pick(lang, "Mijoz salonga kelmadi deb belgilashni tasdiqlaysizmi?", "Отметить, что клиент не пришёл?")}
             </p>
             <p className="text-xs text-muted-foreground mt-2">
-              Bu bron daromadga qoʻshilmaydi.
+              {pick(lang, "Bu bron daromadga qoʻshilmaydi.", "Эта бронь не попадёт в доход.")}
             </p>
             <div className="grid grid-cols-2 gap-2 mt-5">
               <button
@@ -45,7 +48,7 @@ export function NoShowConfirmModal({
                 onClick={onCancel}
                 className="h-10 rounded-xl bg-white/8 border border-white/10 text-sm font-semibold text-foreground disabled:opacity-40"
               >
-                Orqaga
+                {pick(lang, "Orqaga", "Назад")}
               </button>
               <button
                 type="button"
@@ -54,7 +57,7 @@ export function NoShowConfirmModal({
                 onClick={onConfirm}
                 className="h-10 rounded-xl bg-red-500/15 border border-red-500/30 text-sm font-semibold text-red-300 disabled:opacity-40"
               >
-                {busy ? "..." : "Ha, tasdiqlash"}
+                {busy ? "..." : pick(lang, "Ha, tasdiqlash", "Да, подтвердить")}
               </button>
             </div>
           </motion.div>
