@@ -41,6 +41,7 @@ export const translations = {
     // Login
     'login.phone_label': "Telefon raqamingizni kiriting:",
     'login.phone_placeholder': "+998 90 123-45-67",
+    'login.reset_success': "🟢 Parol oʻzgardi. Telefon raqamingiz va yangi parolingizni kiritib profilingizga kiring.",
     'login.forgot': "Parolni unutdingizmi?",
     'login.forgot_title': "🔒 Parolni tiklash",
     'login.forgot_body': "Parolni unutdingizmi? Bu muammo emas! Parolni qaytarish uchun pastdagi tugmani bosib botga kiring va ro'yxatdan o'tishda ishlatgan telefon raqamingizni yuboring.",
@@ -349,6 +350,7 @@ export const translations = {
     // Login
     'login.phone_label': "Введите номер телефона:",
     'login.phone_placeholder': "Например: +998 90 123-45-67",
+    'login.reset_success': "🟢 Пароль обновлён. Введите номер телефона и новый пароль, чтобы войти в профиль.",
     'login.forgot': "Забыли пароль?",
     'login.forgot_title': "🔒 Восстановление пароля",
     'login.forgot_body': "Забыли пароль? Это не проблема. Нажмите кнопку ниже, откройте бота и отправьте номер телефона, который указывали при регистрации.",
