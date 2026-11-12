@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Info, X } from "lucide-react";
 import { BUFFER_OPTIONS } from "@/lib/schedule";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { pick } from "@/i18n/pick";
 
 export const BUFFER_INFO_TEXT =
   "💡 Ma'lumot: Ushbu tanaffus faqat sizning tahrirlash panelingizda koʻrinadi. Sahifangizda mijozlarga alohida koʻrsatilmaydi.";
@@ -16,7 +18,15 @@ interface Props {
  * "⏱ Oraliq tanaffus" – preparation gap kept after every service.
  * Shared by settings/profile and settings/page so both edit the same value.
  */
+function bufferOptionLabel(lang: string, value: number, uz: string): string {
+  if (lang !== "ru") return uz;
+  if (value === 0) return "0 минут (без перерыва)";
+  if (value === 10) return "10 минут (рекомендуется)";
+  return `${value} минут`;
+}
+
 export function BufferTimeField({ value, onChange, showInfo = false }: Props) {
+  const { lang } = useTranslation();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -46,7 +56,7 @@ export function BufferTimeField({ value, onChange, showInfo = false }: Props) {
       className="relative bg-card border border-white/6 rounded-2xl p-4"
     >
       <div className="flex items-center gap-2">
-        <p className="font-semibold text-sm text-foreground">⏱ Oraliq tanaffus</p>
+        <p className="font-semibold text-sm text-foreground">{pick(lang, "⏱ Oraliq tanaffus", "⏱ Перерыв между услугами")}</p>
         {showInfo && (
           <button
             type="button"
@@ -67,10 +77,10 @@ export function BufferTimeField({ value, onChange, showInfo = false }: Props) {
           data-testid="buffer-info-tooltip"
           className="absolute left-0 right-0 bottom-full mb-2 z-20 flex items-start gap-2 rounded-xl border border-white/10 bg-background px-3 py-2.5 text-xs leading-relaxed text-foreground/90 shadow-xl"
         >
-          <span data-testid="buffer-info-text" className="flex-1">{BUFFER_INFO_TEXT}</span>
+          <span data-testid="buffer-info-text" className="flex-1">{pick(lang, BUFFER_INFO_TEXT, "💡 Эта пауза видна только в вашей панели. Клиентам на странице она не показывается.")}</span>
           <button
             type="button"
-            aria-label="Yopish"
+            aria-label={pick(lang, "Yopish", "Закрыть")}
             data-testid="buffer-info-close"
             onClick={() => setOpen(false)}
             className="shrink-0 w-5 h-5 -mr-1 -mt-0.5 rounded-full flex items-center justify-center text-muted-foreground/70 hover:text-foreground hover:bg-white/10 transition-colors"
@@ -81,7 +91,7 @@ export function BufferTimeField({ value, onChange, showInfo = false }: Props) {
       )}
 
       <p className="text-xs text-muted-foreground/60 mt-0.5 mb-3">
-        Xizmatlar orasidagi tayyorgarlik vaqti
+        {pick(lang, "Xizmatlar orasidagi tayyorgarlik vaqti", "Время на подготовку между услугами")}
       </p>
 
       <div className="relative">
@@ -93,7 +103,7 @@ export function BufferTimeField({ value, onChange, showInfo = false }: Props) {
         >
           {BUFFER_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
-              {o.label}
+              {bufferOptionLabel(lang, o.value, o.label)}
             </option>
           ))}
         </select>

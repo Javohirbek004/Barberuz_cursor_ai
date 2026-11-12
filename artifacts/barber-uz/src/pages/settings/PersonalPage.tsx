@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useCallback, type ReactNode } from "react"
 import { APP_ORIGIN } from "@/lib/config";
 import { useBotUsername } from "@/lib/bot-link";
 import { useTranslation } from "@/i18n/LanguageContext";
-import { pick } from "@/i18n/pick";
+import { pick, weekdayNames } from "@/i18n/pick";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PageLinkPanel } from "@/components/PageLinkPanel";
 import { PageTabs } from "@/components/PageTabs";
@@ -353,7 +353,7 @@ function GalleryStripEdit({
     <div className="space-y-2 mb-4">
       <div className="flex items-center justify-between px-0">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Galereya (1–5 rasm)
+          {pick(lang, "Galereya (1–5 rasm)", "Галерея (1–5 фото)")}
         </span>
         <span className="text-xs text-muted-foreground/50">{images.length}/5</span>
       </div>
@@ -386,7 +386,7 @@ function GalleryStripEdit({
                 {i === 0 ? (
                   <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-primary/90 text-black text-[9px] font-bold rounded-full flex items-center gap-0.5">
                     <Star className="w-2.5 h-2.5 fill-black" />
-                    Muqova
+                    {pick(lang, "Muqova", "Обложка")}
                   </div>
                 ) : (
                   <button
@@ -394,7 +394,7 @@ function GalleryStripEdit({
                     className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm text-white/80 text-[9px] font-medium rounded-full flex items-center gap-0.5 hover:bg-black/80 hover:text-white transition-colors"
                   >
                     <Star className="w-2.5 h-2.5" />
-                    Muqova qilish
+                    {pick(lang, "Muqova qilish", "Сделать обложкой")}
                   </button>
                 )}
               </div>
@@ -405,7 +405,7 @@ function GalleryStripEdit({
                 className="shrink-0 w-28 h-28 rounded-2xl border border-dashed border-white/20 flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:border-white/40 hover:text-foreground transition-all"
               >
                 <Camera className="w-5 h-5" />
-                <span className="text-[10px]">+ Rasm</span>
+                <span className="text-[10px]">{pick(lang, "+ Rasm", "+ Фото")}</span>
               </button>
             )}
           </div>
@@ -420,21 +420,21 @@ function GalleryStripEdit({
 // COMPLETION BAR — page-level
 // ──────────────────────────────────────────────────────────────────────────────
 
-function completionChecks(profile: ProfileData) {
+function completionChecks(profile: ProfileData, lang: string) {
   return [
-    { label: "Ism",          done: !!profile.name },
-    { label: "Bio (10+)",    done: profile.bio.length >= 10 },
-    { label: "Mutaxassislik",done: profile.speciality.length >= 1 },
-    { label: "Galereya",     done: profile.galleryImages.length >= 1 },
-    { label: "Manzil",       done: !!profile.address },
-    { label: "Ish vaqti",    done: profile.workDays.length > 0 && !!profile.workStart },
-    { label: "Ijtimoiy",     done: !!(profile.telegram || profile.instagram) },
+    { label: pick(lang, "Ism", "Имя"), done: !!profile.name },
+    { label: pick(lang, "Bio (10+)", "Описание (10+)"), done: profile.bio.length >= 10 },
+    { label: pick(lang, "Mutaxassislik", "Специализация"), done: profile.speciality.length >= 1 },
+    { label: pick(lang, "Galereya", "Галерея"), done: profile.galleryImages.length >= 1 },
+    { label: pick(lang, "Manzil", "Адрес"), done: !!profile.address },
+    { label: pick(lang, "Ish vaqti", "Время"), done: profile.workDays.length > 0 && !!profile.workStart },
+    { label: pick(lang, "Ijtimoiy", "Соцсети"), done: !!(profile.telegram || profile.instagram) },
   ];
 }
 
 function CompletionBar({ profile }: { profile: ProfileData }) {
   const { lang } = useTranslation();
-  const checks = completionChecks(profile);
+  const checks = completionChecks(profile, lang);
   const done = checks.filter(c => c.done).length;
   const pct = Math.round((done / checks.length) * 100);
   if (pct === 100) return null;
@@ -487,6 +487,7 @@ function MapPickerModal({
   onSave: (lat: number, lng: number, address: string) => void;
   onClose: () => void;
 }) {
+  const { lang } = useTranslation();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<unknown>(null);
   const markerRef = useRef<unknown>(null);
@@ -573,9 +574,9 @@ function MapPickerModal({
           <X className="w-4 h-4" />
         </button>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-foreground">Manzilni xaritadan tanlang</p>
+          <p className="text-sm font-semibold text-foreground">{pick(lang, "Manzilni xaritadan tanlang", "Выберите адрес на карте")}</p>
           <p className={`text-xs truncate mt-0.5 ${geocoding ? "text-primary/60 animate-pulse" : "text-muted-foreground"}`}>
-            {geocoding ? "Manzil aniqlanmoqda..." : (address || "Xaritaga bosing yoki pin-ni sudrang")}
+            {geocoding ? pick(lang, "Manzil aniqlanmoqda...", "Адрес определяется...") : (address || pick(lang, "Xaritaga bosing yoki pin-ni sudrang", "Нажмите на карту или перетащите метку"))}
           </p>
         </div>
         <button
@@ -583,7 +584,7 @@ function MapPickerModal({
           disabled={geocoding}
           className="h-9 px-4 rounded-xl bg-primary text-black text-xs font-bold disabled:opacity-50 shrink-0"
         >
-          Saqlash
+          {pick(lang, "Saqlash", "Сохранить")}
         </button>
       </div>
       <div ref={mapRef} className="flex-1" style={{ minHeight: 0 }} />
@@ -631,7 +632,7 @@ function AsosiyTab({
 
   function handleGPS() {
     if (!navigator.geolocation) {
-      setGpsError("Brauzer joylashuvni qo'llab-quvvatlamaydi");
+      setGpsError(pick(lang, "Brauzer joylashuvni qo'llab-quvvatlamaydi", "Браузер не поддерживает геолокацию"));
       return;
     }
     setGpsLoading(true);
@@ -646,8 +647,8 @@ function AsosiyTab({
       },
       (err) => {
         setGpsLoading(false);
-        if (err.code === 1) setGpsError("Joylashuvga ruxsat berilmadi");
-        else setGpsError("Joylashuvni aniqlab bo'lmadi");
+        if (err.code === 1) setGpsError(pick(lang, "Joylashuvga ruxsat berilmadi", "Доступ к геолокации запрещён"));
+        else setGpsError(pick(lang, "Joylashuvni aniqlab bo'lmadi", "Не удалось определить местоположение"));
       },
       { enableHighAccuracy: true, timeout: 10000 },
     );
@@ -776,12 +777,12 @@ function AsosiyTab({
           </div>
           <div>
             <button onClick={() => imgRef.current?.click()} className="text-xs text-primary font-semibold hover:text-primary/80 transition-colors">
-              Rasm yuklash
+              {pick(lang, "Rasm yuklash", "Загрузить фото")}
             </button>
             <p className="text-xs text-muted-foreground/50 mt-0.5">{pick(lang, "Kvadrat rasm tavsiya etiladi", "Лучше квадратное фото")}</p>
             {profile.avatarUrl && (
               <button onClick={() => set("avatarUrl", "")} className="text-xs text-destructive/70 hover:text-destructive transition-colors mt-0.5 block">
-                O'chirish
+                {pick(lang, "O'chirish", "Удалить")}
               </button>
             )}
           </div>
@@ -795,10 +796,10 @@ function AsosiyTab({
         <input
           value={profile.name}
           onChange={e => set("name", e.target.value)}
-          placeholder="Sardor Barber"
+          placeholder={pick(lang, "Sardor Barber", "Имя барбера")}
           className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors"
         />
-        {!profile.name && warn("To'ldirilmagan")}
+        {!profile.name && warn(pick(lang, "To'ldirilmagan", "Не заполнено"))}
       </div>
 
       {/* Brand name */}
@@ -807,7 +808,7 @@ function AsosiyTab({
         <input
           value={profile.brandName}
           onChange={e => set("brandName", e.target.value)}
-          placeholder="Sardor Barbershop"
+          placeholder={pick(lang, "Sardor Barbershop", "Название барбершопа")}
           className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors"
         />
       </div>
@@ -824,7 +825,7 @@ function AsosiyTab({
           className="w-full px-4 py-3 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors resize-none"
         />
         <p className="text-xs text-muted-foreground/40 text-right">{profile.bio.length} / 200</p>
-        {profile.bio.length < 10 && warn("Kamida 10 ta belgi kiriting")}
+        {profile.bio.length < 10 && warn(pick(lang, "Kamida 10 ta belgi kiriting", "Введите минимум 10 символов"))}
       </div>
 
       {/* Speciality tags */}
@@ -922,7 +923,7 @@ function AsosiyTab({
           </button>
         </form>
         <p className="text-[11px] text-muted-foreground/55 leading-snug">
-          💡 Klaviaturangizdagi emojilardan ham foydalanishingiz mumkin
+          {pick(lang, "💡 Klaviaturangizdagi emojilardan ham foydalanishingiz mumkin", "💡 Можно использовать эмодзи с клавиатуры")}
         </p>
       </div>
 
@@ -933,7 +934,7 @@ function AsosiyTab({
           <Phone className="w-4 h-4 text-primary/60 shrink-0" />
           <div className="flex-1 min-w-0">
             <p className={`text-sm font-medium ${profile.phone ? "text-foreground" : "text-muted-foreground/60"}`}>
-              {profile.phone || "Kiritilmagan"}
+              {profile.phone || pick(lang, "Kiritilmagan", "Не указан")}
             </p>
             {profile.phone && (
               <p className="text-[11px] text-muted-foreground/60 mt-0.5">{pick(lang, "Telegram orqali tasdiqlangan", "Подтверждено через Telegram")}</p>
@@ -982,7 +983,7 @@ function AsosiyTab({
                 onClick={() => setShowMapModal(true)}
                 className="h-8 px-3 rounded-xl bg-black/70 backdrop-blur-sm text-white text-xs font-semibold flex items-center gap-1.5"
               >
-                <MapPin className="w-3 h-3" /> O'zgartirish
+                <MapPin className="w-3 h-3" /> {pick(lang, "O'zgartirish", "Изменить")}
               </button>
             </div>
           </div>
@@ -1004,7 +1005,7 @@ function AsosiyTab({
                 ? <span className="w-4 h-4 border border-emerald-400/50 border-t-emerald-400 rounded-full animate-spin" />
                 : <Navigation className="w-4 h-4" />
               }
-              <span className="text-xs">{gpsLoading ? "Aniqlanmoqda..." : "Joylashuvimni aniqlash"}</span>
+              <span className="text-xs">{gpsLoading ? pick(lang, "Aniqlanmoqda...", "Определяется...") : pick(lang, "Joylashuvimni aniqlash", "Определить моё местоположение")}</span>
             </button>
           </div>
         )}
@@ -1064,7 +1065,7 @@ function AsosiyTab({
         <div>
           <p className="text-xs text-muted-foreground mb-2">{pick(lang, "Ish kunlari", "Рабочие дни")}</p>
           <div className="flex gap-2 flex-wrap">
-            {DAYS.map(d => {
+            {DAYS.map((d, i) => {
               const active = profile.workDays.includes(d.key);
               return (
                 <button
@@ -1072,12 +1073,12 @@ function AsosiyTab({
                   onClick={() => toggleDay(d.key)}
                   className={`w-10 h-10 rounded-xl text-xs font-bold border transition-all ${active ? "bg-primary/20 border-primary/40 text-primary" : "bg-white/5 border-white/8 text-muted-foreground hover:border-white/20 hover:text-foreground"}`}
                 >
-                  {d.label}
+                  {weekdayNames(lang)[i]}
                 </button>
               );
             })}
           </div>
-          {profile.workDays.length === 0 && warn("Hech bo'lmaganda bitta kun tanlang")}
+          {profile.workDays.length === 0 && warn(pick(lang, "Hech bo'lmaganda bitta kun tanlang", "Выберите хотя бы один день"))}
         </div>
 
         {/* Hours */}
@@ -1145,7 +1146,7 @@ function AsosiyTab({
             </div>
           ) : (
             <div className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/4 flex items-center text-sm text-muted-foreground/50 cursor-default">
-              Telegram orqali kirish orqali qo'shiladi
+              {pick(lang, "Telegram orqali kirish orqali qo'shiladi", "Добавится при входе через Telegram")}
             </div>
           )}
         </div>
