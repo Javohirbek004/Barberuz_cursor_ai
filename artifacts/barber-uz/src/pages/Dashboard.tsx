@@ -39,6 +39,7 @@ import {
   type SlotPeriod,
 } from "@/lib/schedule";
 import { APP_ORIGIN } from "@/lib/config";
+import { countLabel, moneyLabel, pick } from "@/i18n/pick";
 import { BookingFlowDialog } from "@/components/BookingFlowDialog";
 
 // ── Uzbek date formatter ──────────────────────────────────────────────────────
@@ -75,7 +76,7 @@ function isDroppedBooking(status: string): boolean {
   return status === "cancelled" || status === "auto_cancelled";
 }
 
-function calcTotalDuration(bookings: Booking[]): string {
+function calcTotalDuration(bookings: Booking[], lang: string): string {
   let total = 0;
   for (const b of bookings) {
     if (isDroppedBooking(b.status)) continue;
@@ -83,12 +84,18 @@ function calcTotalDuration(bookings: Booking[]): string {
   }
   const h = Math.floor(total / 60);
   const m = total % 60;
-  return `Bandlik • ${h}s ${m}d`;
+  const time = lang === "ru" ? `${h}ч ${m}м` : `${h}s ${m}d`;
+  return `${pick(lang, "Bandlik", "Занятость")} • ${time}`;
 }
 
-function countdownUntil(diffMins: number): string {
+function countdownUntil(diffMins: number, lang: string): string {
   const hours = Math.floor(diffMins / 60);
   const minutes = diffMins % 60;
+  if (lang === "ru") {
+    if (hours > 0 && minutes > 0) return `через ${hours} ч ${minutes} мин`;
+    if (hours > 0) return `через ${hours} ч`;
+    return `через ${minutes} мин`;
+  }
   if (hours > 0 && minutes > 0) return `${hours} soat ${minutes} daqiqadan keyin`;
   if (hours > 0) return `${hours} soatdan keyin`;
   return `${minutes} daqiqadan keyin`;
@@ -99,6 +106,7 @@ function calcNextBookingInfo(
   now: Date,
   shift: { enabled: boolean; startMins: number; endMins: number },
   hadCompletedToday: boolean,
+  lang: string,
 ): { main: string; sub: string; nextId: string | null } {
   const clock = tashkentClock(now);
   const nowMins = clock.mins;
@@ -108,18 +116,18 @@ function calcNextBookingInfo(
     const start = toMins(b.startTime);
     if (start <= nowMins) continue;
     return {
-      main: countdownUntil(start - nowMins),
+      main: countdownUntil(start - nowMins, lang),
       sub: b.startTime.slice(0, 5),
       nextId: b.id,
     };
   }
-  if (!shift.enabled) return { main: "Bugun bronlar yo'q", sub: "", nextId: null };
+  if (!shift.enabled) return { main: pick(lang, "Bugun bronlar yo'q", "Сегодня записей нет"), sub: "", nextId: null };
   const beforeOpen = shift.enabled && nowMins < shift.startMins;
-  if (beforeOpen && hadCompletedToday) return { main: "Kutilayotgan bron yo'q", sub: "", nextId: null };
-  if (beforeOpen) return { main: "Ish vaqti hali boshlanmadi", sub: "", nextId: null };
+  if (beforeOpen && hadCompletedToday) return { main: pick(lang, "Kutilayotgan bron yo'q", "Ожидаемых записей нет"), sub: "", nextId: null };
+  if (beforeOpen) return { main: pick(lang, "Ish vaqti hali boshlanmadi", "Рабочее время ещё не началось"), sub: "", nextId: null };
   const duringHours = shift.enabled && nowMins < shift.endMins;
-  if (duringHours && !hadCompletedToday) return { main: "Hali bron yo'q", sub: "", nextId: null };
-  return { main: "Bugun boshqa bron yo'q", sub: "", nextId: null };
+  if (duringHours && !hadCompletedToday) return { main: pick(lang, "Hali bron yo'q", "Записей пока нет"), sub: "", nextId: null };
+  return { main: pick(lang, "Bugun boshqa bron yo'q", "Сегодня других записей нет"), sub: "", nextId: null };
 }
 
 function serviceNames(raw: string | null | undefined): string[] {
@@ -336,9 +344,12 @@ function TodayStatsModal({ open, onClose, total, completed, remaining, cancelled
   open: boolean; onClose: () => void;
   total: number; completed: number; remaining: number; cancelled: number; durationMins: number;
 }) {
+  const { lang } = useTranslation();
   const dh = Math.floor(durationMins / 60);
   const dm = durationMins % 60;
-  const durStr = dh > 0 ? (dm > 0 ? `${dh} soat ${dm} daq` : `${dh} soat`) : `${dm} daq`;
+  const durStr = lang === "ru"
+    ? (dh > 0 ? (dm > 0 ? `${dh} ч ${dm} мин` : `${dh} ч`) : `${dm} мин`)
+    : (dh > 0 ? (dm > 0 ? `${dh} soat ${dm} daq` : `${dh} soat`) : `${dm} daq`);
   const metricCard =
     "rounded-2xl p-4 text-center min-h-[6.25rem] h-full flex flex-col items-center justify-center";
   const metricLabel = "text-xs mb-1 leading-snug";
@@ -347,45 +358,45 @@ function TodayStatsModal({ open, onClose, total, completed, remaining, cancelled
     <BottomSheet open={open} onClose={onClose}>
       <div className="overflow-y-auto px-5 pb-8 pt-2">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-bold text-foreground">📊 Bugungi bronlar hisoboti</h2>
+          <h2 className="text-base font-bold text-foreground">{pick(lang, "📊 Bugungi bronlar hisoboti", "📊 Отчёт по записям за сегодня")}</h2>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/8 text-muted-foreground transition-colors text-lg">✖</button>
         </div>
         <div className="bg-white/5 border border-white/8 rounded-2xl p-4 mb-3 text-center">
-          <div className="text-xs text-muted-foreground mb-1">Jami bronlar</div>
-          <div className="font-bold text-3xl text-white">{total} ta</div>
+          <div className="text-xs text-muted-foreground mb-1">{pick(lang, "Jami bronlar", "Всего записей")}</div>
+          <div className="font-bold text-3xl text-white">{countLabel(lang, total)}</div>
         </div>
         <div className="grid grid-cols-2 gap-3 mb-5">
           <div className={`${metricCard} bg-blue-500/8 border border-blue-500/20`}>
             <div className={`${metricLabel} text-blue-400 inline-flex items-center justify-center gap-1.5`}>
               <CheckCircle2 className="w-5 h-5 text-blue-400 stroke-[2.5] shrink-0" />
-              <span>Tugallangan</span>
+              <span>{pick(lang, "Tugallangan", "Завершено")}</span>
             </div>
-            <div className={`${metricValue} text-blue-400`}>{completed} ta</div>
+            <div className={`${metricValue} text-blue-400`}>{countLabel(lang, completed)}</div>
           </div>
           <div className={`${metricCard} bg-green-500/8 border border-green-500/20`}>
             <div className={`${metricLabel} text-emerald-400 inline-flex items-center justify-center gap-1.5`}>
               <Calendar className="w-5 h-5 text-emerald-400 stroke-[2.5] shrink-0" />
-              <span>Tasdiqlangan</span>
+              <span>{pick(lang, "Tasdiqlangan", "Подтверждено")}</span>
             </div>
-            <div className={`${metricValue} text-emerald-400`}>{remaining} ta</div>
+            <div className={`${metricValue} text-emerald-400`}>{countLabel(lang, remaining)}</div>
           </div>
           <div className={`${metricCard} bg-red-500/8 border border-red-500/20`}>
             <div className={`${metricLabel} text-red-400 inline-flex items-center justify-center gap-1.5`}>
               <XCircle className="w-5 h-5 text-red-400 stroke-[2.5] shrink-0" />
-              <span>Kelmadi & Bekor qilingan</span>
+              <span>{pick(lang, "Kelmadi & Bekor qilingan", "Не пришёл и отменено")}</span>
             </div>
-            <div className={`${metricValue} text-red-400`}>{cancelled} ta</div>
+            <div className={`${metricValue} text-red-400`}>{countLabel(lang, cancelled)}</div>
           </div>
           <div className={`${metricCard} bg-white/5 border border-white/8`}>
             <div className={`${metricLabel} text-slate-300 inline-flex items-center justify-center gap-1.5`}>
               <Timer className="w-5 h-5 text-slate-300 stroke-[2.5] shrink-0" />
-              <span>Ishlangan vaqt</span>
+              <span>{pick(lang, "Ishlangan vaqt", "Отработанное время")}</span>
             </div>
             <div className={`${metricValue} text-foreground`}>{durationMins > 0 ? durStr : "—"}</div>
           </div>
         </div>
         <button onClick={onClose} className="w-full py-3.5 rounded-2xl bg-primary/15 border border-primary/20 text-primary font-semibold text-sm">
-          Tushunarli
+          {pick(lang, "Tushunarli", "Понятно")}
         </button>
       </div>
     </BottomSheet>
@@ -398,6 +409,7 @@ function FreeSlotModal({ open, onClose, slots, dayOff = false }: {
   slots: string[];
   dayOff?: boolean;
 }) {
+  const { lang } = useTranslation();
   const [period, setPeriod] = useState<SlotPeriod>("all");
   const [picked, setPicked] = useState<string | null>(null);
   useEffect(() => {
@@ -413,25 +425,25 @@ function FreeSlotModal({ open, onClose, slots, dayOff = false }: {
     <BottomSheet open={open} onClose={onClose}>
       <div className="overflow-y-auto px-5 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]" data-testid="free-slots-modal">
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-base font-bold text-foreground">⏱ Bugungi bo'sh vaqtlar</h2>
+          <h2 className="text-base font-bold text-foreground">{pick(lang, "⏱ Bugungi bo'sh vaqtlar", "⏱ Свободное время сегодня")}</h2>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/8 text-muted-foreground transition-colors text-lg">✖</button>
         </div>
         {dayOff ? (
           <p className="text-sm text-foreground text-center py-10" data-testid="free-slots-day-off">
-            Bugun dam olish kuni, bo'sh vaqtlar mavjud emas
+            {pick(lang, "Bugun dam olish kuni, bo'sh vaqtlar mavjud emas", "Сегодня выходной, свободного времени нет")}
           </p>
         ) : (
         <>
         <p className="text-xs text-muted-foreground mb-4" data-testid="free-slot-count">
-          Jami {shownCount} ta bo'sh slot mavjud
+          {pick(lang, `Jami ${shownCount} ta bo'sh slot mavjud`, `Всего свободных окон: ${shownCount}`)}
         </p>
         {slots.length === 0 ? (
-          <div className="text-center py-10 text-muted-foreground text-sm">Hozircha bo'sh vaqt yo'q 😔</div>
+          <div className="text-center py-10 text-muted-foreground text-sm">{pick(lang, "Hozircha bo'sh vaqt yo'q 😔", "Свободного времени пока нет 😔")}</div>
         ) : (
           <>
             <SlotPeriodTabs value={period} onChange={setPeriod} />
             {visible.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-6 text-center">Bu vaqt oralig'ida bo'sh joy yo'q</p>
+              <p className="text-sm text-muted-foreground py-6 text-center">{pick(lang, "Bu vaqt oralig'ida bo'sh joy yo'q", "В этом промежутке свободных окон нет")}</p>
             ) : (
               <div className="flex flex-wrap gap-2" data-testid="free-slot-grid">
                 {visible.map((slot) => (
@@ -457,7 +469,7 @@ function FreeSlotModal({ open, onClose, slots, dayOff = false }: {
         )}
         <div className="mt-5">
           <button onClick={onClose} className="w-full py-3.5 rounded-2xl bg-primary/15 border border-primary/20 text-primary font-semibold text-sm">
-            Yopish
+            {pick(lang, "Yopish", "Закрыть")}
           </button>
         </div>
       </div>
@@ -467,7 +479,7 @@ function FreeSlotModal({ open, onClose, slots, dayOff = false }: {
 
 // ── Individual Dashboard ──────────────────────────────────────────────────────
 function IndividualDashboard() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [, navigate] = useLocation();
 
   const { isLoading: statsLoading, refetch: refetchStats } = useGetDashboardStats();
@@ -581,30 +593,30 @@ function IndividualDashboard() {
     .filter(b => b.status === "completed")
     .reduce((s, b) => s + toMins(b.endTime) - toMins(b.startTime), 0);
 
-  const durationLabel = calcTotalDuration(todayUpcoming);
+  const durationLabel = calcTotalDuration(todayUpcoming, lang);
 
   const hadCompletedToday = bookings.some((b) => reportStatus(b.status) === "completed");
   const emptyCopy = dashboardEmptyCopy(tashkentClock(now).mins, {
     enabled: todayHours.enabled,
     startMins: workStart,
     endMins: workEnd,
-  });
+  }, lang);
   const { main: nextMain, sub: nextSub, nextId } = calcNextBookingInfo(upcomingBookings, now, {
     enabled: todayHours.enabled,
     startMins: workStart,
     endMins: workEnd,
-  }, hadCompletedToday);
+  }, hadCompletedToday, lang);
 
   async function shareBookingLink() {
     const slug = profile?.username?.trim();
     if (!slug) {
-      toast({ title: "Havola tayyor emas", description: "Avval sahifa manzilini saqlang" });
+      toast({ title: pick(lang, "Havola tayyor emas", "Ссылка ещё не готова"), description: pick(lang, "Avval sahifa manzilini saqlang", "Сначала сохраните адрес страницы") });
       return;
     }
     const url = `${APP_ORIGIN}/${slug}`;
     const shareData: ShareData = {
-      title: "Onlayn bron qilish -",
-      text: "Barbershopimizga onlayn bron qilish uchun ushbu havola orqali o'ting:",
+      title: pick(lang, "Onlayn bron qilish -", "Онлайн-запись -"),
+      text: pick(lang, "Barbershopimizga onlayn bron qilish uchun ushbu havola orqali o'ting:", "Перейдите по ссылке, чтобы записаться онлайн:"),
       url,
     };
     if (canUseShare(shareData)) {
@@ -617,8 +629,8 @@ function IndividualDashboard() {
     }
     const copied = await copyText(url);
     toast(copied
-      ? { title: "✅ Havola nusxalandi! Uni mijozga yuborishingiz mumkin." }
-      : { title: "Nusxalanmadi", description: "Qayta urinib ko'ring", variant: "destructive" });
+      ? { title: pick(lang, "✅ Havola nusxalandi! Uni mijozga yuborishingiz mumkin.", "✅ Ссылка скопирована! Её можно отправить клиенту.") }
+      : { title: pick(lang, "Nusxalanmadi", "Не скопировалось"), description: pick(lang, "Qayta urinib ko'ring", "Попробуйте ещё раз"), variant: "destructive" });
   }
 
   const handleScrollToNext = () => {
@@ -651,16 +663,16 @@ function IndividualDashboard() {
       if (status === "completed") {
         const allToday = rows.every((row) => bookingDay(row.date) === today);
         toast({
-          title: rows.length > 1 ? "Barchasi bajarildi" : "✓ Keldi",
+          title: rows.length > 1 ? pick(lang, "Barchasi bajarildi", "Все отмечены") : pick(lang, "✓ Keldi", "✓ Пришёл"),
           description: allToday
-            ? `${sum.toLocaleString()} so'm bugungi daromadga qo'shildi`
-            : `${sum.toLocaleString()} so'm bron sanasidagi daromadga qo'shildi`,
+            ? pick(lang, `${moneyLabel(lang, sum)} bugungi daromadga qo'shildi`, `${moneyLabel(lang, sum)} добавлено в сегодняшний доход`)
+            : pick(lang, `${moneyLabel(lang, sum)} bron sanasidagi daromadga qo'shildi`, `${moneyLabel(lang, sum)} добавлено в доход даты записи`),
         });
       } else {
-        toast({ title: "Kelmadi", description: "Bu bron daromadga qo'shilmadi" });
+        toast({ title: pick(lang, "Kelmadi", "Не пришёл"), description: pick(lang, "Bu bron daromadga qo'shilmadi", "Эта запись не добавлена в доход") });
       }
     } catch {
-      toast({ title: "Saqlanmadi", description: "Qayta urinib ko'ring", variant: "destructive" });
+      toast({ title: pick(lang, "Saqlanmadi", "Не сохранилось"), description: pick(lang, "Qayta urinib ko'ring", "Попробуйте ещё раз"), variant: "destructive" });
     } finally {
       setBusyKey(null);
     }
@@ -672,9 +684,9 @@ function IndividualDashboard() {
       <div className="grid grid-cols-2 gap-3 mb-8">
         {/* Card 1: Bugungi bronlar */}
         <InteractiveCard
-          label="Bugungi bronlar"
-          value={todayBusy.length === 0 ? "—" : `${todayBusy.length} ta`}
-          pillLabel="Tafsilotlar"
+          label={pick(lang, "Bugungi bronlar", "Записи на сегодня")}
+          value={todayBusy.length === 0 ? "—" : countLabel(lang, todayBusy.length)}
+          pillLabel={pick(lang, "Tafsilotlar", "Подробнее")}
           icon={CalendarDays}
           iconColor="text-amber-400"
           loading={bookingsLoading}
@@ -684,9 +696,9 @@ function IndividualDashboard() {
 
         {/* Card 2: Bugungi daromad */}
         <StatCard
-          label="Bugungi daromad"
-          value={bookingsLoading ? "..." : todayRevenue === 0 ? "—" : `${todayRevenue.toLocaleString()} so'm`}
-          pillLabel="Tafsilotlar"
+          label={pick(lang, "Bugungi daromad", "Доход за сегодня")}
+          value={bookingsLoading ? "..." : todayRevenue === 0 ? "—" : moneyLabel(lang, todayRevenue)}
+          pillLabel={pick(lang, "Tafsilotlar", "Подробнее")}
           icon={Wallet}
           iconColor="text-emerald-400"
           loading={bookingsLoading}
@@ -697,9 +709,9 @@ function IndividualDashboard() {
 
         {/* Card 3: Bo'sh joylar */}
         <InteractiveCard
-          label="Bo'sh joylar"
-          value={isOffDay ? "Dam olish kuni" : `${freeSlots} ta`}
-          pillLabel="Ko'rish"
+          label={pick(lang, "Bo'sh joylar", "Свободные окна")}
+          value={isOffDay ? pick(lang, "Dam olish kuni", "Выходной") : countLabel(lang, freeSlots)}
+          pillLabel={pick(lang, "Ko'rish", "Смотреть")}
           icon={Timer}
           iconColor="text-blue-400"
           loading={statsLoading || bookingsLoading}
@@ -709,7 +721,7 @@ function IndividualDashboard() {
 
         {/* Card 4: Keyingi bron */}
         <StatCard
-          label="Keyingi bron"
+          label={pick(lang, "Keyingi bron", "Следующая запись")}
           value={nextMain}
           subtext={nextSub || undefined}
           icon={Clock}
@@ -758,7 +770,7 @@ function IndividualDashboard() {
                         <BookingNoteBadge note={noteFromBooking(b)} />
                       </div>
                       <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
-                        <div className={`text-sm font-semibold ${look.price}`}>{b.price.toLocaleString()} so'm</div>
+                        <div className={`text-sm font-semibold ${look.price}`}>{moneyLabel(lang, Number(b.price) || 0)}</div>
                         <BookingStatusBadge booking={b} now={now.getTime()} />
                       </div>
                     </Card>
@@ -771,7 +783,7 @@ function IndividualDashboard() {
 
           {reviewBookings.length > 0 && (
             <section data-testid="review-feed">
-              <h2 className="text-lg font-bold text-foreground mb-4">⚠️ Yakunlash kutilmoqda</h2>
+              <h2 className="text-lg font-bold text-foreground mb-4">{pick(lang, "⚠️ Yakunlash kutilmoqda", "⚠️ Ждёт завершения")}</h2>
               <div className="space-y-2">
                 {reviewBookings.map((b) => {
                   const botGap = showsBotGap(b);
@@ -793,12 +805,12 @@ function IndividualDashboard() {
                         <BookingNoteBadge note={noteFromBooking(b)} />
                       </div>
                       <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
-                        <div className="text-sm font-semibold text-yellow-500">{b.price.toLocaleString()} so'm</div>
+                        <div className="text-sm font-semibold text-yellow-500">{moneyLabel(lang, Number(b.price) || 0)}</div>
                         <BookingStatusBadge booking={b} now={now.getTime()} />
                       </div>
                     </button>
                     <p className="px-4 pb-2 text-xs text-muted-foreground leading-snug">
-                      ⚠️ Holati belgilanmaguncha daromadga qoʻshilmaydi
+                      {pick(lang, "⚠️ Holati belgilanmaguncha daromadga qoʻshilmaydi", "⚠️ Пока статус не отмечен, в доход не входит")}
                     </p>
                     <div className="flex gap-1.5 px-4 pb-3">
                       <button
@@ -807,14 +819,14 @@ function IndividualDashboard() {
                         disabled={busyKey !== null}
                         onClick={() => void markBookings([b], "completed")}
                         className="flex-1 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold disabled:opacity-40"
-                      >✅ Keldi</button>
+                      >{pick(lang, "✅ Keldi", "✅ Пришёл")}</button>
                       <button
                         type="button"
                         data-testid={`kelmadi-${b.id}`}
                         disabled={busyKey !== null}
                         onClick={() => setNoShowTarget(b)}
                         className="flex-1 h-8 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-semibold disabled:opacity-40"
-                      >❌ Kelmadi</button>
+                      >{pick(lang, "❌ Kelmadi", "❌ Не пришёл")}</button>
                     </div>
                   </Card>
                   );
@@ -842,7 +854,7 @@ function IndividualDashboard() {
                     onClick={() => { void shareBookingLink(); }}
                     className="h-11 rounded-xl border border-white/10 bg-white/5 text-[13px] font-semibold text-foreground"
                   >
-                    🔗 Havolani ulashish
+                    {pick(lang, "🔗 Havolani ulashish", "🔗 Поделиться ссылкой")}
                   </button>
                   <button
                     type="button"
@@ -850,7 +862,7 @@ function IndividualDashboard() {
                     onClick={() => setAddOpen(true)}
                     className="h-11 rounded-xl border border-primary/30 bg-primary/15 text-[13px] font-semibold text-primary"
                   >
-                    ➕ Bron qo'shish
+                    {pick(lang, "➕ Bron qo'shish", "➕ Добавить запись")}
                   </button>
                 </div>
               )}

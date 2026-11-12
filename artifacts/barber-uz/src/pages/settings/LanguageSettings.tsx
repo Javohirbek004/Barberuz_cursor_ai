@@ -5,6 +5,7 @@ import { Link } from "wouter";
 import { ChevronLeft, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "@/i18n/LanguageContext";
+import { pick } from "@/i18n/pick";
 import type { Language } from "@/i18n/translations";
 
 const LANGS: { code: Language; emoji: string; label: string }[] = [
@@ -15,6 +16,8 @@ const LANGS: { code: Language; emoji: string; label: string }[] = [
 export default function LanguageSettings() {
   useAuth();
   const { lang, setLang } = useTranslation();
+  const title = pick(lang, "Til", "Язык");
+  const savedLabel = pick(lang, "Saqlandi", "Сохранено");
   const [saved, setSaved] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -39,7 +42,7 @@ export default function LanguageSettings() {
             <ChevronLeft className="w-5 h-5" />
           </button>
         </Link>
-        <h1 className="text-xl font-display font-bold text-foreground">🌐 Til</h1>
+        <h1 className="text-xl font-display font-bold text-foreground">🌐 {title}</h1>
 
         <AnimatePresence>
           {saved && (
@@ -49,7 +52,7 @@ export default function LanguageSettings() {
               exit={{ opacity: 0, scale: 0.85 }}
               className="ml-auto text-xs font-semibold text-primary flex items-center gap-1"
             >
-              <Check className="w-3.5 h-3.5" /> Saqlandi
+              <Check className="w-3.5 h-3.5" /> {savedLabel}
             </motion.span>
           )}
         </AnimatePresence>

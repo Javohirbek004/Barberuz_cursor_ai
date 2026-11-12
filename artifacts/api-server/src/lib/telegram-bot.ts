@@ -2085,10 +2085,10 @@ async function handleCustomerConfirmCancel(chatId: number, sessionId: string) {
 const BARBER_SELF_CANCEL_TEXT =
   "🚫 Bron bekor qilindi!\nUshbu bron siz (sartarosh) tomonidan muvaffaqiyatli bekor qilindi. O'sha vaqt yana bo'shatildi.";
 
-function barberCancelKeyboard(bookingId: string) {
+function barberCancelKeyboard(bookingId: string, ru = false) {
   return {
     inline_keyboard: [[
-      { text: "❌ Bronni bekor qilish", callback_data: `bcan_${bookingId}` },
+      { text: ru ? "❌ Отменить запись" : "❌ Bronni bekor qilish", callback_data: `bcan_${bookingId}` },
     ]],
   };
 }
@@ -2224,23 +2224,35 @@ export async function sendBarberBookingNotification(
     }
 
     const serviceNames = data.services.map(s => s.name).join(", ");
-    const text =
-      `\u2702\uFE0F <b>YANGI BRON TUSHDI!</b>\n\n` +
-      `\uD83D\uDC64 <b>Mijoz:</b> ${escapeHtml(clientName)}\n` +
-      `\uD83D\uDCDE <b>Tel:</b> ${phoneLinkHtml(clientPhone)}\n` +
-      `\uD83D\uDC88 <b>Xizmat:</b> ${escapeHtml(serviceNames)}\n` +
-      `\uD83D\uDCC5 <b>Sana:</b> ${formatDateLabel(data.date)}\n` +
-      `\u23F0 <b>Vaqt:</b> ${data.time}\n` +
-      `\uD83D\uDCB5 <b>Narxi:</b> ${Number(data.totalPrice || 0).toLocaleString()} SO\u02BBM\n\n` +
-      `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
-      `\uD83C\uDF10 <i>Ushbu bron mijoz tomonidan web-sahifa orqali band qilindi va CRM kalendaringizga qo\u02BBshildi.</i>`;
+    const ru = barber.lang === "ru";
+    const when = ru ? formatDateLabelRu(data.date) : formatDateLabel(data.date);
+    const price = Number(data.totalPrice || 0).toLocaleString(ru ? "ru-RU" : "uz-UZ");
+    const text = ru
+      ? `✂️ <b>НОВАЯ ЗАПИСЬ!</b>\n\n` +
+        `👤 <b>Клиент:</b> ${escapeHtml(clientName)}\n` +
+        `📞 <b>Тел:</b> ${phoneLinkHtml(clientPhone)}\n` +
+        `💇 <b>Услуга:</b> ${escapeHtml(serviceNames)}\n` +
+        `📅 <b>Дата:</b> ${when}\n` +
+        `⏰ <b>Время:</b> ${data.time}\n` +
+        `💵 <b>Цена:</b> ${price} сум\n\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `🌐 <i>Клиент записался через страницу. Запись добавлена в календарь.</i>`
+      : `✂️ <b>YANGI BRON TUSHDI!</b>\n\n` +
+        `👤 <b>Mijoz:</b> ${escapeHtml(clientName)}\n` +
+        `📞 <b>Tel:</b> ${phoneLinkHtml(clientPhone)}\n` +
+        `💇 <b>Xizmat:</b> ${escapeHtml(serviceNames)}\n` +
+        `📅 <b>Sana:</b> ${when}\n` +
+        `⏰ <b>Vaqt:</b> ${data.time}\n` +
+        `💵 <b>Narxi:</b> ${price} so'm\n\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `🌐 <i>Ushbu bron mijoz tomonidan sahifa orqali band qilindi va kalendaringizga qo'shildi.</i>`;
 
     await barberEntryMarkup(barber.telegramId);
     const cancelButton = session?.bookingId
-      ? barberCancelKeyboard(session.bookingId)
+      ? barberCancelKeyboard(session.bookingId, ru)
       : {
           inline_keyboard: [[
-            { text: "❌ Bronni bekor qilish", callback_data: `cancel_booking_${sessionId}` },
+            { text: ru ? "❌ Отменить запись" : "❌ Bronni bekor qilish", callback_data: `cancel_booking_${sessionId}` },
           ]],
         };
     const sent = await callTelegram("sendMessage", {
@@ -2371,6 +2383,18 @@ function parseBookingDateTimeInBot(data: BookingData): Date | null {
   } catch {
     return null;
   }
+}
+
+function formatDateLabelRu(dateStr: string): string {
+  if (dateStr === "today" || dateStr === "bugun") return "Сегодня";
+  if (dateStr === "tomorrow" || dateStr === "ertaga") return "Завтра";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const months = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+    const days = ["вс","пн","вт","ср","чт","пт","сб"];
+    return `${d.getDate()} ${months[d.getMonth()]} (${days[d.getDay()]})`;
+  } catch { return dateStr; }
 }
 
 function formatDateLabel(dateStr: string): string {
