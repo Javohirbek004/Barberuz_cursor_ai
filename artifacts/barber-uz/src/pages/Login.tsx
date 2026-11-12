@@ -146,7 +146,7 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-5">
             {resetSuccess && (
               <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-4 py-3 text-sm text-emerald-200 leading-relaxed">
-                🟢 Parol oʻzgardi. Telefon raqamingiz va yangi parolingizni kiritib profilingizga kiring.
+                {t("login.reset_success")}
               </div>
             )}
             <div className="space-y-2">
