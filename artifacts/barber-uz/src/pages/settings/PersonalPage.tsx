@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useCallback, type ReactNode } from "react"
 import { APP_ORIGIN } from "@/lib/config";
 import { useBotUsername } from "@/lib/bot-link";
 import { useTranslation } from "@/i18n/LanguageContext";
-import { pick, weekdayNames } from "@/i18n/pick";
+import { moneyLabel, pick, weekdayNames } from "@/i18n/pick";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PageLinkPanel } from "@/components/PageLinkPanel";
 import { PageTabs } from "@/components/PageTabs";
@@ -1862,8 +1862,9 @@ function BookingModal({ selectedServices, totalDuration, isTeam, barberId, profi
 // ──────────────────────────────────────────────────────────────────────────────
 
 export function CustomerView({ profile, services, isTeam, barberId, previewMode }: {
-  profile: ProfileData; services: ServiceItem[]; isTeam: boolean; barberId: string; previewMode?: boolean;
+  profile: ProfileData; services: ServiceItem[]; isTeam: boolean; barberId: string;   previewMode?: boolean;
 }) {
+  const { lang } = useTranslation();
   const [previewTab, setPreviewTab] = useState<"asosiy" | "xizmatlar">("asosiy");
   const [activeCat, setActiveCat] = useState("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -1874,7 +1875,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
   const liveServices = services.filter(s => s.isActive !== false);
   const visibleCatIds = new Set(liveServices.map(s => s.categoryId).filter(Boolean));
   const { data: cvCategories = [] } = useListCategories();
-  const catChips = [{ id: "all", label: "Hammasi" }, ...cvCategories.filter((c: ServiceCategory) => visibleCatIds.has(c.id)).map((c: ServiceCategory) => ({ id: c.id, label: c.name }))];
+  const catChips = [{ id: "all", label: pick(lang, "Hammasi", "Все") }, ...cvCategories.filter((c: ServiceCategory) => visibleCatIds.has(c.id)).map((c: ServiceCategory) => ({ id: c.id, label: categoryLabel(lang, c.name) }))];
   const filtered = activeCat === "all" ? liveServices : liveServices.filter(s => s.categoryId === activeCat);
   const selectedServices = services.filter(s => selectedIds.includes(s.id));
 
@@ -1897,8 +1898,12 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
   const gradIdx = profile.name.charCodeAt(0) % COVER_GRAD.length;
   const coverImage = profile.galleryImages[0] || "";
 
+  const dayNames = weekdayNames(lang);
   const workDaysLabel = profile.workDays.length > 0
-    ? profile.workDays.map(k => DAYS.find(d => d.key === k)?.label || k).join(", ")
+    ? profile.workDays.map(k => {
+        const i = DAYS.findIndex(d => d.key === k);
+        return i >= 0 ? dayNames[i] : k;
+      }).join(", ")
     : null;
 
   return (
@@ -1937,7 +1942,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
             {profile.galleryImages.map((src, i) => (
               <div key={i} className="relative shrink-0 w-40 h-28 rounded-2xl overflow-hidden border border-white/8">
                 <img src={src} className="w-full h-full object-cover" alt="" />
-                {i === 0 && <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-primary/80 text-black text-[9px] font-bold rounded-full">Muqova</div>}
+                {i === 0 && <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-primary/80 text-black text-[9px] font-bold rounded-full">{pick(lang, "Muqova", "Обложка")}</div>}
               </div>
             ))}
           </div>
@@ -1949,8 +1954,8 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
           value={previewTab}
           onChange={setPreviewTab}
           items={[
-            { key: "asosiy", label: "🏠 Asosiy" },
-            { key: "xizmatlar", label: "📋 Xizmatlar" },
+            { key: "asosiy", label: pick(lang, "🏠 Asosiy", "🏠 Основное") },
+            { key: "xizmatlar", label: pick(lang, "📋 Xizmatlar", "📋 Услуги") },
           ]}
         />
       </div>
@@ -1961,33 +1966,33 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
           <motion.div key="asosiy" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.18 }}>
             <div className="px-4 pt-4 space-y-5">
               {/* Speciality chips */}
-              <SpecialtyTags value={profile.speciality} />
+              <SpecialtyTags value={profile.speciality} heading={pick(lang, "Mutaxassislik", "Специализация")} />
 
               {/* 🕐 Ish vaqti */}
               {(workDaysLabel || profile.workStart) && (
                 <div>
                   <div className="flex items-center gap-2 mb-2.5">
                     <span className="text-sm">🕐</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Ish vaqti</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">{pick(lang, "Ish vaqti", "Время работы")}</span>
                     <div className="flex-1 h-px bg-white/6" />
                   </div>
                   <div className="flex items-center justify-between bg-white/4 border border-white/8 rounded-2xl px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <Clock className="w-4 h-4 text-primary/70 shrink-0" />
                       <div>
-                        <p className="text-[10px] text-muted-foreground/50 mb-0.5">Kun</p>
+                        <p className="text-[10px] text-muted-foreground/50 mb-0.5">{pick(lang, "Kun", "День")}</p>
                         <p className="text-xs text-foreground font-medium">{workDaysLabel || "—"}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] text-muted-foreground/50 mb-0.5">Soat</p>
+                      <p className="text-[10px] text-muted-foreground/50 mb-0.5">{pick(lang, "Soat", "Часы")}</p>
                       <p className="text-xs text-foreground font-medium">{profile.workStart}–{profile.workEnd}</p>
                     </div>
                   </div>
                   {profile.lunchEnabled && profile.lunchStart && profile.lunchEnd && (
                     <div className="flex items-center gap-2 mt-2 px-4 py-2.5 bg-white/3 border border-white/6 rounded-2xl">
                       <span className="text-sm">🍽</span>
-                      <span className="text-xs text-muted-foreground">Tushlik tanaffus: {profile.lunchStart}–{profile.lunchEnd}</span>
+                      <span className="text-xs text-muted-foreground">{pick(lang, "Tushlik tanaffus", "Обеденный перерыв")}: {profile.lunchStart}–{profile.lunchEnd}</span>
                     </div>
                   )}
                 </div>
@@ -1998,7 +2003,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
                 <div>
                   <div className="flex items-center gap-2 mb-2.5">
                     <span className="text-sm">📞</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Aloqa</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">{pick(lang, "Aloqa", "Контакты")}</span>
                     <div className="flex-1 h-px bg-white/6" />
                   </div>
                   <a
@@ -2006,7 +2011,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
                     className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-500/8 border border-emerald-500/20 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/15 transition-colors"
                   >
                     <Phone className="w-4 h-4 shrink-0" />
-                    <span>Qo'ng'iroq qilish</span>
+                    <span>{pick(lang, "Qo'ng'iroq qilish", "Позвонить")}</span>
                     <span className="ml-auto text-xs text-emerald-400/70">{profile.phone}</span>
                   </a>
                 </div>
@@ -2017,7 +2022,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
                 <div>
                   <div className="flex items-center gap-2 mb-2.5">
                     <span className="text-sm">📍</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Manzil</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">{pick(lang, "Manzil", "Адрес")}</span>
                     <div className="flex-1 h-px bg-white/6" />
                   </div>
                   <div className="space-y-2">
@@ -2043,7 +2048,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
                       rel="noopener noreferrer"
                       className="flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl bg-card border border-white/8 text-xs font-semibold text-primary hover:border-primary/30 transition-colors"
                     >
-                      <MapPin className="w-3.5 h-3.5" /> Xaritada ochish
+                      <MapPin className="w-3.5 h-3.5" /> {pick(lang, "Xaritada ochish", "Открыть на карте")}
                     </a>
                   </div>
                 </div>
@@ -2051,7 +2056,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
                 <div>
                   <div className="flex items-center gap-2 mb-2.5">
                     <span className="text-sm">📍</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Manzil</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">{pick(lang, "Manzil", "Адрес")}</span>
                     <div className="flex-1 h-px bg-white/6" />
                   </div>
                   {(() => {
@@ -2069,7 +2074,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
                         <div className="px-4 py-3 flex items-center gap-2">
                           <MapPin className="w-4 h-4 text-primary shrink-0" />
                           <span className="text-sm text-foreground flex-1">{profile.address}</span>
-                          {href && <span className="text-xs text-primary font-semibold">Ko'rish →</span>}
+                          {href && <span className="text-xs text-primary font-semibold">{pick(lang, "Ko'rish →", "Смотреть →")}</span>}
                         </div>
                       </Tag>
                     );
@@ -2082,7 +2087,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
                 <div className="pb-2">
                   <div className="flex items-center gap-2 mb-2.5">
                     <span className="text-sm">🔗</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Ijtimoiy tarmoqlar</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">{pick(lang, "Ijtimoiy tarmoqlar", "Соцсети")}</span>
                     <div className="flex-1 h-px bg-white/6" />
                   </div>
                   <div className="space-y-2">
@@ -2125,7 +2130,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 border ${isSelected ? "bg-primary/10 border-primary/20" : "bg-white/5 border-white/8"}`}>{serviceIcon({ ...s, category: cvCategories.find((c: ServiceCategory) => c.id === s.categoryId)?.name || s.category })}</div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-sm text-foreground">{s.name}</p>
-                          <p className="text-xs text-muted-foreground">{formatDur(s.duration)} · <span className="text-foreground/80 font-medium">{formatPriceShort(s.price)} so'm</span></p>
+                          <p className="text-xs text-muted-foreground">{serviceTime(s.duration, lang)} · <span className="text-foreground/80 font-medium">{formatPriceShort(s.price)} {pick(lang, "so'm", "сум")}</span></p>
                         </div>
                         <motion.button whileTap={{ scale: 0.9 }} onClick={e => { e.stopPropagation(); toggleService(s.id); }}
                           className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all shrink-0 ${isSelected ? "bg-primary text-black border-primary shadow-md shadow-primary/30" : "bg-white/5 border-white/12 text-muted-foreground hover:border-primary/40 hover:text-primary"}`}>
@@ -2148,13 +2153,13 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
             {selectedIds.length > 0 ? (
               <motion.div key="active" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className="flex items-center gap-3">
                 <div className="flex-1">
-                  <p className="text-xs text-muted-foreground">{selectedIds.length} xizmat · {formatDur(totalDur)}</p>
-                  <p className="text-base font-bold text-foreground">{formatPrice(totalPrice)}</p>
+                  <p className="text-xs text-muted-foreground">{selectedIds.length} {pick(lang, "xizmat", "услуг")} · {serviceTime(totalDur, lang)}</p>
+                  <p className="text-base font-bold text-foreground">{moneyLabel(lang, totalPrice)}</p>
                 </div>
                 <button
                   onClick={() => previewMode ? setPreviewWarn(true) : setBookingOpen(true)}
                   className="h-12 px-6 rounded-2xl bg-primary text-black font-bold text-sm shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all shrink-0">
-                  Bron qilish →
+                  {pick(lang, "Bron qilish →", "Записаться →")}
                 </button>
               </motion.div>
             ) : (
@@ -2162,7 +2167,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
                 <button
                   onClick={() => previewMode ? setPreviewWarn(true) : setPreviewTab("xizmatlar")}
                   className="w-full h-12 rounded-2xl border border-amber-500/30 bg-zinc-800 text-white font-medium text-sm">
-                  📅 Xizmat tanlash
+                  {pick(lang, "📅 Xizmat tanlash", "📅 Выбрать услугу")}
                 </button>
               </motion.div>
             )}
@@ -2183,13 +2188,17 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
               <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-5" />
               <div className="flex flex-col items-center text-center gap-3">
                 <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center text-3xl">⚠️</div>
-                <h3 className="text-base font-bold text-foreground">Bu ko'rish rejimi</h3>
+                <h3 className="text-base font-bold text-foreground">{pick(lang, "Bu ko'rish rejimi", "Это режим просмотра")}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  "Xizmatni tanlash" tugmasi faqat <span className="text-foreground font-semibold">mijozlaringiz uchun maxsus havola (link)</span> orqali kirganda ishlaydi.
+                  {pick(
+                    lang,
+                    "«Xizmat tanlash» tugmasi faqat mijozlaringiz uchun maxsus havola orqali kirganda ishlaydi.",
+                    "Кнопка «Выбрать услугу» работает только когда клиент открывает вашу ссылку.",
+                  )}
                 </p>
                 <button onClick={() => setPreviewWarn(false)}
                   className="mt-2 w-full py-3 rounded-2xl bg-white/8 border border-white/12 text-sm font-semibold text-foreground hover:bg-white/12 transition-colors">
-                  Tushunarli
+                  {pick(lang, "Tushunarli", "Понятно")}
                 </button>
               </div>
             </motion.div>
@@ -2210,15 +2219,15 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
                   <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/8 flex items-center justify-center text-3xl shrink-0">{serviceIcon({ ...detailSvc, category: cvCategories.find((c: ServiceCategory) => c.id === detailSvc.categoryId)?.name || detailSvc.category })}</div>
                   <div className="flex-1">
                     <h3 className="font-bold text-xl text-foreground mb-0.5">{detailSvc.name}</h3>
-                    <p className="text-sm text-muted-foreground">{formatDur(detailSvc.duration)} · {formatPrice(detailSvc.price)}</p>
+                    <p className="text-sm text-muted-foreground">{serviceTime(detailSvc.duration, lang)} · {moneyLabel(lang, detailSvc.price)}</p>
                   </div>
                   <button onClick={() => setDetailSvc(null)} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0"><X className="w-4 h-4" /></button>
                 </div>
                 {detailSvc.description && <p className="text-sm text-muted-foreground mb-4 leading-relaxed">{detailSvc.description}</p>}
-                <p className="text-xs text-muted-foreground/50 text-center mb-4">ℹ️ Iltimos, belgilangan vaqtdan 5 daqiqa oldin keling</p>
+                <p className="text-xs text-muted-foreground/50 text-center mb-4">{pick(lang, "ℹ️ Iltimos, belgilangan vaqtdan 5 daqiqa oldin keling", "ℹ️ Приходите за 5 минут до назначенного времени")}</p>
                 <motion.button whileTap={{ scale: 0.98 }} onClick={() => { toggleService(detailSvc.id); setDetailSvc(null); }}
                   className={`w-full py-3.5 rounded-2xl font-bold text-base transition-all ${selectedIds.includes(detailSvc.id) ? "bg-white/6 border border-white/10 text-muted-foreground" : "bg-primary text-black shadow-xl shadow-primary/25 hover:bg-primary/90"}`}>
-                  {selectedIds.includes(detailSvc.id) ? "✓ Tanlangan (bekor qilish)" : "Tanlash →"}
+                  {selectedIds.includes(detailSvc.id) ? pick(lang, "✓ Tanlangan (bekor qilish)", "✓ Выбрано (отменить)") : pick(lang, "Tanlash →", "Выбрать →")}
                 </motion.button>
               </div>
             </motion.div>
