@@ -6,6 +6,7 @@ import {
   useListCategories,
   type ServiceCategory,
 } from "@/hooks/useCategories";
+import { categoryLabel } from "@/lib/category-icon";
 
 export interface ServiceFormData {
   id?: string;
@@ -122,7 +123,7 @@ export function ServiceForm({
                     : "bg-white/5 text-muted-foreground border-white/10 hover:border-primary/40 hover:text-foreground"
                 }`}
               >
-                {c.name}
+                {categoryLabel(lang, c.name)}
               </button>
             );
           })}
@@ -150,7 +151,7 @@ export function ServiceForm({
             value={price}
             onChange={(e) => setPrice(formatPriceDigits(e.target.value))}
             onFocus={focusField}
-            placeholder="Masalan: 80 000"
+            placeholder={pick(lang, "Masalan: 80 000", "Например: 80 000")}
             className="w-full h-12 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm tabular-nums focus:outline-none focus:border-primary/50"
           />
         </div>

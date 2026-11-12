@@ -19,7 +19,7 @@ import {
   MAX_SPECIALTY_TAGS,
   SPECIALTY_QUICK_EMOJIS,
 } from "@/lib/specializations";
-import { getCategoryIcon } from "@/lib/category-icon";
+import { categoryLabel, getCategoryIcon } from "@/lib/category-icon";
 import { BufferTimeField } from "@/components/BufferTimeField";
 import { mergeScheduleFromDayChips, normalizeBuffer, readOpenDaysShort } from "@/lib/schedule";
 import { ServiceForm } from "@/components/ServiceForm";
@@ -157,6 +157,12 @@ function toMins(t: string) {
 }
 function fmtTime(n: number) {
   return `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
+}
+function serviceTime(n: number, lang: string) {
+  if (lang !== "ru") return formatDur(n);
+  if (n < 60) return `${n} мин`;
+  const h = Math.floor(n / 60), m = n % 60;
+  return m > 0 ? `${h} ч ${m} мин` : `${h} ч`;
 }
 function formatDur(n: number) {
   if (n < 60) return `${n} min`;
@@ -1370,13 +1376,13 @@ function XizmatlarTab({
       else { await apiPost("/api/services", body); }
       setAddingOrEditing(null);
       onReload();
-    } catch { setError("Xatolik yuz berdi. Qayta urinib ko'ring."); }
+    } catch { setError(pick(lang, "Xatolik yuz berdi. Qayta urinib ko'ring.", "Не получилось. Попробуйте ещё раз.")); }
     finally { setSaving(false); }
   }
 
   async function handleDelete(id: string) {
     try { await apiDelete(`/api/services/${id}`); onReload(); }
-    catch { setError("O'chirishda xatolik yuz berdi."); }
+    catch { setError(pick(lang, "O'chirishda xatolik yuz berdi.", "Не удалось удалить.")); }
   }
 
   async function handleRename() {
@@ -1421,13 +1427,13 @@ function XizmatlarTab({
           >
             <button onClick={() => setActiveCat(null)}
               className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${activeCat === null ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground"}`}>
-              Hammasi
+              {pick(lang, "Hammasi", "Все")}
             </button>
             {categories.map((c: ServiceCategory) => (
               <div key={c.id} className="shrink-0 flex items-center gap-0.5">
                 <button onClick={() => setActiveCat(c.id === activeCat ? null : c.id)}
                   className={`px-3 py-1.5 rounded-l-full text-xs font-semibold border border-r-0 transition-all ${activeCat === c.id ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground"}`}>
-                  {c.name}
+                  {categoryLabel(lang, c.name)}
                 </button>
                 <div className={`flex items-center border transition-all rounded-r-full overflow-hidden ${activeCat === c.id ? "border-primary/30 bg-primary/15" : "border-white/8 bg-white/4"}`}>
                   <button onClick={() => { setRenameCat(c); setRenameVal(c.name); }}
@@ -1451,7 +1457,7 @@ function XizmatlarTab({
                   value={newCatName}
                   onChange={e => setNewCatName(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && handleCreateCat()}
-                  placeholder="Kategoriya nomi"
+                  placeholder={pick(lang, "Kategoriya nomi", "Название категории")}
                   className="h-8 px-2 w-28 rounded-full text-xs bg-white/5 border border-white/15 focus:outline-none focus:border-primary/50"
                 />
                 <button data-testid="new-category-save" onClick={handleCreateCat} disabled={catCreating || !newCatName.trim()}
@@ -1468,7 +1474,7 @@ function XizmatlarTab({
             ) : (
               <button data-testid="add-category" onClick={() => setShowNewCat(true)}
                 className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border border-dashed border-white/15 text-muted-foreground hover:text-foreground hover:border-white/30 transition-all flex items-center gap-1">
-                <Plus className="w-3 h-3" /> Yangi
+                <Plus className="w-3 h-3" /> {pick(lang, "Yangi", "Новая")}
               </button>
             )}
           </div>
@@ -1491,9 +1497,9 @@ function XizmatlarTab({
                   <p className="font-semibold text-sm text-foreground truncate">{s.name}</p>
                   <p className="text-xs text-muted-foreground">
                     {s.categoryId && categories.find((c: ServiceCategory) => c.id === s.categoryId)?.name
-                      ? <span className="text-primary/70 mr-1">{categories.find((c: ServiceCategory) => c.id === s.categoryId)?.name} ·</span>
+                      ? <span className="text-primary/70 mr-1">{categoryLabel(lang, categories.find((c: ServiceCategory) => c.id === s.categoryId)?.name || "")} ·</span>
                       : null}
-                    {formatDur(s.duration)} · <span className="text-foreground/70">{formatPriceShort(s.price)} so'm</span>
+                    {serviceTime(s.duration, lang)} · <span className="text-foreground/70">{formatPriceShort(s.price)} {pick(lang, "so'm", "сум")}</span>
                   </p>
                 </div>
                 <div className="flex gap-1.5 shrink-0">
@@ -1530,10 +1536,10 @@ function XizmatlarTab({
               <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)} onKeyDown={e => e.key === "Enter" && handleRename()}
                 className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50 mb-4" />
               <div className="flex gap-3">
-                <button onClick={() => setRenameCat(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/8 text-sm font-semibold text-muted-foreground">Bekor</button>
+                <button onClick={() => setRenameCat(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/8 text-sm font-semibold text-muted-foreground">{pick(lang, "Bekor", "Отмена")}</button>
                 <button onClick={handleRename} disabled={!renameVal.trim() || renameLoading}
                   className="flex-1 h-11 rounded-2xl bg-primary text-black text-sm font-bold disabled:opacity-40 flex items-center justify-center">
-                  {renameLoading ? <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> : "Saqlash"}
+                  {renameLoading ? <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> : pick(lang, "Saqlash", "Сохранить")}
                 </button>
               </div>
             </motion.div>
@@ -1566,14 +1572,14 @@ function XizmatlarTab({
               <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-5" />
               <div className="flex flex-col items-center text-center gap-3 mb-6">
                 <div className="w-14 h-14 rounded-2xl bg-destructive/15 border border-destructive/25 flex items-center justify-center text-3xl">🗑️</div>
-                <h3 className="text-base font-bold text-foreground">"{deleteCat.name}" o'chirilsinmi?</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">Bu kategoriya o'chiriladi. Unga bog'liq xizmatlar kategoriyasiz qoladi (o'chirilmaydi).</p>
+                <h3 className="text-base font-bold text-foreground">{pick(lang, `"${deleteCat.name}" o'chirilsinmi?`, `Удалить «${categoryLabel(lang, deleteCat.name)}»?`)}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{pick(lang, "Bu kategoriya o'chiriladi. Unga bog'liq xizmatlar kategoriyasiz qoladi (o'chirilmaydi).", "Категория будет удалена. Услуги в ней останутся, но без категории.")}</p>
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setDeleteCat(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/8 text-sm font-semibold text-muted-foreground">Bekor</button>
+                <button onClick={() => setDeleteCat(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/8 text-sm font-semibold text-muted-foreground">{pick(lang, "Bekor", "Отмена")}</button>
                 <button onClick={handleDeleteCat} disabled={deleteLoading}
                   className="flex-1 h-11 rounded-2xl bg-destructive text-white text-sm font-bold disabled:opacity-40 flex items-center justify-center">
-                  {deleteLoading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "O'chirish"}
+                  {deleteLoading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : pick(lang, "O'chirish", "Удалить")}
                 </button>
               </div>
             </motion.div>
@@ -2304,7 +2310,7 @@ export default function PersonalPage() {
   const TABS: { id: Tab; label: string }[] = [
     { id: "asosiy", label: pick(lang, "🏠 Asosiy", "🏠 Основное") },
     { id: "xizmatlar", label: pick(lang, "📋 Xizmatlar", "📋 Услуги") },
-    { id: "qr", label: "🔗 QR & Link" },
+    { id: "qr", label: pick(lang, "🔗 QR & Link", "🔗 QR и ссылка") },
   ];
 
   return (
