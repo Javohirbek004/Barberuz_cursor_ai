@@ -1237,7 +1237,7 @@ function BookingFormContent({
         <input
           value={form.name}
           onChange={(e) => onChange({ name: e.target.value })}
-          placeholder="Aziz"
+          placeholder={pick(lang, "Aziz", "Азиз")}
           className={`${INPUT_BASE} ${
             fieldErrors.name
               ? INPUT_ERR

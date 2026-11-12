@@ -15,22 +15,23 @@ import { useToast } from "@/hooks/use-toast";
 import { bookingStartMs } from "@/lib/booking-feed";
 import { BookingStatusBadge, BotLinkPrompt, bookingLook, showsBotGap } from "@/components/BookingStatusBadge";
 import { noteFromBooking, parseBookingNotes } from "@/lib/booking-note";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { moneyLabel, pick } from "@/i18n/pick";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 
 const UZ_SHORT_MONTHS = [
   "Yan","Fev","Mar","Apr","May","Iyn","Iyl","Avg","Sen","Okt","Noy","Dek",
 ];
+const RU_SHORT_MONTHS = [
+  "янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек",
+];
 
-function formatBookingDate(dateStr: string): string {
+function formatBookingDate(dateStr: string, lang: string): string {
   const today = new Date().toISOString().split("T")[0];
-  if (dateStr === today) return "Bugun";
+  if (dateStr === today) return pick(lang, "Bugun", "Сегодня");
   const d = new Date(dateStr);
-  return `${d.getDate()}-${UZ_SHORT_MONTHS[d.getMonth()]}`;
-}
-
-function formatSom(value: number | string): string {
-  const n = Number(value);
-  return `${(Number.isFinite(n) ? n : 0).toLocaleString("uz-UZ")} so'm`;
+  const months = lang === "ru" ? RU_SHORT_MONTHS : UZ_SHORT_MONTHS;
+  return `${d.getDate()} ${months[d.getMonth()]}`;
 }
 
 /** Display and dial as +998XXXXXXXXX. */
@@ -60,17 +61,18 @@ function SheetRow({
   );
 }
 
-function PhoneRow({ phone }: { phone: string }) {
+function PhoneRow({ phone, label }: { phone: string; label: string }) {
+  const { lang } = useTranslation();
   const dial = formatDialPhone(phone);
   if (!dial) {
-    return <SheetRow label="Telefon"><span className="text-muted-foreground/40">—</span></SheetRow>;
+    return <SheetRow label={label}><span className="text-muted-foreground/40">—</span></SheetRow>;
   }
   return (
-    <SheetRow label="Telefon">
+    <SheetRow label={label}>
       <a
         href={dial.href}
         data-testid="call-client"
-        aria-label={`Qo'ng'iroq qilish: ${dial.display}`}
+        aria-label={`${pick(lang, "Qo'ng'iroq qilish", "Позвонить")}: ${dial.display}`}
         className="inline-flex items-center justify-end gap-1.5 text-emerald-400 font-medium tabular-nums hover:underline underline-offset-4 decoration-emerald-400/50 active:opacity-80"
       >
         <Phone className="w-3.5 h-3.5 shrink-0" />
@@ -100,9 +102,11 @@ interface NoteSectionProps {
 
 function NoteSection({
   label, value, isEditing, isSaving, isSaved, textareaRef,
-  placeholder, emptyLabel = "Eslatma qo'shilmagan",
+  placeholder, emptyLabel,
   onEditEnter, onChange, onSave, onRevert,
 }: NoteSectionProps) {
+  const { lang } = useTranslation();
+  const blank = emptyLabel ?? pick(lang, "Eslatma qo'shilmagan", "Заметка не добавлена");
   return (
     <div className="py-4 border-b border-white/8">
       {/* Header row */}
@@ -118,7 +122,7 @@ function NoteSection({
               exit={{ opacity: 0, scale: 0.85 }}
               className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1"
             >
-              <CheckCircle className="w-3.5 h-3.5" /> Saqlandi
+              <CheckCircle className="w-3.5 h-3.5" /> {pick(lang, "Saqlandi", "Сохранено")}
             </motion.span>
           ) : isEditing ? (
             <motion.div
@@ -133,7 +137,7 @@ function NoteSection({
                 onClick={onRevert}
                 disabled={isSaving}
                 className="w-8 h-8 rounded-xl bg-white/8 border border-white/12 flex items-center justify-center hover:bg-white/14 active:scale-95 transition-all disabled:opacity-40"
-                aria-label="Bekor qilish"
+                aria-label={pick(lang, "Bekor qilish", "Отмена")}
               >
                 <X className="w-4 h-4 text-muted-foreground" />
               </button>
@@ -141,7 +145,7 @@ function NoteSection({
                 onClick={onSave}
                 disabled={isSaving}
                 className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center hover:bg-emerald-500/25 active:scale-95 transition-all disabled:opacity-40"
-                aria-label="Saqlash"
+                aria-label={pick(lang, "Saqlash", "Сохранить")}
               >
                 {isSaving
                   ? <span className="w-3 h-3 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
@@ -160,7 +164,7 @@ function NoteSection({
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/6 border border-white/10 hover:bg-white/10 active:scale-95 transition-all"
             >
               <Pencil className="w-3 h-3 text-muted-foreground" />
-              <span className="text-[11px] text-muted-foreground font-medium">Tahrirlash</span>
+              <span className="text-[11px] text-muted-foreground font-medium">{pick(lang, "Tahrirlash", "Изменить")}</span>
             </motion.button>
           )}
         </AnimatePresence>
@@ -195,7 +199,7 @@ function NoteSection({
             {value ? (
               <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{value}</p>
             ) : (
-              <p className="text-sm text-muted-foreground/40 italic">{emptyLabel}</p>
+              <p className="text-sm text-muted-foreground/40 italic">{blank}</p>
             )}
           </motion.div>
         )}
@@ -216,6 +220,7 @@ export function BookingDetailModal({
   onRefetchStats?: () => void;
 }) {
   const { toast } = useToast();
+  const { lang } = useTranslation();
 
   // ── Client note (registered-client bookings) ──────────────────
   const [clientNote, setClientNote] = useState("");
@@ -363,12 +368,12 @@ export function BookingDetailModal({
     onRefetchStats?.();
     if (status === "completed") {
       toast({
-        title: "✓ Muvaffaqiyatli yakunlandi",
-        description: `${booking.clientName} — ${bookingPrice.toLocaleString()} so'm daromadga qo'shildi`,
+        title: pick(lang, "✓ Muvaffaqiyatli yakunlandi", "✓ Успешно завершено"),
+        description: pick(lang, `${booking.clientName} — ${bookingPrice.toLocaleString("uz-UZ")} so'm daromadga qo'shildi`, `${booking.clientName} — ${moneyLabel(lang, bookingPrice)} добавлено в доход`),
         duration: 3000,
       });
     } else {
-      toast({ title: "Kelmadi", description: "Bu bron daromadga qo'shilmadi" });
+      toast({ title: pick(lang, "Kelmadi", "Не пришёл"), description: pick(lang, "Bu bron daromadga qo'shilmadi", "Эта бронь не добавлена в доход") });
     }
   };
 
@@ -409,7 +414,7 @@ export function BookingDetailModal({
   const look = bookingLook(booking);
   const isActive = bookingStatus !== "cancelled" && bookingStatus !== "auto_cancelled" && bookingStatus !== "completed" && bookingStatus !== "no_show";
   const needsReview = isActive && bookingStartMs(booking.date, booking.startTime) < Date.now();
-  const dateLabel = formatBookingDate(booking.date);
+  const dateLabel = formatBookingDate(booking.date, lang);
   const phone = clientData?.phone ?? parsedPhone;
   const bookingLink = booking as { botLinked?: boolean };
   const botGap = showsBotGap({
@@ -441,7 +446,7 @@ export function BookingDetailModal({
           {/* ── Section 1: Customer header ── */}
           <div className="flex items-center justify-between pt-3 pb-5 border-b border-white/8">
             <div className="flex-1 min-w-0 pr-3">
-              <p className="text-[11px] text-muted-foreground mb-0.5 uppercase tracking-widest font-medium">Mijoz</p>
+              <p className="text-[11px] text-muted-foreground mb-0.5 uppercase tracking-widest font-medium">{pick(lang, "Mijoz", "Клиент")}</p>
               <h2 className="text-xl font-bold text-foreground leading-tight truncate">
                 {booking.clientName}
               </h2>
@@ -456,19 +461,19 @@ export function BookingDetailModal({
 
           {/* ── Section 2: Info grid ── */}
           <div className="py-1 border-b border-white/8">
-            <SheetRow label="Xizmat">{booking.serviceName ?? "—"}</SheetRow>
-            <SheetRow label="Vaqt">
+            <SheetRow label={pick(lang, "Xizmat", "Услуга")}>{booking.serviceName ?? "—"}</SheetRow>
+            <SheetRow label={pick(lang, "Vaqt", "Время")}>
               {`${dateLabel} • ${booking.startTime.slice(0, 5)} – ${booking.endTime.slice(0, 5)}`}
             </SheetRow>
             {phone
-              ? <PhoneRow phone={phone} />
-              : <SheetRow label="Telefon"><span className="text-muted-foreground/40">—</span></SheetRow>}
-            <SheetRow label="Narxi">
+              ? <PhoneRow phone={phone} label={pick(lang, "Telefon", "Телефон")} />
+              : <SheetRow label={pick(lang, "Telefon", "Телефон")}><span className="text-muted-foreground/40">—</span></SheetRow>}
+            <SheetRow label={pick(lang, "Narxi", "Цена")}>
               <span className={`font-semibold tabular-nums ${look.key === "no_show" || look.key === "cancelled" ? "text-red-400/70 line-through" : "text-foreground/95"}`}>
-                {formatSom(bookingPrice)}
+                {moneyLabel(lang, bookingPrice)}
               </span>
             </SheetRow>
-            <SheetRow label="Holat">
+            <SheetRow label={pick(lang, "Holat", "Статус")}>
               <BookingStatusBadge booking={booking} />
             </SheetRow>
           </div>
@@ -478,13 +483,13 @@ export function BookingDetailModal({
           {/* ── Section 3: Note (view/edit toggle) ── */}
           {booking.clientId ? (
             <NoteSection
-              label="Mijoz haqida eslatma"
+              label={pick(lang, "Mijoz haqida eslatma", "Заметка о клиенте")}
               value={clientNote}
               isEditing={clientNoteEditing}
               isSaving={updateClientMut.isPending}
               isSaved={clientNoteSaved}
               textareaRef={clientTextareaRef}
-              placeholder="Soch uzunligi, rang xohishi, maxsus talablar..."
+              placeholder={pick(lang, "Soch uzunligi, rang xohishi, maxsus talablar...", "Длина волос, пожелания по цвету, особые просьбы...")}
               onEditEnter={enterClientEdit}
               onChange={setClientNote}
               onSave={handleClientNoteSave}
@@ -492,13 +497,13 @@ export function BookingDetailModal({
             />
           ) : (
             <NoteSection
-              label="Bron eslatmasi"
+              label={pick(lang, "Bron eslatmasi", "Заметка к брони")}
               value={bookingNote}
               isEditing={bookingNoteEditing}
               isSaving={updateBookingMut.isPending}
               isSaved={bookingNoteSaved}
               textareaRef={bookingTextareaRef}
-              placeholder="Maxsus talablar, eslatmalar..."
+              placeholder={pick(lang, "Maxsus talablar, eslatmalar...", "Особые просьбы, заметки...")}
               onEditEnter={enterBookingEdit}
               onChange={setBookingNote}
               onSave={handleBookingNoteSave}
@@ -517,7 +522,7 @@ export function BookingDetailModal({
                 className="flex items-center justify-center gap-1.5 h-10 rounded-xl border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-500/10 active:scale-[0.98] transition-all disabled:opacity-40"
               >
                 <XCircle className="w-3.5 h-3.5" />
-                ❌ Kelmadi
+                {pick(lang, "❌ Kelmadi", "❌ Не пришёл")}
               </button>
               <button
                 type="button"
@@ -527,7 +532,7 @@ export function BookingDetailModal({
                 className="flex items-center justify-center gap-1.5 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/25 active:scale-[0.98] transition-all disabled:opacity-40"
               >
                 <CheckCircle className="w-3.5 h-3.5" />
-                {isBusy ? "..." : "✅ Keldi"}
+                {isBusy ? "..." : pick(lang, "✅ Keldi", "✅ Пришёл")}
               </button>
             </div>
           )}
@@ -540,7 +545,7 @@ export function BookingDetailModal({
                 className="flex items-center justify-center gap-2 py-3.5 rounded-2xl border border-red-500/30 text-red-400 text-sm font-semibold hover:bg-red-500/10 active:scale-[0.98] transition-all disabled:opacity-40"
               >
                 <XCircle className="w-4 h-4" />
-                Bekor qilish
+                {pick(lang, "Bekor qilish", "Отменить")}
               </button>
               <button
                 onClick={handleComplete}
@@ -548,7 +553,7 @@ export function BookingDetailModal({
                 className="flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/25 active:scale-[0.98] transition-all disabled:opacity-40"
               >
                 <CheckCircle className="w-4 h-4" />
-                {isBusy ? "..." : "Yakunlandi"}
+                {isBusy ? "..." : pick(lang, "Yakunlandi", "Завершено")}
               </button>
             </div>
           )}
@@ -562,10 +567,10 @@ export function BookingDetailModal({
               <div className="bg-red-500/8 border border-red-500/20 rounded-2xl p-4 mb-3">
                 <div className="flex items-center gap-2 mb-2">
                   <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                  <p className="text-sm font-semibold text-red-400">Bronni bekor qilasizmi?</p>
+                  <p className="text-sm font-semibold text-red-400">{pick(lang, "Bronni bekor qilasizmi?", "Отменить бронь?")}</p>
                 </div>
                 <p className="text-xs text-muted-foreground pl-6">
-                  {booking.clientName} uchun {booking.startTime.slice(0, 5)} da belgilangan bron o'chiriladi.
+                  {pick(lang, `${booking.clientName} uchun ${booking.startTime.slice(0, 5)} da belgilangan bron o'chiriladi.`, `Бронь для ${booking.clientName} на ${booking.startTime.slice(0, 5)} будет отменена.`)}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -573,14 +578,14 @@ export function BookingDetailModal({
                   onClick={() => setConfirmCancel(false)}
                   className="py-3.5 rounded-2xl bg-white/8 border border-white/10 text-sm font-semibold text-foreground hover:bg-white/12 active:scale-[0.98] transition-all"
                 >
-                  Qaytish
+                  {pick(lang, "Qaytish", "Назад")}
                 </button>
                 <button
                   onClick={handleConfirmCancel}
                   disabled={isBusy}
                   className="py-3.5 rounded-2xl bg-red-500/15 border border-red-500/25 text-red-400 text-sm font-semibold hover:bg-red-500/25 active:scale-[0.98] transition-all disabled:opacity-40"
                 >
-                  {isBusy ? "..." : "Ha, bekor qilish"}
+                  {isBusy ? "..." : pick(lang, "Ha, bekor qilish", "Да, отменить")}
                 </button>
               </div>
             </motion.div>
