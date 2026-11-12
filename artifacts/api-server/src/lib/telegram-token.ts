@@ -41,6 +41,14 @@ export function isProductionRuntime(): boolean {
   return isRenderHost() || process.env.NODE_ENV === "production";
 }
 
+const DEFAULT_BOT_USERNAME = "BARBERUZ_YORDAMCHI_BOT";
+
+/** Public @name of the live bot. Comes from the server setting, not from a name written in the app. */
+export function getTelegramBotUsername(): string {
+  const name = (process.env.TELEGRAM_BOT_USERNAME || DEFAULT_BOT_USERNAME).trim().replace(/^@/, "");
+  return name || DEFAULT_BOT_USERNAME;
+}
+
 export function getTelegramBotToken(): string {
   if (!isProductionRuntime()) {
     return (

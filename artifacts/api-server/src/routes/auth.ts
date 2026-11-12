@@ -6,6 +6,7 @@ import { makePasswordHash, verifyPassword, generateToken, authenticate, getUser,
 import { clearRateLimit, clientIp, consumeRateLimit } from "../lib/rate-limit";
 import { getTelegramLoginResult, storeLoginToken } from "../lib/telegram-bot";
 import { getLivePendingRegistration, savePendingRegistration } from "../lib/pending-registration";
+import { getTelegramBotUsername } from "../lib/telegram-token";
 
 const router = Router();
 
@@ -274,7 +275,7 @@ router.post("/telegram-token", async (req, res) => {
 router.post("/generate-login-link", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
-    const botUsername = process.env.TELEGRAM_BOT_USERNAME || "Barberuz_yordamchi_bot";
+    const botUsername = getTelegramBotUsername();
     const secureToken = randomBytes(16).toString("hex");
     storeLoginToken(secureToken, user.id, 5 * 60 * 1000); // 5 minutes
     const deepLink = `tg://resolve?domain=${botUsername}&start=login_${secureToken}`;

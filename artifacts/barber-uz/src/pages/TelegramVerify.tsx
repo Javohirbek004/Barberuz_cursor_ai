@@ -5,6 +5,7 @@ import { useGetTelegramStatus } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { CheckCircle2 } from "lucide-react";
+import { useBotUsername } from "@/lib/bot-link";
 
 function getStoredUserId(): string {
   try {
@@ -103,7 +104,8 @@ export default function TelegramVerify() {
     }
   }, [status, navigate]);
 
-  const botLink = `tg://resolve?domain=BARBERUZ_YORDAMCHI_BOT&start=reg_${userId}_${lang}`;
+  const botUsername = useBotUsername();
+  const botLink = `tg://resolve?domain=${botUsername}&start=reg_${userId}_${lang}`;
 
   // ── "Return to original tab" screen ───────────────────────────────────────
   if (showReturnToTab) {

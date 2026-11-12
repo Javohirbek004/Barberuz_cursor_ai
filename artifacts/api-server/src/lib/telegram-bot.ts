@@ -47,7 +47,7 @@ import {
   rebookUrl,
   sendReminderPreview,
 } from "./client-notifications";
-import { getTelegramBotToken, webhookSecretToken } from "./telegram-token";
+import { getTelegramBotToken, getTelegramBotUsername, webhookSecretToken } from "./telegram-token";
 import {
   bindPendingToChat,
   createUserFromPending,
@@ -2981,7 +2981,7 @@ export function startDevPolling() {
 
   void (async () => {
     await deleteWebhook();
-    console.log("[TelegramBot] Dev polling started (getUpdates). Talk to @" + (process.env.TELEGRAM_BOT_USERNAME || "BARBERUZ_YORDAMCHI_BOT"));
+    console.log("[TelegramBot] Dev polling started (getUpdates). Talk to @" + getTelegramBotUsername());
     let offset = 0;
     while (pollingStarted) {
       const token = getToken();

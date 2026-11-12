@@ -16,8 +16,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-const RESET_BOT_URL = "https://t.me/BARBERUZ_YORDAMCHI_BOT?start=reset_password";
+import { useBotUsername } from "@/lib/bot-link";
 
 function looksLikeLegacyUsername(value: string): boolean {
   return /[a-zA-Z_]/.test(value);
@@ -59,6 +58,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
+  const botUsername = useBotUsername();
   const resetSuccess = new URLSearchParams(window.location.search).get("reset") === "success";
   const entryCode = new URLSearchParams(window.location.search).get("entry");
 
@@ -231,7 +231,7 @@ export default function Login() {
             </DialogDescription>
           </DialogHeader>
           <a
-            href={RESET_BOT_URL}
+            href={`https://t.me/${botUsername}?start=reset_password`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center w-full h-12 rounded-xl bg-[#0088cc] hover:bg-[#0077b5] text-white font-semibold transition-colors"

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { Eye, EyeOff, Scissors } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { loadBotUsername } from "@/lib/bot-link";
 
 function TelegramOnboardingModal({
   onActivate,
@@ -110,10 +111,11 @@ export default function BarberSetup() {
     }, 1000);
   }
 
-  function handleActivateTelegram() {
+  async function handleActivateTelegram() {
     setShowOnboarding(false);
     const userId = params.token || "unknown";
-    const botLink = `tg://resolve?domain=BARBERUZ_YORDAMCHI_BOT&start=barber_${userId}`;
+    const botUsername = await loadBotUsername();
+    const botLink = `tg://resolve?domain=${botUsername}&start=barber_${userId}`;
     window.open(botLink, "_blank");
     navigate("/dashboard");
   }

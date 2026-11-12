@@ -1,6 +1,7 @@
 import "leaflet/dist/leaflet.css";
 import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import { APP_ORIGIN } from "@/lib/config";
+import { useBotUsername } from "@/lib/bot-link";
 import { PageLinkPanel } from "@/components/PageLinkPanel";
 import { PageTabs } from "@/components/PageTabs";
 import { SpecialtyTags, SPECIALTY_PILL_CLASS, SpecialtyTagScroller } from "@/components/SpecialtyTags";
@@ -1616,6 +1617,7 @@ function BookingModal({ selectedServices, totalDuration, isTeam, barberId, profi
   const [clientPhone, setClientPhone] = useState("+998 ");
   const [submitting, setSubmitting] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const botUsername = useBotUsername();
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => { if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; } }, []);
@@ -1814,7 +1816,7 @@ function BookingModal({ selectedServices, totalDuration, isTeam, barberId, profi
                   <span className="ml-1">Tasdiq kutilmoqda</span>
                 </div>
                 {sessionId && (
-                  <button onClick={() => { window.location.href = `tg://resolve?domain=Barberuz_yordamchi_bot&start=booking_${sessionId}`; }}
+                  <button onClick={() => { window.location.href = `tg://resolve?domain=${botUsername}&start=booking_${sessionId}`; }}
                     className="w-full h-12 rounded-2xl bg-[#2AABEE]/15 border border-[#2AABEE]/30 text-[#2AABEE] font-semibold text-sm flex items-center justify-center gap-2 mb-3">
                     <Send className="w-4 h-4" /> Telegram botni qayta ochish
                   </button>
