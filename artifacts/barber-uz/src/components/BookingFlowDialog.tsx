@@ -26,6 +26,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { moneyLabel, monthNames, pick } from "@/i18n/pick";
+import { categoryLabel } from "@/lib/category-icon";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListServices,
@@ -470,7 +471,7 @@ function ServicePicker({
             onClick={() => setActiveCat(c.id === activeCat ? null : c.id)}
             className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${activeCat === c.id ? "bg-primary/15 border-primary/30 text-primary" : "bg-white/4 border-white/8 text-muted-foreground hover:text-foreground"}`}
           >
-            {c.name}
+            {categoryLabel(lang, c.name)}
           </button>
         ))}
         {showNewCat ? (
