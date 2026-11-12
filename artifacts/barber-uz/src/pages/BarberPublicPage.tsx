@@ -22,6 +22,7 @@ import {
   type SlotPeriod,
 } from "@/lib/schedule";
 import { toast } from "@/hooks/use-toast";
+import { useBotUsername } from "@/lib/bot-link";
 import { SpecialtyTags } from "@/components/SpecialtyTags";
 import { PageTabs } from "@/components/PageTabs";
 import { parseSpecializations } from "@/lib/specializations";
@@ -267,7 +268,6 @@ const CLIENT_PROFILE_KEY = "barber_client_profile";
 const PENDING_SESSION_KEY = "barber_pending_session";
 const BOOKING_DRAFT_KEY = "barber_booking_draft";
 const DRAFT_TTL_MS = 30 * 60 * 1000;
-const BOT_USERNAME = "BARBERUZ_YORDAMCHI_BOT";
 
 interface BookingDraft {
   slug: string;
@@ -407,6 +407,7 @@ function PublicBookingModal({
   const [rescheduleMode, setRescheduleMode] = useState(false);
   const [replacementTime, setReplacementTime] = useState<string | null>(null);
   const [successFacts, setSuccessFacts] = useState<SuccessFacts | null>(null);
+  const botUsername = useBotUsername();
 
   useEffect(() => {
     const refresh = () => {
@@ -795,7 +796,7 @@ function PublicBookingModal({
 
   function returnToBot() {
     if (closeTelegramWebApp()) return;
-    window.location.assign(`https://t.me/${BOT_USERNAME}`);
+    window.location.assign(`https://t.me/${botUsername}`);
   }
 
   function slotJustTaken() {
@@ -831,7 +832,7 @@ function PublicBookingModal({
       const link = typeof data.deepLink === "string" && data.deepLink.startsWith("https://t.me/")
         ? data.deepLink
         : data.bookingId
-          ? `https://t.me/BARBERUZ_YORDAMCHI_BOT?start=bk_${data.bookingId}`
+          ? `https://t.me/${botUsername}?start=bk_${data.bookingId}`
           : "";
       setSessionId(data.sessionId);
       setDeepLink(link || null);
@@ -885,7 +886,7 @@ function PublicBookingModal({
       at: Date.now(),
     } satisfies BookingDraft));
     const start = slug ? `update_phone_${slug}` : "update_phone";
-    window.location.assign(`https://t.me/${BOT_USERNAME}?start=${start}`);
+    window.location.assign(`https://t.me/${botUsername}?start=${start}`);
   }
 
   return (
@@ -1200,7 +1201,7 @@ function PublicBookingModal({
                   🌐 Sahifaga qaytish
                 </button>
                 <a
-                  href={`https://t.me/${BOT_USERNAME}`}
+                  href={`https://t.me/${botUsername}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full h-12 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2"
@@ -1221,7 +1222,7 @@ function PublicBookingModal({
                   <p className="text-sm"><span className="text-muted-foreground">Vaqt:</span> <span className="font-semibold">{selectedTime}</span></p>
                 </div>
                 <a
-                  href={`https://t.me/${BOT_USERNAME}`}
+                  href={`https://t.me/${botUsername}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full h-12 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2 mb-3"

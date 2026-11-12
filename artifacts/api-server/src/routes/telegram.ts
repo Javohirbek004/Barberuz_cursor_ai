@@ -6,7 +6,7 @@ import {
   isBotConfigured,
   isWebhookSignatureActive,
 } from "../lib/telegram-bot";
-import { productionHost, webhookSecretToken } from "../lib/telegram-token";
+import { getTelegramBotUsername, productionHost, webhookSecretToken } from "../lib/telegram-token";
 import { secretsEqual } from "../lib/auth";
 import { adminAuth } from "../v1/middleware/adminAuth";
 
@@ -70,7 +70,7 @@ router.get("/setup", adminAuth, async (_req, res) => {
  * Quick health check — shows whether the bot token is configured.
  */
 router.get("/status", (_req, res) => {
-  res.json({ botConfigured: isBotConfigured() });
+  res.json({ botConfigured: isBotConfigured(), username: getTelegramBotUsername() });
 });
 
 export default router;

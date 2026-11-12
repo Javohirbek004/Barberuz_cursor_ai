@@ -18,6 +18,7 @@ import { slotOutsideWorkingHours } from "../lib/schedule-guard";
 import { normalizePhone } from "../lib/phone";
 import { randomBytes } from "crypto";
 import { sendBarberBookingNotification } from "../lib/telegram-bot";
+import { getTelegramBotUsername } from "../lib/telegram-token";
 import { clientIp, consumeRateLimit } from "../lib/rate-limit";
 
 const router = Router();
@@ -75,7 +76,7 @@ function timeToMins(t: string): number {
 }
 
 function getBotUsername(): string {
-  return process.env.TELEGRAM_BOT_USERNAME || "BARBERUZ_YORDAMCHI_BOT";
+  return getTelegramBotUsername();
 }
 
 function getAppUrl(): string {
@@ -440,7 +441,7 @@ router.post("/sessions", async (req, res) => {
     });
 
     const bookingId = pendingBooking?.id || sessionId;
-    const deepLink = `https://t.me/BARBERUZ_YORDAMCHI_BOT?start=bk_${bookingId}`;
+    const deepLink = `https://t.me/${getBotUsername()}?start=bk_${bookingId}`;
 
     res.json({ sessionId, bookingId, deepLink, status: "pending" });
   } catch (err) {
