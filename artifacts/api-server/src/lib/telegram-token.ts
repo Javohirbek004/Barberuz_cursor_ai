@@ -43,10 +43,33 @@ export function isProductionRuntime(): boolean {
 
 const DEFAULT_BOT_USERNAME = "BARBERUZ_YORDAMCHI_BOT";
 
-/** Public @name of the live bot. Comes from the server setting, not from a name written in the app. */
+let learnedUsername = "";
+
+function cleanBotUsername(raw: string): string {
+  let name = raw.trim();
+  if (!name) return "";
+  const link = name.match(/(?:https?:\/\/)?t\.me\/([A-Za-z0-9_]{4,})/i);
+  if (link?.[1]) name = link[1];
+  name = name.replace(/^@/, "").split(/[/?#]/)[0] ?? "";
+  if (!/^[A-Za-z0-9_]{4,32}$/.test(name)) return "";
+  return name;
+}
+
+/** Remember the @name Telegram itself reports for the saved bot key. */
+export function rememberBotUsername(name: string): void {
+  const clean = cleanBotUsername(name);
+  if (clean) learnedUsername = clean;
+}
+
+export function hasLearnedBotUsername(): boolean {
+  return Boolean(learnedUsername);
+}
+
+/** Public @name of the live bot. The saved key's own name wins over a typed name. */
 export function getTelegramBotUsername(): string {
-  const name = (process.env.TELEGRAM_BOT_USERNAME || DEFAULT_BOT_USERNAME).trim().replace(/^@/, "");
-  return name || DEFAULT_BOT_USERNAME;
+  if (learnedUsername) return learnedUsername;
+  const fromEnv = cleanBotUsername(process.env.TELEGRAM_BOT_USERNAME || "");
+  return fromEnv || DEFAULT_BOT_USERNAME;
 }
 
 export function getTelegramBotToken(): string {

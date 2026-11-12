@@ -2,11 +2,12 @@ import { Router } from "express";
 import {
   handleTelegramUpdate,
   registerWebhook,
+  refreshBotIdentity,
   getWebhookInfo,
   isBotConfigured,
   isWebhookSignatureActive,
 } from "../lib/telegram-bot";
-import { getTelegramBotUsername, productionHost, webhookSecretToken } from "../lib/telegram-token";
+import { productionHost, webhookSecretToken } from "../lib/telegram-token";
 import { secretsEqual } from "../lib/auth";
 import { adminAuth } from "../v1/middleware/adminAuth";
 
@@ -69,8 +70,9 @@ router.get("/setup", adminAuth, async (_req, res) => {
  * GET /api/telegram/status
  * Quick health check — shows whether the bot token is configured.
  */
-router.get("/status", (_req, res) => {
-  res.json({ botConfigured: isBotConfigured(), username: getTelegramBotUsername() });
+router.get("/status", async (_req, res) => {
+  const username = await refreshBotIdentity();
+  res.json({ botConfigured: isBotConfigured(), username });
 });
 
 export default router;

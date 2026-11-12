@@ -1,6 +1,6 @@
 import "./load-env";
 import app from "./app";
-import { registerWebhook, isBotConfigured, startDevPolling } from "./lib/telegram-bot";
+import { registerWebhook, refreshBotIdentity, isBotConfigured, startDevPolling } from "./lib/telegram-bot";
 import { productionHost, shouldPollTelegram, shouldRegisterTelegramWebhook } from "./lib/telegram-token";
 import { startReminderJob } from "./lib/reminders";
 import { normalizeStoredClientPhones } from "./lib/phone-migration";
@@ -58,6 +58,7 @@ app.listen(port, async () => {
   if (!shouldRegisterTelegramWebhook()) return;
 
   setTimeout(async () => {
+    await refreshBotIdentity();
     const domain = productionHost();
     const webhookUrl = `https://${domain}/api/telegram/webhook`;
     console.log(`[TelegramBot] Registering webhook: ${webhookUrl}`);

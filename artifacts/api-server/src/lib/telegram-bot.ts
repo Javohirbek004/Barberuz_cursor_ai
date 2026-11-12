@@ -47,7 +47,7 @@ import {
   rebookUrl,
   sendReminderPreview,
 } from "./client-notifications";
-import { getTelegramBotToken, getTelegramBotUsername, webhookSecretToken } from "./telegram-token";
+import { getTelegramBotToken, getTelegramBotUsername, hasLearnedBotUsername, rememberBotUsername, webhookSecretToken } from "./telegram-token";
 import {
   bindPendingToChat,
   createUserFromPending,
@@ -2933,6 +2933,19 @@ async function handleClientMenu(chatId: number, text: string) {
 // ──────────────────────────────────────────────────────────────
 // Webhook management
 // ──────────────────────────────────────────────────────────────
+
+/** Ask Telegram which bot the saved key belongs to, and use that name for every link. */
+export async function refreshBotIdentity(): Promise<string> {
+  if (!hasLearnedBotUsername() && getToken()) {
+    const result = await callTelegram("getMe", {}) as { ok?: boolean; result?: { username?: string } } | null;
+    const username = result?.result?.username?.trim() || "";
+    if (username) {
+      rememberBotUsername(username);
+      console.log("[TelegramBot] Live bot is @" + getTelegramBotUsername());
+    }
+  }
+  return getTelegramBotUsername();
+}
 
 export async function registerWebhook(webhookUrl: string) {
   const token = getToken();
