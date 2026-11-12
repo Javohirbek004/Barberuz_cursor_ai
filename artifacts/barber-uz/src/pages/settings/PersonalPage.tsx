@@ -4,6 +4,7 @@ import { APP_ORIGIN } from "@/lib/config";
 import { useBotUsername } from "@/lib/bot-link";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { pick } from "@/i18n/pick";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PageLinkPanel } from "@/components/PageLinkPanel";
 import { PageTabs } from "@/components/PageTabs";
 import { SpecialtyTags, SPECIALTY_PILL_CLASS, SpecialtyTagScroller } from "@/components/SpecialtyTags";
@@ -36,7 +37,7 @@ import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ChevronLeft, Check, Eye,
+  ChevronLeft, Check, Eye, ArrowRight,
   Plus, X, Pencil, Trash2, Clock, MapPin,
   Instagram, Camera, ArrowLeft, ExternalLink, Send, Tag,
   Navigation, Save, Phone, Star,
@@ -2315,14 +2316,34 @@ export default function PersonalPage() {
           </button>
         </Link>
         <h1 className="text-lg font-display font-bold text-foreground flex-1 truncate">{pageTitle}</h1>
-        <button
-          onClick={() => setPreview(p => !p)}
-          className={`flex items-center gap-1.5 h-9 px-3 rounded-2xl text-xs font-semibold border transition-all shrink-0 ${preview ? "bg-amber-500/15 border-amber-500/30 text-amber-400" : "bg-white/5 border-white/8 text-muted-foreground hover:text-foreground"}`}
-        >
-          <Eye className="w-3.5 h-3.5" />
-          {preview ? pick(lang, "Tahrirlash", "Редактировать") : pick(lang, "Ko'rish", "Смотреть")}
-        </button>
+        {preview ? (
+          <button
+            onClick={() => setPreview(false)}
+            className="flex items-center gap-1.5 h-9 px-3 rounded-2xl text-xs font-semibold border transition-all shrink-0 bg-amber-500/15 border-amber-500/30 text-amber-400"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            {pick(lang, "Tahrirlash", "Редактировать")}
+          </button>
+        ) : (
+          <LanguageSwitcher />
+        )}
       </div>
+
+      {!preview && (
+        <div className="flex items-center gap-2 mb-4">
+          <Eye className="w-4 h-4 shrink-0 text-muted-foreground" />
+          <p className="flex-1 min-w-0 text-[11px] leading-snug text-muted-foreground">
+            {pick(lang, "Ko'rish rejimi - mijoz qanday ko'radi", "Режим просмотра — как видит клиент")}
+          </p>
+          <ArrowRight className="w-4 h-4 shrink-0 text-primary" />
+          <button
+            onClick={() => setPreview(true)}
+            className="h-9 px-3 rounded-2xl text-xs font-semibold shrink-0 bg-primary text-primary-foreground"
+          >
+            {pick(lang, "Ko'rish", "Смотреть")}
+          </button>
+        </div>
+      )}
 
       {/* Save toast */}
       <AnimatePresence>
