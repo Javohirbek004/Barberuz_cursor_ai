@@ -150,14 +150,14 @@ export default function Login() {
               </div>
             )}
             <div className="space-y-2">
-              <Label className="text-white/80">Telefon raqamingizni kiriting:</Label>
+              <Label className="text-white/80">{t("login.phone_label")}</Label>
               <Input
                 value={username}
                 onChange={(e) => {
                   const next = e.target.value;
                   setUsername(looksLikeLegacyUsername(next) ? next : formatUzPhoneMask(next));
                 }}
-                placeholder="+998 90 123-45-67"
+                placeholder={t("login.phone_placeholder")}
                 inputMode="tel"
                 autoComplete="tel"
                 className="bg-black/20 border-white/10 focus-visible:ring-primary h-12 rounded-xl"
@@ -195,7 +195,7 @@ export default function Login() {
               onClick={() => setForgotOpen(true)}
               className="text-sm text-primary hover:underline font-medium text-left"
             >
-              Parolni unutdingizmi?
+              {t("login.forgot")}
             </button>
 
             <Button
@@ -224,10 +224,9 @@ export default function Login() {
       <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
         <DialogContent className="glass-panel border-white/10 sm:rounded-2xl max-w-md">
           <DialogHeader className="text-left space-y-3">
-            <DialogTitle className="text-xl">🔒 Parolni tiklash</DialogTitle>
+            <DialogTitle className="text-xl">{t("login.forgot_title")}</DialogTitle>
             <DialogDescription className="text-sm leading-relaxed text-muted-foreground">
-              Parolni unutdingizmi? Bu muammo emas! Parolni qaytarish uchun pastdagi tugmani bosib botga kiring va
-              ro'yxatdan o'tishda ishlatgan telefon raqamingizni yuboring.
+              {t("login.forgot_body")}
             </DialogDescription>
           </DialogHeader>
           <a
@@ -236,7 +235,7 @@ export default function Login() {
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center w-full h-12 rounded-xl bg-[#0088cc] hover:bg-[#0077b5] text-white font-semibold transition-colors"
           >
-            Telegram bot orqali tiklash 📲
+            {t("login.forgot_button")}
           </a>
         </DialogContent>
       </Dialog>
