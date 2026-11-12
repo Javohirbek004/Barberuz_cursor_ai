@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/i18n/LanguageContext";
+import { pick } from "@/i18n/pick";
 import { Layout } from "@/components/Layout";
 import { useListClients } from "@workspace/api-client-react";
 import { Search, ChevronRight, Phone, Users, UserX } from "lucide-react";
@@ -168,11 +169,12 @@ function BotUnlinkedFilter({
   checked: boolean;
   onChange: (value: boolean) => void;
 }) {
+  const { lang } = useTranslation();
   if (count === 0) return null;
   return (
     <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-card px-3.5 py-3">
       <span className="text-[13px] font-semibold leading-snug text-foreground">
-        Botga ulanmaganlar ⚠️ 🔕 ({count})
+        {pick(lang, `Botga ulanmaganlar ⚠️ 🔕 (${count})`, `Не подключены к боту ⚠️ 🔕 (${count})`)}
       </span>
       <Switch
         checked={checked}

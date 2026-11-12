@@ -16,6 +16,8 @@ import { BookingDetailModal } from "@/components/BookingDetailModal";
 import { BookingNoteBadge } from "@/components/BookingNoteBadge";
 import { noteFromBooking } from "@/lib/booking-note";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { moneyLabel, pick } from "@/i18n/pick";
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
 const UZ_MONTHS = [
@@ -23,6 +25,11 @@ const UZ_MONTHS = [
   "Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr",
 ];
 const UZ_DAY_SHORT = ["Yak","Du","Se","Cho","Pa","Ju","Sha"];
+const RU_MONTHS = [
+  "Январь","Февраль","Март","Апрель","Май","Июнь",
+  "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь",
+];
+const RU_DAY_SHORT = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
 
 function toISO(date: Date): string {
   const y = date.getFullYear();
@@ -56,11 +63,13 @@ function getDaysInMonth(year: number, month: number): Date[] {
   return Array.from({ length: count }, (_, i) => new Date(year, month, i + 1));
 }
 
-function formatHeaderDate(date: Date): string {
+function formatHeaderDate(date: Date, lang: string): string {
   const d = date.getDate();
-  const m = UZ_MONTHS[date.getMonth()];
-  const wd = UZ_DAY_SHORT[date.getDay()];
-  return `${d}-${m.toLowerCase()}, ${wd}`;
+  const months = lang === "ru" ? RU_MONTHS : UZ_MONTHS;
+  const days = lang === "ru" ? RU_DAY_SHORT : UZ_DAY_SHORT;
+  const m = months[date.getMonth()];
+  const wd = days[date.getDay()];
+  return lang === "ru" ? `${d} ${m.toLowerCase()}, ${wd}` : `${d}-${m.toLowerCase()}, ${wd}`;
 }
 
 // ── Month Nav ─────────────────────────────────────────────────────────────────
@@ -79,6 +88,7 @@ function MonthNav({
   jumpIso: string | null;
   isClosed?: (iso: string) => boolean;
 }) {
+  const { lang } = useTranslation();
   const today = tashkentTodayDate();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -131,7 +141,7 @@ function MonthNav({
           <ChevronLeft className="w-5 h-5" />
         </button>
         <span className="text-sm font-semibold text-foreground">
-          {UZ_MONTHS[viewMonth]} {viewYear}
+          {(lang === "ru" ? RU_MONTHS : UZ_MONTHS)[viewMonth]} {viewYear}
         </span>
         <button
           onClick={goToNext}
@@ -155,7 +165,7 @@ function MonthNav({
         >
           <span className="text-lg leading-none text-foreground shrink-0">←</span>
           <span className="text-sm font-medium text-foreground">
-            🔴 {unresolvedCount} ta tasdiqlanmagan bron bor
+            {pick(lang, `🔴 ${unresolvedCount} ta tasdiqlanmagan bron bor`, `🔴 Неподтверждённых записей: ${unresolvedCount}`)}
           </span>
         </button>
       )}
@@ -195,7 +205,7 @@ function MonthNav({
                 />
               )}
               <span className="text-[9px] font-bold uppercase tracking-wider mb-1">
-                {UZ_DAY_SHORT[dowIdx]}
+                {(lang === "ru" ? RU_DAY_SHORT : UZ_DAY_SHORT)[dowIdx]}
               </span>
               <span className={`text-lg font-bold ${
                 closed ? "text-muted-foreground/60" : isSelected ? "text-primary-foreground" : isToday ? "text-primary" : "text-foreground"
@@ -213,6 +223,7 @@ function MonthNav({
 
 // ── Individual Calendar ───────────────────────────────────────────────────────
 function IndividualCalendar() {
+  const { lang } = useTranslation();
   const today = tashkentTodayDate();
   const todayISO = toISO(today);
   const [selectedDate, setSelectedDate] = useState(today);
@@ -274,13 +285,13 @@ function IndividualCalendar() {
         queryClient.invalidateQueries({ queryKey: getListClientsQueryKey() }),
       ]);
       toast({
-        title: status === "completed" ? "✓ Keldi" : "Kelmadi",
+        title: status === "completed" ? pick(lang, "✓ Keldi", "✓ Пришёл") : pick(lang, "Kelmadi", "Не пришёл"),
         description: status === "completed"
-          ? `${Number(row.price || 0).toLocaleString()} so'm bron sanasidagi daromadga qo'shildi`
-          : "Bu bron daromadga qo'shilmadi",
+          ? pick(lang, `${moneyLabel(lang, Number(row.price || 0))} bron sanasidagi daromadga qo'shildi`, `${moneyLabel(lang, Number(row.price || 0))} добавлено в доход даты записи`)
+          : pick(lang, "Bu bron daromadga qo'shilmadi", "Эта запись не добавлена в доход"),
       });
     } catch {
-      toast({ title: "Saqlanmadi", description: "Qayta urinib ko'ring", variant: "destructive" });
+      toast({ title: pick(lang, "Saqlanmadi", "Не сохранилось"), description: pick(lang, "Qayta urinib ko'ring", "Попробуйте ещё раз"), variant: "destructive" });
     } finally {
       setBusyKey(null);
     }
@@ -291,15 +302,15 @@ function IndividualCalendar() {
       {/* Header */}
       <div className="flex items-start justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-display font-bold text-foreground">Kalendar</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{formatHeaderDate(selectedDate)}</p>
+          <h1 className="text-2xl font-display font-bold text-foreground">{pick(lang, "Kalendar", "Календарь")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{formatHeaderDate(selectedDate, lang)}</p>
         </div>
         <Button
           onClick={() => setSelectedDate(today)}
           size="sm"
           className="rounded-full bg-primary/20 text-primary hover:bg-primary/30 border-0 text-xs h-8"
         >
-          Bugun
+          {pick(lang, "Bugun", "Сегодня")}
         </Button>
       </div>
 
@@ -316,7 +327,7 @@ function IndividualCalendar() {
       {droppedCount > 0 && (
         <label className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-card px-3.5 py-3">
           <span className="text-[13px] font-semibold leading-snug text-foreground">
-            🚫 Bekor qilinganlar & Kelmaganlar ({droppedCount})
+            {pick(lang, `🚫 Bekor qilinganlar & Kelmaganlar (${droppedCount})`, `🚫 Отменённые и не пришедшие (${droppedCount})`)}
           </span>
           <Switch
             checked={showDropped}
@@ -417,8 +428,8 @@ function IndividualCalendar() {
             <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
               <CalendarDays className="w-6 h-6 text-muted-foreground/40" />
             </div>
-            <p className="text-sm font-medium text-muted-foreground">Bugun bronlar mavjud emas</p>
-            <p className="text-xs text-muted-foreground/45 mt-1.5">Yangi bron qo'shish uchun + tugmasini bosing</p>
+            <p className="text-sm font-medium text-muted-foreground">{pick(lang, "Bugun bronlar mavjud emas", "На сегодня записей нет")}</p>
+            <p className="text-xs text-muted-foreground/45 mt-1.5">{pick(lang, "Yangi bron qo'shish uchun + tugmasini bosing", "Чтобы добавить запись, нажмите +")}</p>
           </div>
         ) : (
           <div className={selectedClosed ? "space-y-2 rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-3" : "space-y-2"}>
