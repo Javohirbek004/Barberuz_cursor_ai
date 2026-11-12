@@ -1,3 +1,18 @@
+const CATEGORY_RU: Record<string, string> = {
+  soch: "Волосы",
+  soqol: "Борода",
+  bolalar: "Детские",
+  boshqa: "Другое",
+  kosmetik: "Косметика",
+  pakora: "Пакора",
+};
+
+export function categoryLabel(lang: string, name: string): string {
+  if (lang !== "ru" || !name) return name;
+  const bare = name.toLowerCase().replace(/[^a-z]/g, "");
+  return CATEGORY_RU[bare] ?? name;
+}
+
 export function getCategoryIcon(categoryName: string): string {
   if (!categoryName) return "✨";
   const name = categoryName.toLowerCase();
