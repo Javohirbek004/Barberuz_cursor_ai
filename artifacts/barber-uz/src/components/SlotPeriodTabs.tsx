@@ -1,4 +1,5 @@
 import { SLOT_PERIODS, type SlotPeriod } from "@/lib/schedule";
+import { pick } from "@/i18n/pick";
 
 interface Props {
   value: SlotPeriod;
@@ -6,7 +7,7 @@ interface Props {
 }
 
 /** Segmented filter: Barchasi / Ertalab / Tushdan keyin / Kechki. */
-export function SlotPeriodTabs({ value, onChange }: Props) {
+export function SlotPeriodTabs({ value, onChange, lang = "uz" }: Props & { lang?: string }) {
   return (
     <div
       role="tablist"
@@ -30,7 +31,9 @@ export function SlotPeriodTabs({ value, onChange }: Props) {
                 : "text-muted-foreground border border-transparent hover:bg-white/5"
             }`}
           >
-            {p.label}
+            {lang === "ru"
+              ? pick("ru", p.label, p.value === "all" ? "Все" : p.value === "morning" ? "🌅 Утро" : p.value === "afternoon" ? "☀️ День" : "🌙 Вечер")
+              : p.label}
           </button>
         );
       })}

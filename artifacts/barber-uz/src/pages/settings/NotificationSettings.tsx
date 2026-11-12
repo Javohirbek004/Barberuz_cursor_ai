@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "@/i18n/LanguageContext";
+import { pick } from "@/i18n/pick";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
@@ -68,7 +69,7 @@ function readForm(settings: NotificationSettings): FormState {
 }
 
 export default function NotificationSettings() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   useAuth();
   const { toast } = useToast();
 
@@ -179,14 +180,14 @@ export default function NotificationSettings() {
 
         <section data-testid="client-notifications">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 px-1 mb-3">
-            ⏰ Mijozlarga eslatmalar
+            {pick(lang, "⏰ Mijozlarga eslatmalar", "⏰ Напоминания клиентам")}
           </p>
           <div className="space-y-2">
             <SwitchRow
               testId="client-24h"
               icon={<span className="text-base leading-none">🔔</span>}
-              title="24 soat oldingi eslatma"
-              desc="Bron vaqtiga 24 soat (1 kun) qolganda mijozga eslatma va bekor qilish tugmasi yuboriladi"
+              title={pick(lang, "24 soat oldingi eslatma", "Напоминание за 24 часа")}
+              desc={pick(lang, "Bron vaqtiga 24 soat (1 kun) qolganda mijozga eslatma va bekor qilish tugmasi yuboriladi", "За 24 часа клиенту уходит напоминание и кнопка отмены")}
               checked={formData.eveningConfirm}
               onChange={v => {
                 if (!v) {
@@ -199,8 +200,8 @@ export default function NotificationSettings() {
             <SwitchRow
               testId="client-1h"
               icon={<span className="text-base leading-none">⏰</span>}
-              title="1 soat oldingi tezkor eslatma"
-              desc="Bron vaqtiga 1 soat qolganda mijozga yo'lga chiqish va ogohlantirish xabari yuboriladi"
+              title={pick(lang, "1 soat oldingi tezkor eslatma", "Напоминание за 1 час")}
+              desc={pick(lang, "Bron vaqtiga 1 soat qolganda mijozga yo'lga chiqish va ogohlantirish xabari yuboriladi", "За 1 час клиенту уходит сообщение выходить и предупреждение")}
               checked={formData.quickReminder}
               onChange={v => {
                 if (!v) {
@@ -211,8 +212,8 @@ export default function NotificationSettings() {
               }}
             />
             <div className="bg-card/50 px-4 py-4 rounded-2xl border border-white/5">
-              <p className="font-semibold text-sm text-foreground leading-tight">Bot orqali bekor qilish vaqti cheklovi</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Bron vaqtiga bu vaqtdan kam qolganda mijoz bot orqali bronni o‘zi bekor qila olmaydi</p>
+              <p className="font-semibold text-sm text-foreground leading-tight">{pick(lang, "Bot orqali bekor qilish vaqti cheklovi", "Срок отмены через бота")}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{pick(lang, "Bron vaqtiga bu vaqtdan kam qolganda mijoz bot orqali bronni o‘zi bekor qila olmaydi", "Если до записи осталось меньше этого времени, клиент не сможет отменить её в боте")}</p>
               <select
                 data-testid="client-cancel-limit"
                 value={formData.cancelLimit}
@@ -220,7 +221,9 @@ export default function NotificationSettings() {
                 className="mt-3 w-full h-11 rounded-2xl bg-black/20 border border-white/10 px-3 text-sm text-foreground"
               >
                 {CANCEL_LIMITS.map(item => (
-                  <option key={item.value} value={item.value}>{item.label}</option>
+                  <option key={item.value} value={item.value}>
+                    {item.value === 30 ? pick(lang, "30 daqiqa", "30 минут") : item.value === 60 ? pick(lang, "1 soat", "1 час") : item.value === 120 ? pick(lang, "2 soat", "2 часа") : pick(lang, "3 soat", "3 часа")}
+                  </option>
                 ))}
               </select>
             </div>
@@ -248,7 +251,7 @@ export default function NotificationSettings() {
                     onClick={applyOff}
                     className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm"
                   >
-                    Ha, o‘chirish
+                    {pick(lang, "Ha, o‘chirish", "Да, выключить")}
                   </button>
                   <button
                     type="button"
@@ -256,7 +259,7 @@ export default function NotificationSettings() {
                     onClick={() => setConfirmOff(null)}
                     className="flex-1 py-3 rounded-2xl bg-white/6 border border-white/10 text-foreground font-semibold text-sm"
                   >
-                    Yo‘q, qoldirish
+                    {pick(lang, "Yo‘q, qoldirish", "Нет, оставить")}
                   </button>
                 </>
               ) : reminderWarning ? (
@@ -267,7 +270,7 @@ export default function NotificationSettings() {
                     onClick={applyOff}
                     className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm"
                   >
-                    ✅ Ha, o‘chirish
+                    {pick(lang, "✅ Ha, o‘chirish", "✅ Да, выключить")}
                   </button>
                   <button
                     type="button"
@@ -275,7 +278,7 @@ export default function NotificationSettings() {
                     onClick={() => setConfirmOff(null)}
                     className="flex-1 py-3 rounded-2xl bg-white/6 border border-white/10 text-foreground font-semibold text-sm"
                   >
-                    🛑 Bekor qilmaslik
+                    {pick(lang, "🛑 Bekor qilmaslik", "🛑 Не выключать")}
                   </button>
                 </>
               ) : (

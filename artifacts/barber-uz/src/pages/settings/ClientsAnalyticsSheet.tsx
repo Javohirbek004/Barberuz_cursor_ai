@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Info, X } from "lucide-react";
 import { BottomSheet } from "@/components/BottomSheet";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { monthNames, pick, weekdayNames } from "@/i18n/pick";
 import { addDaysISO, tashkentTodayISO } from "@/lib/schedule";
 import { DemoDataToggle, mockClients, useDemoAnalytics } from "@/pages/settings/demoAnalytics";
 
@@ -126,47 +128,69 @@ function dm(iso: string): string {
   return `${d}.${m}`;
 }
 
-function monthTitle(iso: string): string {
+function monthTitle(iso: string, lang = "uz"): string {
+  const names = monthNames(lang);
   const [y, m] = iso.split("-").map(Number);
-  return `${MONTHS[(m ?? 1) - 1]} ${y}`;
+  return `${names[(m ?? 1) - 1]} ${y}`;
+}
+
+function modesFor(lang: string): { key: Mode; label: string }[] {
+  return [
+    { key: "bugun", label: pick(lang, "Bugun", "Сегодня") },
+    { key: "hafta", label: pick(lang, "Hafta", "Неделя") },
+    { key: "oy", label: pick(lang, "Oy", "Месяц") },
+    { key: "sana", label: pick(lang, "📅 Sana", "📅 Дата") },
+  ];
 }
 
 /** The words next to the arrows, without the "Tanlangan vaqt:" prefix. */
-export function timeRangeLabel(mode: Mode, range: DateRange, today: string): string {
+export function timeRangeLabel(mode: Mode, range: DateRange, today: string, lang = "uz"): string {
   if (mode === "sana") {
     if (range.start === range.end) return dmy(range.start);
     return `${dmy(range.start)} — ${dmy(range.end)}`;
   }
   if (mode === "bugun") {
-    if (range.start === today) return `Bugun, ${dmy(range.start)}`;
-    if (range.start === addDaysISO(today, -1)) return `Kecha, ${dmy(range.start)}`;
+    if (range.start === today) return `${pick(lang, "Bugun", "Сегодня")}, ${dmy(range.start)}`;
+    if (range.start === addDaysISO(today, -1)) return `${pick(lang, "Kecha", "Вчера")}, ${dmy(range.start)}`;
     return dmy(range.start);
   }
   if (mode === "hafta") {
     const current = mondayOf(today);
     const previous = addDaysISO(current, -7);
     const inner = `${dm(range.start)} — ${dm(range.end)}`;
-    if (range.start === current) return `Shu hafta: ${inner}`;
-    if (range.start === previous) return `O'tgan hafta: ${inner}`;
+    if (range.start === current) return `${pick(lang, "Shu hafta", "Эта неделя")}: ${inner}`;
+    if (range.start === previous) return `${pick(lang, "O'tgan hafta", "Прошлая неделя")}: ${inner}`;
     return inner;
   }
   const currentMonth = monthRange(today, 0).start;
   const previousMonth = monthRange(today, -1).start;
-  const name = monthTitle(range.start);
-  if (range.start === currentMonth) return `Shu oy: ${name}`;
-  if (range.start === previousMonth) return `O'tgan oy: ${name}`;
+  const name = monthTitle(range.start, lang);
+  if (range.start === currentMonth) return `${pick(lang, "Shu oy", "Этот месяц")}: ${name}`;
+  if (range.start === previousMonth) return `${pick(lang, "O'tgan oy", "Прошлый месяц")}: ${name}`;
   return name;
 }
 
-function lastVisitLabel(c: TopClient): string {
-  if (c.daysAgo === 0) return `Bugun, ${c.lastVisit.time}`;
-  if (c.daysAgo === 1) return `Kecha, ${c.lastVisit.time}`;
-  return `${c.daysAgo} kun oldin`;
+function lastVisitLabel(c: TopClient, lang = "uz"): string {
+  if (c.daysAgo === 0) return `${pick(lang, "Bugun", "Сегодня")}, ${c.lastVisit.time}`;
+  if (c.daysAgo === 1) return `${pick(lang, "Kecha", "Вчера")}, ${c.lastVisit.time}`;
+  return pick(lang, `${c.daysAgo} kun oldin`, `${c.daysAgo} дн. назад`);
 }
 
-function SegmentBadge({ segment }: { segment: SegmentKey | null }) {
+function segmentCopy(lang: string, key: SegmentKey) {
+  const base = SEGMENT_INFO[key];
+  if (lang !== "ru") return base;
+  const text = key === "regular"
+    ? "Клиенты, которые были 2 раза и больше за последние 30 дней."
+    : key === "new"
+      ? "Клиенты, которые пришли впервые."
+      : "Раньше приходили, но не были больше 30 дней.";
+  const label = key === "regular" ? "Постоянные" : key === "new" ? "Новые" : "Потерянные";
+  return { ...base, label, text };
+}
+
+function SegmentBadge({ segment, lang }: { segment: SegmentKey | null; lang: string }) {
   if (!segment) return null;
-  const s = SEGMENT_INFO[segment];
+  const s = segmentCopy(lang, segment);
   return (
     <span
       data-testid={`badge-${segment}`}
@@ -184,6 +208,7 @@ function TimeNav({
   onMode,
   onPrev,
   onNext,
+  lang,
 }: {
   mode: Mode;
   label: string;
@@ -191,6 +216,7 @@ function TimeNav({
   onMode: (mode: Mode) => void;
   onPrev: () => void;
   onNext: () => void;
+  lang: string;
 }) {
   return (
     <div className="mb-4 space-y-2.5" data-testid="time-nav">
@@ -199,7 +225,7 @@ function TimeNav({
         data-testid="clients-period-tabs"
         className="relative z-10 flex flex-nowrap gap-1 bg-background/60 p-1 rounded-2xl border border-white/6"
       >
-        {MODES.map(({ key, label: tabLabel }) => (
+        {modesFor(lang).map(({ key, label: tabLabel }) => (
           <button
             key={key}
             type="button"
@@ -231,7 +257,7 @@ function TimeNav({
         <button
           type="button"
           data-testid="time-prev"
-          aria-label="Oldingi davr"
+          aria-label={pick(lang, "Oldingi davr", "Предыдущий период")}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.preventDefault();
@@ -246,12 +272,12 @@ function TimeNav({
           data-testid="time-label"
           className="flex-1 min-w-0 text-center text-xs sm:text-sm font-medium text-foreground leading-snug"
         >
-          Tanlangan vaqt: {label}
+          {pick(lang, "Tanlangan vaqt", "Выбранное время")}: {label}
         </div>
         <button
           type="button"
           data-testid="time-next"
-          aria-label="Keyingi davr"
+          aria-label={pick(lang, "Keyingi davr", "Следующий период")}
           disabled={forwardDisabled}
           aria-disabled={forwardDisabled}
           data-disabled={forwardDisabled ? "true" : "false"}
@@ -275,11 +301,13 @@ function DateRangePicker({
   initial,
   onApply,
   onCancel,
+  lang,
 }: {
   today: string;
   initial: DateRange | null;
   onApply: (range: DateRange) => void;
   onCancel: () => void;
+  lang: string;
 }) {
   const [cursor, setCursor] = useState(() => (initial?.start ?? today).slice(0, 7));
   const [draftStart, setDraftStart] = useState<string | null>(initial?.start ?? null);
@@ -328,17 +356,17 @@ function DateRangePicker({
       <div className="flex items-center justify-between mb-2">
         <button
           type="button"
-          aria-label="Oldingi oy"
+          aria-label={pick(lang, "Oldingi oy", "Предыдущий месяц")}
           data-testid="picker-prev-month"
           onClick={() => setCursor(monthRange(`${cursor}-01`, -1).start.slice(0, 7))}
           className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
-        <div className="text-sm font-semibold">{monthTitle(`${cursor}-01`)}</div>
+        <div className="text-sm font-semibold">{monthTitle(`${cursor}-01`, lang)}</div>
         <button
           type="button"
-          aria-label="Keyingi oy"
+          aria-label={pick(lang, "Keyingi oy", "Следующий месяц")}
           data-testid="picker-next-month"
           aria-disabled={cursor >= today.slice(0, 7)}
           onClick={() => {
@@ -353,7 +381,7 @@ function DateRangePicker({
         </button>
       </div>
       <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-muted-foreground mb-1">
-        {WEEKDAYS.map((w) => (
+        {weekdayNames(lang).map((w) => (
           <div key={w}>{w}</div>
         ))}
       </div>
@@ -388,9 +416,9 @@ function DateRangePicker({
       </div>
       <div className="mt-3 text-center text-xs text-muted-foreground min-h-4" data-testid="picker-draft">
         {draftStart && draftEnd && draftEnd !== draftStart
-          ? `Tanlangan oraliq: ${dmy(draftStart)} — ${dmy(draftEnd)}`
+          ? `${pick(lang, "Tanlangan oraliq", "Выбранный период")}: ${dmy(draftStart)} — ${dmy(draftEnd)}`
           : draftStart
-            ? `Tanlangan sana: ${dmy(draftStart)}`
+            ? `${pick(lang, "Tanlangan sana", "Выбранная дата")}: ${dmy(draftStart)}`
             : ""}
       </div>
       <div className="mt-3 flex gap-2">
@@ -400,7 +428,7 @@ function DateRangePicker({
           onClick={onCancel}
           className="flex-1 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground"
         >
-          Bekor qilish
+          {pick(lang, "Bekor qilish", "Отмена")}
         </button>
         <button
           type="button"
@@ -413,7 +441,7 @@ function DateRangePicker({
           }}
           className="flex-1 py-2 rounded-xl bg-primary text-black text-sm font-semibold disabled:opacity-30"
         >
-          Tanlash
+          {pick(lang, "Tanlash", "Выбрать")}
         </button>
       </div>
     </div>
@@ -464,6 +492,7 @@ function SegmentCard({
 
 /** "Mijozlar tahlili" – segment counters and top clients, powered by real bookings. */
 export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
+  const { lang } = useTranslation();
   const today = tashkentTodayISO();
   const [mode, setMode] = useState<Mode>("bugun");
   const [offset, setOffset] = useState(0);
@@ -480,7 +509,7 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
   const range = useMemo(() => viewedRange(mode, offset, custom, today), [mode, offset, custom, today]);
   const rangeKey = `${range.start}|${range.end}`;
   const forwardDisabled = range.end >= today;
-  const label = timeRangeLabel(mode, range, today);
+  const label = timeRangeLabel(mode, range, today, lang);
 
   useEffect(() => {
     if (demo.on) {
@@ -543,12 +572,13 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <BottomSheet title="Mijozlar tahlili" onClose={onClose}>
+    <BottomSheet title={pick(lang, "Mijozlar tahlili", "Анализ клиентов")} onClose={onClose}>
       {demo.available && <DemoDataToggle on={demo.on} toggle={demo.toggle} />}
       <TimeNav
         mode={pickerOpen || mode === "sana" ? "sana" : mode}
         label={label}
         forwardDisabled={forwardDisabled}
+        lang={lang}
         onMode={chooseMode}
         onPrev={() => setOffset((n) => n - 1)}
         onNext={() => setOffset((n) => (n >= 0 && mode !== "sana" ? n : n + 1))}
@@ -557,10 +587,11 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
       {pickerOpen && (
         <div ref={pickerRef}>
           <p data-testid="picker-hint" className="text-center text-xs font-medium text-[#F59E0B] mb-2 px-2">
-            Bitta kunni tanlash uchun ustiga bosing yoki oraliqni belgilang
+            {pick(lang, "Bitta kunni tanlash uchun ustiga bosing yoki oraliqni belgilang", "Нажмите на день или выберите период")}
           </p>
           <DateRangePicker
             today={today}
+            lang={lang}
             initial={mode === "sana" ? range : null}
             onCancel={() => setPickerOpen(false)}
             onApply={(picked) => {
@@ -587,7 +618,7 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
       )}
 
       {!data && !loading && error && (
-        <div className="text-center py-10 text-sm text-muted-foreground">Ma'lumot yuklanmadi</div>
+        <div className="text-center py-10 text-sm text-muted-foreground">{pick(lang, "Ma'lumot yuklanmadi", "Не удалось загрузить")}</div>
       )}
 
       {data && data.segments.all === 0 && (
@@ -595,7 +626,7 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
           data-testid="clients-empty"
           className="text-center py-12 px-4 text-sm text-muted-foreground"
         >
-          {CLIENTS_EMPTY_TEXT}
+          {pick(lang, CLIENTS_EMPTY_TEXT, "За выбранный период нет данных по клиентам.")}
         </div>
       )}
 
@@ -605,13 +636,13 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
             <div className="grid grid-cols-2 gap-3">
               <SegmentCard
                 segmentKey="all"
-                title="Hammasi"
+                title={pick(lang, "Hammasi", "Все")}
                 count={data.segments.all}
                 tone="bg-white/4 border-white/10"
               />
               <SegmentCard
                 segmentKey="regular"
-                title="Doimiy 🔥"
+                title={pick(lang, "Doimiy 🔥", "Постоянные 🔥")}
                 count={data.segments.regular}
                 tone="bg-orange-500/8 border-orange-500/20"
                 onInfo={() => toggleInfo("regular")}
@@ -619,7 +650,7 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
               />
               <SegmentCard
                 segmentKey="new"
-                title="Yangi ✨"
+                title={pick(lang, "Yangi ✨", "Новые ✨")}
                 count={data.segments.new}
                 tone="bg-sky-500/8 border-sky-500/20"
                 onInfo={() => toggleInfo("new")}
@@ -627,7 +658,7 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
               />
               <SegmentCard
                 segmentKey="lost"
-                title="Yoʻqolgan ⚠️"
+                title={pick(lang, "Yoʻqolgan ⚠️", "Потерянные ⚠️")}
                 count={data.segments.lost}
                 tone="bg-red-500/8 border-red-500/20"
                 onInfo={() => toggleInfo("lost")}
@@ -643,9 +674,9 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
               >
                 <span className="flex-1">
                   <b>
-                    {SEGMENT_INFO[infoKey].label} {SEGMENT_INFO[infoKey].emoji}:
+                    {segmentCopy(lang, infoKey).label} {segmentCopy(lang, infoKey).emoji}:
                   </b>{" "}
-                  <span data-testid="segment-info-text">{SEGMENT_INFO[infoKey].text}</span>
+                  <span data-testid="segment-info-text">{segmentCopy(lang, infoKey).text}</span>
                 </span>
                 <button
                   type="button"
@@ -661,7 +692,7 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
 
           <div>
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Top mijozlar
+              {pick(lang, "Top mijozlar", "Топ клиенты")}
             </div>
             <div className="space-y-2" data-testid="top-clients">
               {data.topClients.map((c, i) => (
@@ -676,10 +707,10 @@ export function ClientsAnalyticsSheet({ onClose }: { onClose: () => void }) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-foreground truncate">{c.name}</span>
-                      <SegmentBadge segment={c.segment} />
+                      <SegmentBadge segment={c.segment} lang={lang} />
                     </div>
                     <div className="text-xs text-muted-foreground mt-0.5">
-                      {c.visitsInPeriod} marta · Oxirgi tashrif: {lastVisitLabel(c)}
+                      {c.visitsInPeriod} {pick(lang, "marta", "раз")} · {pick(lang, "Oxirgi tashrif", "Последний визит")}: {lastVisitLabel(c, lang)}
                     </div>
                   </div>
                 </div>

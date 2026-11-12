@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Loader2, Receipt } from "lucide-react";
 import { BottomSheet } from "@/components/BottomSheet";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { countLabel, monthNames, moneyLabel, pick, weekdayNames } from "@/i18n/pick";
 import { addDaysISO, tashkentTodayISO } from "@/lib/schedule";
 
 type Mode = "bugun" | "hafta" | "oy" | "sana";
@@ -110,43 +112,63 @@ function dm(iso: string): string {
   const [, m, d] = iso.split("-");
   return `${d}.${m}`;
 }
-function monthTitle(iso: string): string {
+function monthTitle(iso: string, lang = "uz"): string {
+  const names = monthNames(lang);
   const [y, m] = iso.split("-").map(Number);
-  return `${MONTHS[(m ?? 1) - 1]} ${y}`;
+  return `${names[(m ?? 1) - 1]} ${y}`;
 }
 
-function timeLabel(mode: Mode, range: DateRange, today: string): string {
+function modesFor(lang: string): { key: Mode; label: string }[] {
+  return [
+    { key: "bugun", label: pick(lang, "Bugun", "Сегодня") },
+    { key: "hafta", label: pick(lang, "Shu hafta", "Эта неделя") },
+    { key: "oy", label: pick(lang, "Oy", "Месяц") },
+    { key: "sana", label: pick(lang, "📅 Sana", "📅 Дата") },
+  ];
+}
+
+function compareFor(lang: string): Record<Mode, string> {
+  return {
+    bugun: pick(lang, "kechaga nisbatan", "к вчера"),
+    hafta: pick(lang, "o'tgan haftaga nisbatan", "к прошлой неделе"),
+    oy: pick(lang, "o'tgan oyga nisbatan", "к прошлому месяцу"),
+    sana: pick(lang, "oldingi davrga nisbatan", "к прошлому периоду"),
+  };
+}
+
+function timeLabel(mode: Mode, range: DateRange, today: string, lang = "uz"): string {
   if (mode === "sana") {
     return range.start === range.end ? dmy(range.start) : `${dmy(range.start)} — ${dmy(range.end)}`;
   }
   if (mode === "bugun") {
-    if (range.start === today) return `Bugun, ${dmy(range.start)}`;
-    if (range.start === addDaysISO(today, -1)) return `Kecha, ${dmy(range.start)}`;
+    if (range.start === today) return `${pick(lang, "Bugun", "Сегодня")}, ${dmy(range.start)}`;
+    if (range.start === addDaysISO(today, -1)) return `${pick(lang, "Kecha", "Вчера")}, ${dmy(range.start)}`;
     return dmy(range.start);
   }
   if (mode === "hafta") {
     const current = mondayOf(today);
     const previous = addDaysISO(current, -7);
     const inner = `${dm(range.start)} — ${dm(range.end)}`;
-    if (range.start === current) return `Shu hafta: ${inner}`;
-    if (range.start === previous) return `O'tgan hafta: ${inner}`;
+    if (range.start === current) return `${pick(lang, "Shu hafta", "Эта неделя")}: ${inner}`;
+    if (range.start === previous) return `${pick(lang, "O'tgan hafta", "Прошлая неделя")}: ${inner}`;
     return inner;
   }
-  const name = monthTitle(range.start);
-  if (range.start === monthRange(today, 0).start) return `Shu oy: ${name}`;
-  if (range.start === monthRange(today, -1).start) return `O'tgan oy: ${name}`;
+  const name = monthTitle(range.start, lang);
+  if (range.start === monthRange(today, 0).start) return `${pick(lang, "Shu oy", "Этот месяц")}: ${name}`;
+  if (range.start === monthRange(today, -1).start) return `${pick(lang, "O'tgan oy", "Прошлый месяц")}: ${name}`;
   return name;
 }
 
-function soom(n: number): string {
-  return `${Math.round(n).toLocaleString("uz-UZ")} so'm`;
+function soom(n: number, lang = "uz"): string {
+  return moneyLabel(lang, Math.round(n));
 }
 
-function dayHeader(iso: string, today: string): string {
+function dayHeader(iso: string, today: string, lang = "uz"): string {
+  const names = monthNames(lang);
   const [y, m, d] = iso.split("-").map(Number);
-  const label = `${d}-${MONTHS[(m ?? 1) - 1]}`;
-  if (iso === today) return `Bugun, ${label}`;
-  if (iso === addDaysISO(today, -1)) return `Kecha, ${label}`;
+  const label = `${d}-${names[(m ?? 1) - 1]}`;
+  if (iso === today) return `${pick(lang, "Bugun", "Сегодня")}, ${label}`;
+  if (iso === addDaysISO(today, -1)) return `${pick(lang, "Kecha", "Вчера")}, ${label}`;
   return y ? label : iso;
 }
 
@@ -169,7 +191,7 @@ function inRange(date: string, range: DateRange): boolean {
 }
 
 function TimeNav({
-  mode, label, forwardDisabled, onMode, onPrev, onNext,
+  mode, label, forwardDisabled, onMode, onPrev, onNext, lang,
 }: {
   mode: Mode;
   label: string;
@@ -177,11 +199,12 @@ function TimeNav({
   onMode: (m: Mode) => void;
   onPrev: () => void;
   onNext: () => void;
+  lang: string;
 }) {
   return (
     <div className="mb-3 space-y-2.5" data-testid="expense-time-nav">
       <div role="tablist" data-testid="expense-period-tabs" className="relative z-10 flex flex-nowrap gap-1 bg-background/60 p-1 rounded-2xl border border-white/6">
-        {MODES.map(({ key, label: tab }) => (
+        {modesFor(lang).map(({ key, label: tab }) => (
           <button
             key={key}
             type="button"
@@ -210,7 +233,7 @@ function TimeNav({
         <button
           type="button"
           data-testid="expense-prev"
-          aria-label="Oldingi davr"
+          aria-label={pick(lang, "Oldingi davr", "Предыдущий период")}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.preventDefault();
@@ -222,12 +245,12 @@ function TimeNav({
           <ChevronLeft className="w-4 h-4" />
         </button>
         <div data-testid="expense-time-label" className="flex-1 min-w-0 text-center text-xs sm:text-sm font-medium leading-snug">
-          Tanlangan vaqt: {label}
+          {pick(lang, "Tanlangan vaqt", "Выбранное время")}: {label}
         </div>
         <button
           type="button"
           data-testid="expense-next"
-          aria-label="Keyingi davr"
+          aria-label={pick(lang, "Keyingi davr", "Следующий период")}
           disabled={forwardDisabled}
           aria-disabled={forwardDisabled}
           onPointerDown={(e) => e.stopPropagation()}
@@ -246,12 +269,13 @@ function TimeNav({
 }
 
 function DateRangePicker({
-  today, initial, onApply, onCancel,
+  today, initial, onApply, onCancel, lang,
 }: {
   today: string;
   initial: DateRange | null;
   onApply: (range: DateRange) => void;
   onCancel: () => void;
+  lang: string;
 }) {
   const [cursor, setCursor] = useState(() => (initial?.start ?? today).slice(0, 7));
   const [draftStart, setDraftStart] = useState<string | null>(initial?.start ?? null);
@@ -288,19 +312,19 @@ function DateRangePicker({
   return (
     <div data-testid="expense-date-picker" className="mb-4 rounded-2xl border border-white/10 bg-background p-3">
       <div className="flex items-center justify-between mb-2">
-        <button type="button" aria-label="Oldingi oy" onClick={() => setCursor(monthRange(`${cursor}-01`, -1).start.slice(0, 7))}
+        <button type="button" aria-label={pick(lang, "Oldingi oy", "Предыдущий месяц")} onClick={() => setCursor(monthRange(`${cursor}-01`, -1).start.slice(0, 7))}
           className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center">
           <ChevronLeft className="w-4 h-4" />
         </button>
-        <div className="text-sm font-semibold">{monthTitle(`${cursor}-01`)}</div>
-        <button type="button" aria-label="Keyingi oy" aria-disabled={cursor >= today.slice(0, 7)}
+        <div className="text-sm font-semibold">{monthTitle(`${cursor}-01`, lang)}</div>
+        <button type="button" aria-label={pick(lang, "Keyingi oy", "Следующий месяц")} aria-disabled={cursor >= today.slice(0, 7)}
           onClick={() => { if (cursor < today.slice(0, 7)) setCursor(monthRange(`${cursor}-01`, 1).start.slice(0, 7)); }}
           className={`w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center ${cursor >= today.slice(0, 7) ? "opacity-30 pointer-events-none" : ""}`}>
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
       <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-muted-foreground mb-1">
-        {WEEKDAYS.map((w) => <div key={w}>{w}</div>)}
+        {weekdayNames(lang).map((w) => <div key={w}>{w}</div>)}
       </div>
       <div className="grid grid-cols-7 gap-1">
         {cells.map((iso, i) => {
@@ -323,13 +347,13 @@ function DateRangePicker({
       </div>
       <div className="mt-3 text-center text-xs text-muted-foreground min-h-4">
         {draftStart && draftEnd && draftEnd !== draftStart
-          ? `Tanlangan oraliq: ${dmy(draftStart)} — ${dmy(draftEnd)}`
+          ? `${pick(lang, "Tanlangan oraliq", "Выбранный период")}: ${dmy(draftStart)} — ${dmy(draftEnd)}`
           : draftStart
-            ? `Tanlangan sana: ${dmy(draftStart)}`
+            ? `${pick(lang, "Tanlangan sana", "Выбранная дата")}: ${dmy(draftStart)}`
             : ""}
       </div>
       <div className="mt-3 flex gap-2">
-        <button type="button" onClick={onCancel} className="flex-1 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground">Bekor qilish</button>
+        <button type="button" onClick={onCancel} className="flex-1 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground">{pick(lang, "Bekor qilish", "Отмена")}</button>
         <button type="button" disabled={!draftStart}
           onClick={() => {
             if (!draftStart) return;
@@ -337,11 +361,19 @@ function DateRangePicker({
             onApply({ start: draftStart, end });
           }}
           className="flex-1 py-2 rounded-xl bg-[#F59E0B] text-black text-sm font-semibold disabled:opacity-30">
-          Tanlash
+          {pick(lang, "Tanlash", "Выбрать")}
         </button>
       </div>
     </div>
   );
+}
+
+function expenseCatLabel(lang: string, cat: string): string {
+  if (cat.includes("Ish qurollari")) return pick(lang, cat, "✂️ Инструменты");
+  if (cat.includes("Ijara")) return pick(lang, cat, "🏢 Аренда и коммуналка");
+  if (cat.includes("Shaxsiy")) return pick(lang, cat, "🍔 Личное");
+  if (cat.includes("Boshqa")) return pick(lang, cat, "📦 Другое");
+  return cat;
 }
 
 function ExpenseEditDialog({
@@ -352,6 +384,7 @@ function ExpenseEditDialog({
   onClose: () => void;
   onSaved: (row: ExpenseRow) => void;
 }) {
+  const { lang } = useTranslation();
   const [title, setTitle] = useState(expense.title);
   const [amountRaw, setAmountRaw] = useState(String(Math.round(Number(expense.amount))));
   const [category, setCategory] = useState(expense.category);
@@ -400,11 +433,11 @@ function ExpenseEditDialog({
 
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center" data-testid="expense-edit-modal">
-      <button type="button" aria-label="Yopish" className="absolute inset-0 bg-black/65" onClick={onClose} />
+      <button type="button" aria-label={pick(lang, "Yopish", "Закрыть")} className="absolute inset-0 bg-black/65" onClick={onClose} />
       <div className="relative w-full max-w-md bg-card rounded-t-3xl sm:rounded-3xl p-5 space-y-4 border border-white/10">
-        <div className="font-display font-bold text-lg">Xarajatni tahrirlash</div>
+        <div className="font-display font-bold text-lg">{pick(lang, "Xarajatni tahrirlash", "Изменить расход")}</div>
         <label className="block">
-          <span className="text-xs text-muted-foreground">Nomi</span>
+          <span className="text-xs text-muted-foreground">{pick(lang, "Nomi", "Название")}</span>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -412,7 +445,7 @@ function ExpenseEditDialog({
           />
         </label>
         <label className="block">
-          <span className="text-xs text-muted-foreground">Miqdor (so'm)</span>
+          <span className="text-xs text-muted-foreground">{pick(lang, "Miqdor (so'm)", "Сумма (сум)")}</span>
           <input
             inputMode="numeric"
             value={amountRaw ? Number(amountRaw).toLocaleString("uz-UZ") : ""}
@@ -421,7 +454,7 @@ function ExpenseEditDialog({
           />
         </label>
         <div>
-          <div className="text-xs text-muted-foreground mb-2">Kategoriya</div>
+          <div className="text-xs text-muted-foreground mb-2">{pick(lang, "Kategoriya", "Категория")}</div>
           <div className="flex flex-wrap gap-2">
             {cats.map((cat) => (
               <button
@@ -434,13 +467,13 @@ function ExpenseEditDialog({
                     : "bg-white/4 border-white/8 text-muted-foreground"
                 }`}
               >
-                {cat}
+                {expenseCatLabel(lang, cat)}
               </button>
             ))}
           </div>
         </div>
         <label className="block">
-          <span className="text-xs text-muted-foreground">Sana</span>
+          <span className="text-xs text-muted-foreground">{pick(lang, "Sana", "Дата")}</span>
           <input
             type="date"
             max={today}
@@ -449,9 +482,9 @@ function ExpenseEditDialog({
             className="mt-1 w-full h-12 px-4 rounded-2xl bg-background/60 border border-white/10 text-sm focus:outline-none focus:border-[#F59E0B]/60"
           />
         </label>
-        {error && <div className="text-sm text-red-400">Saqlanmadi. Qayta urinib ko'ring.</div>}
+        {error && <div className="text-sm text-red-400">{pick(lang, "Saqlanmadi. Qayta urinib ko'ring.", "Не сохранилось. Попробуйте ещё раз.")}</div>}
         <div className="flex gap-2">
-          <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-white/10 text-sm text-muted-foreground">Bekor qilish</button>
+          <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-white/10 text-sm text-muted-foreground">{pick(lang, "Bekor qilish", "Отмена")}</button>
           <button
             type="button"
             data-testid="expense-edit-save"
@@ -459,7 +492,7 @@ function ExpenseEditDialog({
             onClick={save}
             className="flex-1 py-3 rounded-xl bg-[#F59E0B] text-black text-sm font-semibold disabled:opacity-40"
           >
-            {saving ? "Saqlanmoqda..." : "Saqlash"}
+            {saving ? pick(lang, "Saqlanmoqda...", "Сохраняется...") : pick(lang, "Saqlash", "Сохранить")}
           </button>
         </div>
       </div>
@@ -469,6 +502,7 @@ function ExpenseEditDialog({
 }
 
 export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
+  const { lang } = useTranslation();
   const today = tashkentTodayISO();
   const [mode, setMode] = useState<Mode>("bugun");
   const [offset, setOffset] = useState(0);
@@ -601,11 +635,12 @@ export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <BottomSheet title="Xarajatlar tahlili" onClose={onClose}>
+      <BottomSheet title={pick(lang, "Xarajatlar tahlili", "Анализ расходов")} onClose={onClose}>
         <TimeNav
           mode={pickerOpen || mode === "sana" ? "sana" : mode}
-          label={timeLabel(mode, range, today)}
+          label={timeLabel(mode, range, today, lang)}
           forwardDisabled={forwardDisabled}
+          lang={lang}
           onMode={chooseMode}
           onPrev={() => setOffset((n) => n - 1)}
           onNext={() => setOffset((n) => (n >= 0 && mode !== "sana" ? n : n + 1))}
@@ -614,10 +649,11 @@ export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
         {pickerOpen && (
           <div ref={pickerRef}>
             <p className="text-center text-xs font-medium text-[#F59E0B] mb-2 px-2">
-              Bitta kunni tanlash uchun ustiga bosing yoki oraliqni belgilang
+              {pick(lang, "Bitta kunni tanlash uchun ustiga bosing yoki oraliqni belgilang", "Нажмите на день или выберите период")}
             </p>
             <DateRangePicker
               today={today}
+              lang={lang}
               initial={mode === "sana" ? range : null}
               onCancel={() => setPickerOpen(false)}
               onApply={(picked) => {
@@ -637,46 +673,46 @@ export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
           </div>
         )}
         {!loading && error && rows.length === 0 && (
-          <div className="text-center py-10 text-sm text-muted-foreground">Ma'lumot yuklanmadi</div>
+          <div className="text-center py-10 text-sm text-muted-foreground">{pick(lang, "Ma'lumot yuklanmadi", "Не удалось загрузить")}</div>
         )}
 
         {(rows.length > 0 || !loading) && !error && (
           <div className="space-y-5">
             <div className="grid grid-cols-2 gap-2" data-testid="expense-kpis">
               <div className="col-span-2 rounded-2xl border border-white/10 bg-white/4 p-3.5">
-                <div className="text-xs text-muted-foreground">Jami xarajat</div>
-                <div data-testid="expense-total" className="mt-1 text-2xl font-bold tabular-nums">{soom(total)}</div>
+                <div className="text-xs text-muted-foreground">{pick(lang, "Jami xarajat", "Всего расходов")}</div>
+                <div data-testid="expense-total" className="mt-1 text-2xl font-bold tabular-nums">{soom(total, lang)}</div>
                 <div data-testid="expense-change" className={`mt-1 text-sm font-semibold ${changeColor}`}>
                   {change > 0 ? "+" : ""}{change}%
                 </div>
-                <div className="text-[11px] text-muted-foreground">{COMPARE[mode]}</div>
+                <div className="text-[11px] text-muted-foreground">{compareFor(lang)[mode]}</div>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/4 p-3.5">
-                <div className="text-xs text-muted-foreground">Xarajatlar soni</div>
-                <div data-testid="expense-count" className="mt-1 text-xl font-bold tabular-nums">{count} ta</div>
+                <div className="text-xs text-muted-foreground">{pick(lang, "Xarajatlar soni", "Количество расходов")}</div>
+                <div data-testid="expense-count" className="mt-1 text-xl font-bold tabular-nums">{countLabel(lang, count)}</div>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/4 p-3.5">
-                <div className="text-xs text-muted-foreground">O'rtacha xarajat</div>
-                <div data-testid="expense-avg" className="mt-1 text-xl font-bold tabular-nums">{soom(average)}</div>
+                <div className="text-xs text-muted-foreground">{pick(lang, "O'rtacha xarajat", "Средний расход")}</div>
+                <div data-testid="expense-avg" className="mt-1 text-xl font-bold tabular-nums">{soom(average, lang)}</div>
               </div>
             </div>
 
             {count === 0 ? (
               <div data-testid="expense-empty" className="text-center py-10 px-4">
                 <Receipt className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-                <p className="text-sm text-muted-foreground">Ushbu davrda xarajatlar mavjud emas</p>
+                <p className="text-sm text-muted-foreground">{pick(lang, "Ushbu davrda xarajatlar mavjud emas", "За этот период расходов нет")}</p>
               </div>
             ) : (
               <>
                 <div data-testid="expense-categories">
                   <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                    Kategoriyalar bo'yicha
+                    {pick(lang, "Kategoriyalar bo'yicha", "По категориям")}
                   </div>
                   <div className="space-y-3">
                     {categories.map((cat, index) => (
                       <div key={cat.name}>
                         <div className="flex items-center justify-between text-sm mb-1 gap-2">
-                          <span className="truncate">{cat.name}</span>
+                          <span className="truncate">{expenseCatLabel(lang, cat.name)}</span>
                           <span className="shrink-0 font-semibold tabular-nums">{cat.percent}%</span>
                         </div>
                         <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
@@ -691,10 +727,10 @@ export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
                 </div>
 
                 <div data-testid="expense-history" className="space-y-5">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tarix</div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{pick(lang, "Tarix", "История")}</div>
                   {[...grouped.entries()].map(([date, items]) => (
                     <div key={date}>
-                      <div className="text-xs font-semibold text-muted-foreground mb-2">{dayHeader(date, today)}</div>
+                      <div className="text-xs font-semibold text-muted-foreground mb-2">{dayHeader(date, today, lang)}</div>
                       <div className="space-y-2">
                         {items.map((row) => (
                           <div key={row.id} data-testid="expense-row" className="flex items-center gap-2 py-2.5 px-3 rounded-2xl bg-white/3 border border-white/6">
@@ -702,12 +738,12 @@ export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
                               <div className="text-sm font-semibold truncate">{row.title}</div>
                               <div className="mt-0.5">
                                 <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/6 text-muted-foreground/80">
-                                  {row.category}
+                                  {expenseCatLabel(lang, row.category)}
                                 </span>
                               </div>
                             </div>
                             <div className="text-sm font-bold text-red-400/90 tabular-nums shrink-0">
-                              −{soom(Number(row.amount))}
+                              −{soom(Number(row.amount), lang)}
                             </div>
                             <button
                               type="button"
@@ -762,9 +798,9 @@ export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
             onClick={() => setPendingDelete(null)}
           />
           <div className="relative w-full max-w-sm bg-card border border-white/10 rounded-3xl p-6 shadow-2xl">
-            <h2 className="text-lg font-bold text-foreground text-center mb-2">Xarajatni o'chirish</h2>
+            <h2 className="text-lg font-bold text-foreground text-center mb-2">{pick(lang, "Xarajatni o'chirish", "Удалить расход")}</h2>
             <p className="text-sm text-muted-foreground text-center leading-relaxed mb-6">
-              Ushbu xarajatni o'chirishni tasdiqlaysizmi? Bu amalni ortga qaytarib bo'lmaydi.
+              {pick(lang, "Ushbu xarajatni o'chirishni tasdiqlaysizmi? Bu amalni ortga qaytarib bo'lmaydi.", "Удалить этот расход? Вернуть его будет нельзя.")}
             </p>
             <div className="flex gap-3">
               <button
@@ -773,7 +809,7 @@ export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
                 onClick={() => setPendingDelete(null)}
                 className="flex-1 py-3 rounded-2xl bg-white/6 border border-white/10 text-foreground font-semibold text-sm"
               >
-                Bekor qilish
+                {pick(lang, "Bekor qilish", "Отмена")}
               </button>
               <button
                 type="button"
@@ -785,7 +821,7 @@ export function ExpensesAnalyticsSheet({ onClose }: { onClose: () => void }) {
                 }}
                 className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm"
               >
-                O'chirish
+                {pick(lang, "O'chirish", "Удалить")}
               </button>
             </div>
           </div>

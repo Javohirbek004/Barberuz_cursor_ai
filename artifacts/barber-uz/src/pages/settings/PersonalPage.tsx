@@ -2,6 +2,8 @@ import "leaflet/dist/leaflet.css";
 import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import { APP_ORIGIN } from "@/lib/config";
 import { useBotUsername } from "@/lib/bot-link";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { pick } from "@/i18n/pick";
 import { PageLinkPanel } from "@/components/PageLinkPanel";
 import { PageTabs } from "@/components/PageTabs";
 import { SpecialtyTags, SPECIALTY_PILL_CLASS, SpecialtyTagScroller } from "@/components/SpecialtyTags";
@@ -334,6 +336,7 @@ function GalleryStripEdit({
   images: string[];
   onChange: (imgs: string[]) => void;
 }) {
+  const { lang } = useTranslation();
   const fileRef = useRef<HTMLInputElement>(null);
 
   function handleAdd(e: React.ChangeEvent<HTMLInputElement>) {
@@ -360,8 +363,8 @@ function GalleryStripEdit({
           className="w-full h-28 rounded-2xl border border-dashed border-white/15 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:border-white/30 hover:text-foreground transition-all"
         >
           <Camera className="w-5 h-5" />
-          <span className="text-xs">Rasm qo'shish</span>
-          <span className="text-[10px] text-muted-foreground/40">Birinchi rasm muqova bo'ladi</span>
+          <span className="text-xs">{pick(lang, "Rasm qo'shish", "Добавить фото")}</span>
+          <span className="text-[10px] text-muted-foreground/40">{pick(lang, "Birinchi rasm muqova bo'ladi", "Первое фото станет обложкой")}</span>
         </button>
       ) : (
         <div className="overflow-x-auto scrollbar-hide">
@@ -429,6 +432,7 @@ function completionChecks(profile: ProfileData) {
 }
 
 function CompletionBar({ profile }: { profile: ProfileData }) {
+  const { lang } = useTranslation();
   const checks = completionChecks(profile);
   const done = checks.filter(c => c.done).length;
   const pct = Math.round((done / checks.length) * 100);
@@ -437,7 +441,7 @@ function CompletionBar({ profile }: { profile: ProfileData }) {
   return (
     <div className="bg-card border border-white/6 rounded-2xl p-4 mb-4">
       <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-semibold text-foreground">Profil to'ldirilishi</p>
+        <p className="text-xs font-semibold text-foreground">{pick(lang, "Profil to'ldirilishi", "Заполненность профиля")}</p>
         <p className="text-xs font-bold text-primary">{pct}%</p>
       </div>
       <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
@@ -608,6 +612,7 @@ function AsosiyTab({
   onSave: () => void;
   saving: boolean;
 }) {
+  const { lang } = useTranslation();
   const imgRef = useRef<HTMLInputElement>(null);
   const emojiSlotRef = useRef<HTMLInputElement>(null);
   const tagInputRef = useRef<HTMLInputElement>(null);
@@ -754,7 +759,7 @@ function AsosiyTab({
     <div className="space-y-6 pb-28">
       {/* Avatar */}
       <div className="space-y-2">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Avatar (profil rasmi)</label>
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{pick(lang, "Avatar (profil rasmi)", "Фото профиля")}</label>
         <div className="flex items-center gap-4">
           <div
             className="w-16 h-16 rounded-2xl border border-white/12 bg-white/5 overflow-hidden cursor-pointer shrink-0 relative hover:border-white/25 transition-colors"
@@ -772,7 +777,7 @@ function AsosiyTab({
             <button onClick={() => imgRef.current?.click()} className="text-xs text-primary font-semibold hover:text-primary/80 transition-colors">
               Rasm yuklash
             </button>
-            <p className="text-xs text-muted-foreground/50 mt-0.5">Kvadrat rasm tavsiya etiladi</p>
+            <p className="text-xs text-muted-foreground/50 mt-0.5">{pick(lang, "Kvadrat rasm tavsiya etiladi", "Лучше квадратное фото")}</p>
             {profile.avatarUrl && (
               <button onClick={() => set("avatarUrl", "")} className="text-xs text-destructive/70 hover:text-destructive transition-colors mt-0.5 block">
                 O'chirish
@@ -785,7 +790,7 @@ function AsosiyTab({
 
       {/* Name */}
       <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ism / Nom *</label>
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{pick(lang, "Ism / Nom *", "Имя *")}</label>
         <input
           value={profile.name}
           onChange={e => set("name", e.target.value)}
@@ -797,7 +802,7 @@ function AsosiyTab({
 
       {/* Brand name */}
       <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Brend nomi (ixtiyoriy)</label>
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{pick(lang, "Brend nomi (ixtiyoriy)", "Название бренда (необязательно)")}</label>
         <input
           value={profile.brandName}
           onChange={e => set("brandName", e.target.value)}
@@ -808,13 +813,13 @@ function AsosiyTab({
 
       {/* Bio */}
       <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tavsif (Bio)</label>
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{pick(lang, "Tavsif (Bio)", "Описание")}</label>
         <textarea
           value={profile.bio}
           onChange={e => set("bio", e.target.value)}
           rows={3}
           maxLength={200}
-          placeholder="O'zingiz yoki saloningiz haqida qisqa tavsif..."
+          placeholder={pick(lang, "O'zingiz yoki saloningiz haqida qisqa tavsif...", "Коротко о себе или салоне...")}
           className="w-full px-4 py-3 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors resize-none"
         />
         <p className="text-xs text-muted-foreground/40 text-right">{profile.bio.length} / 200</p>
@@ -823,7 +828,7 @@ function AsosiyTab({
 
       {/* Speciality tags */}
       <div className="space-y-2">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mutaxassislik teglari</label>
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{pick(lang, "Mutaxassislik teglari", "Теги специализации")}</label>
         <SpecialtyTagScroller>
           {profile.speciality.map((s, i) => (
             <span key={`${s}-${i}`} className={SPECIALTY_PILL_CLASS}>
@@ -897,7 +902,7 @@ function AsosiyTab({
               ref={tagInputRef}
               value={newTag}
               onChange={e => onTagInput(e.target.value)}
-              placeholder="Mutaxassisligingizni yozing..."
+              placeholder={pick(lang, "Mutaxassisligingizni yozing...", "Напишите специализацию...")}
               enterKeyHint="done"
               className="flex-1 min-w-0 h-full bg-transparent border-0 pr-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none"
             />
@@ -922,7 +927,7 @@ function AsosiyTab({
 
       {/* Phone — read-only + visibility toggle */}
       <div className="space-y-2">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Telefon raqam</label>
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{pick(lang, "Telefon raqam", "Номер телефона")}</label>
         <div className="flex items-center gap-3 bg-white/3 border border-white/6 rounded-2xl px-4 py-3">
           <Phone className="w-4 h-4 text-primary/60 shrink-0" />
           <div className="flex-1 min-w-0">
@@ -930,12 +935,12 @@ function AsosiyTab({
               {profile.phone || "Kiritilmagan"}
             </p>
             {profile.phone && (
-              <p className="text-[11px] text-muted-foreground/60 mt-0.5">Telegram orqali tasdiqlangan</p>
+              <p className="text-[11px] text-muted-foreground/60 mt-0.5">{pick(lang, "Telegram orqali tasdiqlangan", "Подтверждено через Telegram")}</p>
             )}
           </div>
         </div>
         <div className="flex items-center justify-between px-1">
-          <span className="text-xs text-muted-foreground">Mijozlarga ko'rsatish</span>
+          <span className="text-xs text-muted-foreground">{pick(lang, "Mijozlarga ko'rsatish", "Показывать клиентам")}</span>
           <button
             onClick={() => set("phoneVisible", !profile.phoneVisible)}
             className={`relative w-10 h-5.5 rounded-full transition-all ${profile.phoneVisible ? "bg-primary" : "bg-white/10"}`}
@@ -948,7 +953,7 @@ function AsosiyTab({
 
       {/* Address / Map */}
       <div className="space-y-2">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Manzil</label>
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{pick(lang, "Manzil", "Адрес")}</label>
 
         {profile.latitude && profile.longitude ? (
           <div className="relative rounded-2xl overflow-hidden border border-white/10" style={{ height: 160 }}>
@@ -987,7 +992,7 @@ function AsosiyTab({
               className="flex-1 h-24 rounded-2xl border border-dashed border-white/15 flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:border-primary/30 hover:text-primary/80 transition-all"
             >
               <MapPin className="w-4 h-4" />
-              <span className="text-xs">Xaritadan tanlash</span>
+              <span className="text-xs">{pick(lang, "Xaritadan tanlash", "Выбрать на карте")}</span>
             </button>
             <button
               onClick={handleGPS}
@@ -1009,7 +1014,7 @@ function AsosiyTab({
         <input
           value={profile.address}
           onChange={e => set("address", e.target.value)}
-          placeholder="Manzilni qo'lda yozish"
+          placeholder={pick(lang, "Manzilni qo'lda yozish", "Написать адрес вручную")}
           className="w-full h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors"
         />
 
@@ -1017,7 +1022,7 @@ function AsosiyTab({
           <input
             value={profile.mapLink}
             onChange={e => set("mapLink", e.target.value)}
-            placeholder="Google Maps / Yandex Maps havolasi"
+            placeholder={pick(lang, "Google Maps / Yandex Maps havolasi", "Ссылка Google Maps / Yandex Maps")}
             className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-xs text-muted-foreground focus:outline-none focus:border-primary/50 transition-colors"
           />
           {safeUrl(profile.mapLink) && (
@@ -1052,11 +1057,11 @@ function AsosiyTab({
 
       {/* Work schedule */}
       <div className="space-y-3">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ish vaqti</label>
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{pick(lang, "Ish vaqti", "Рабочее время")}</label>
 
         {/* 7-day checkboxes */}
         <div>
-          <p className="text-xs text-muted-foreground mb-2">Ish kunlari</p>
+          <p className="text-xs text-muted-foreground mb-2">{pick(lang, "Ish kunlari", "Рабочие дни")}</p>
           <div className="flex gap-2 flex-wrap">
             {DAYS.map(d => {
               const active = profile.workDays.includes(d.key);
@@ -1077,12 +1082,12 @@ function AsosiyTab({
         {/* Hours */}
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Ish boshlanishi</p>
+            <p className="text-xs text-muted-foreground">{pick(lang, "Ish boshlanishi", "Начало работы")}</p>
             <input value={profile.workStart} onChange={e => set("workStart", e.target.value)} placeholder="09:00"
               className="w-full h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm text-center focus:outline-none focus:border-primary/50" />
           </div>
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Ish tugashi</p>
+            <p className="text-xs text-muted-foreground">{pick(lang, "Ish tugashi", "Конец работы")}</p>
             <input value={profile.workEnd} onChange={e => set("workEnd", e.target.value)} placeholder="20:00"
               className="w-full h-10 px-3 rounded-xl bg-white/5 border border-white/8 text-sm text-center focus:outline-none focus:border-primary/50" />
           </div>
@@ -1091,7 +1096,7 @@ function AsosiyTab({
         {/* Lunch */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">Tushlik vaqtini qo'shish</p>
+            <p className="text-xs text-muted-foreground">{pick(lang, "Tushlik vaqtini qo'shish", "Добавить обед")}</p>
             <button
               onClick={() => set("lunchEnabled", !profile.lunchEnabled)}
               className={`relative rounded-full transition-all shrink-0`}
@@ -1118,7 +1123,7 @@ function AsosiyTab({
 
       {/* Social */}
       <div className="space-y-3">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ijtimoiy tarmoqlar</label>
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{pick(lang, "Ijtimoiy tarmoqlar", "Соцсети")}</label>
 
         {/* Telegram — read-only, clickable if username set */}
         <div className="flex items-center gap-2">
@@ -1168,8 +1173,8 @@ function AsosiyTab({
         className="w-full h-12 rounded-2xl bg-primary text-black font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:bg-primary/90"
       >
         {saving
-          ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Saqlanmoqda...</>
-          : <><Save className="w-4 h-4" /> Saqlash</>
+          ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> {pick(lang, "Saqlanmoqda...", "Сохраняется...")}</>
+          : <><Save className="w-4 h-4" /> {pick(lang, "Saqlash", "Сохранить")}</>
         }
       </button>
     </div>
@@ -1255,6 +1260,7 @@ function XizmatlarTab({
   services: ServiceItem[];
   onReload: () => void;
 }) {
+  const { lang } = useTranslation();
   const [activeCat, setActiveCat] = useState<string | null>(null);
   const [addingOrEditing, setAddingOrEditing] = useState<"new" | string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1500,14 +1506,14 @@ function XizmatlarTab({
         {filtered.length === 0 && (
           <div className="text-center py-12 border border-dashed border-white/8 rounded-2xl">
             <Tag className="w-8 h-8 text-muted-foreground/20 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">Bu kategoriyada xizmat yo'q</p>
+            <p className="text-sm text-muted-foreground">{pick(lang, "Bu kategoriyada xizmat yo'q", "В этой категории нет услуг")}</p>
           </div>
         )}
       </div>
 
       <button onClick={() => setAddingOrEditing("new")}
         className="w-full h-12 rounded-2xl border border-dashed border-white/15 text-muted-foreground hover:text-foreground hover:border-white/25 hover:bg-white/3 transition-all flex items-center justify-center gap-2 text-sm font-semibold">
-        <Plus className="w-4 h-4" /> Xizmat qo'shish
+        <Plus className="w-4 h-4" /> {pick(lang, "Xizmat qo'shish", "Добавить услугу")}
       </button>
 
       {/* Rename category modal */}
@@ -1518,7 +1524,7 @@ function XizmatlarTab({
             <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 280 }}
               className="relative w-full max-w-md bg-card rounded-t-3xl z-10 border-t border-white/8 px-5 py-6" onClick={e => e.stopPropagation()}>
               <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-5" />
-              <h3 className="text-base font-bold text-foreground mb-4">Kategoriyani nomlash</h3>
+              <h3 className="text-base font-bold text-foreground mb-4">{pick(lang, "Kategoriyani nomlash", "Название категории")}</h3>
               <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)} onKeyDown={e => e.key === "Enter" && handleRename()}
                 className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50 mb-4" />
               <div className="flex gap-3">
@@ -2227,6 +2233,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
 
 export default function PersonalPage() {
   const { user } = useAuth();
+  const { lang } = useTranslation();
   const isTeam = user?.mode === "team";
 
   const [tab, setTab] = useState<Tab>("asosiy");
@@ -2285,16 +2292,16 @@ export default function PersonalPage() {
     try {
       const updated = await apiPut("/api/settings/profile", profileToApi(profile));
       setProfile(apiToProfile(updated));
-      setSaveMsg({ type: "ok", text: "Muvaffaqiyatli saqlandi ✓" });
+      setSaveMsg({ type: "ok", text: pick(lang, "Muvaffaqiyatli saqlandi ✓", "Успешно сохранено ✓") });
       setTimeout(() => setSaveMsg(null), 3000);
-    } catch { setSaveMsg({ type: "err", text: "Saqlashda xatolik. Qayta urinib ko'ring." }); }
+    } catch { setSaveMsg({ type: "err", text: pick(lang, "Saqlashda xatolik. Qayta urinib ko'ring.", "Не сохранилось. Попробуйте ещё раз.") }); }
     finally { setSaving(false); }
   }
 
-  const pageTitle = isTeam ? "🌐 Barbershop sahifasi" : "🌐 Mening sahifam";
+  const pageTitle = isTeam ? pick(lang, "🌐 Barbershop sahifasi", "🌐 Страница барбершопа") : pick(lang, "🌐 Mening sahifam", "🌐 Моя страница");
   const TABS: { id: Tab; label: string }[] = [
-    { id: "asosiy", label: "🏠 Asosiy" },
-    { id: "xizmatlar", label: "📋 Xizmatlar" },
+    { id: "asosiy", label: pick(lang, "🏠 Asosiy", "🏠 Основное") },
+    { id: "xizmatlar", label: pick(lang, "📋 Xizmatlar", "📋 Услуги") },
     { id: "qr", label: "🔗 QR & Link" },
   ];
 
@@ -2313,7 +2320,7 @@ export default function PersonalPage() {
           className={`flex items-center gap-1.5 h-9 px-3 rounded-2xl text-xs font-semibold border transition-all shrink-0 ${preview ? "bg-amber-500/15 border-amber-500/30 text-amber-400" : "bg-white/5 border-white/8 text-muted-foreground hover:text-foreground"}`}
         >
           <Eye className="w-3.5 h-3.5" />
-          {preview ? "Tahrirlash" : "Ko'rish"}
+          {preview ? pick(lang, "Tahrirlash", "Редактировать") : pick(lang, "Ko'rish", "Смотреть")}
         </button>
       </div>
 
@@ -2330,8 +2337,8 @@ export default function PersonalPage() {
       {preview ? (
         <>
           <div className="sticky top-0 z-30 -mx-4 px-4 py-2.5 mb-0 bg-amber-500/10 border-b border-amber-500/20 backdrop-blur-md flex items-center justify-between">
-            <p className="text-xs text-amber-400 font-semibold">👁 Ko'rish rejimi — mijoz qanday ko'radi</p>
-            <button onClick={() => setPreview(false)} className="text-xs text-amber-300 font-bold underline underline-offset-2">← Tahrirlash</button>
+            <p className="text-xs text-amber-400 font-semibold">{pick(lang, "👁 Ko'rish rejimi — mijoz qanday ko'radi", "👁 Просмотр — как видит клиент")}</p>
+            <button onClick={() => setPreview(false)} className="text-xs text-amber-300 font-bold underline underline-offset-2">{pick(lang, "← Tahrirlash", "← Редактировать")}</button>
           </div>
           <CustomerView profile={profile} services={services} isTeam={isTeam} barberId={user?.id || ""} previewMode={true} />
         </>
