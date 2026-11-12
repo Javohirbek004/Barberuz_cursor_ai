@@ -441,7 +441,7 @@ function FreeSlotModal({ open, onClose, slots, dayOff = false }: {
           <div className="text-center py-10 text-muted-foreground text-sm">{pick(lang, "Hozircha bo'sh vaqt yo'q 😔", "Свободного времени пока нет 😔")}</div>
         ) : (
           <>
-            <SlotPeriodTabs value={period} onChange={setPeriod} />
+            <SlotPeriodTabs value={period} onChange={setPeriod} lang={lang} />
             {visible.length === 0 ? (
               <p className="text-sm text-muted-foreground py-6 text-center">{pick(lang, "Bu vaqt oralig'ida bo'sh joy yo'q", "В этом промежутке свободных окон нет")}</p>
             ) : (
