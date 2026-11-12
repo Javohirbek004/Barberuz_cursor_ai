@@ -10,7 +10,7 @@ export function SpecialtyTagScroller({ children }: { children: ReactNode }) {
   return <div className={SPECIALTY_TAG_ROW_CLASS}>{children}</div>;
 }
 
-export function SpecialtyTags({ value }: { value: string | string[] | null | undefined }) {
+export function SpecialtyTags({ value, heading = "Mutaxassislik" }: { value: string | string[] | null | undefined; heading?: string }) {
   const tags = parseSpecializations(value);
   if (tags.length === 0) return null;
 
@@ -18,7 +18,7 @@ export function SpecialtyTags({ value }: { value: string | string[] | null | und
     <div>
       <div className="mb-2.5 flex items-center gap-2">
         <span className="text-sm" aria-hidden="true">⭐</span>
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Mutaxassislik</span>
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">{heading}</span>
         <div className="h-px flex-1 bg-white/6" />
       </div>
       <SpecialtyTagScroller>
