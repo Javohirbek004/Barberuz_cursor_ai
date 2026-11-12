@@ -133,7 +133,8 @@ async function deleteRegistrationPrompts(chatId: number) {
 }
 
 const CLIENT_MENU_BOOKINGS = "📅 Mening bronlarim";
-const CLIENT_MENU_REBOOK = "✂️ Qayta bron";
+const CLIENT_MENU_REBOOK = "🔄 Qayta bron qilish";
+const CLIENT_MENU_REBOOK_OLD = "✂️ Qayta bron";
 const CLIENT_MENU_CONTACT = "📞 Aloqa";
 
 function clientReplyKeyboard() {
@@ -866,6 +867,7 @@ export async function handleTelegramUpdate(update: unknown) {
   if (
     text === CLIENT_MENU_BOOKINGS ||
     text === CLIENT_MENU_REBOOK ||
+    text === CLIENT_MENU_REBOOK_OLD ||
     text === CLIENT_MENU_CONTACT
   ) {
     await handleClientMenu(chatId, text);
@@ -2631,7 +2633,8 @@ async function confirmBookingSession(
       })
     : {
         text: `🥳 <b>Broningiz qabul qilindi, ${shownName}!</b>\n\n✂️ Xizmat: ${serviceNames}\n📅 Sana: ${formatDateLabel(data.date)}\n⏰ Vaqt: ${data.time}`,
-        reply_markup: undefined as undefined,
+        reply_markup: clientMenuKeyboard(),
+        cancelMarkup: null,
       };
 
   const sent = await callTelegram("sendMessage", {
@@ -2641,6 +2644,13 @@ async function confirmBookingSession(
     disable_web_page_preview: true,
     ...(receipt.reply_markup ? { reply_markup: receipt.reply_markup } : {}),
   }) as { ok?: boolean } | null;
+  if (sent?.ok && receipt.cancelMarkup) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Bronni bekor qilmoqchi bo‘lsangiz, shu tugmani bosing.",
+      reply_markup: receipt.cancelMarkup,
+    });
+  }
 
   if (sent?.ok && bookingRowId) {
     await db.update(bookingsTable).set({
@@ -2839,14 +2849,14 @@ async function latestClientBarber(chatId: number) {
 
 async function handleClientMenu(chatId: number, text: string) {
   const barber = await latestClientBarber(chatId);
-  if (text === CLIENT_MENU_REBOOK) {
+  if (text === CLIENT_MENU_REBOOK || text === CLIENT_MENU_REBOOK_OLD) {
     const slug = barber?.username?.trim();
     const url = slug ? `${publicSiteUrl()}/${encodeURIComponent(slug)}?bron=1` : publicSiteUrl();
     await callTelegram("sendMessage", {
       chat_id: chatId,
       text: "Qayta bron qilish uchun pastdagi tugmani bosing.",
       reply_markup: {
-        inline_keyboard: [[{ text: "✂️ Qayta bron", web_app: { url } }]],
+        inline_keyboard: [[{ text: "🔄 Qayta bron qilish", web_app: { url } }]],
       },
     });
     return;

@@ -195,7 +195,7 @@ export function clientMenuKeyboard() {
   return {
     keyboard: [
       [{ text: "📅 Mening bronlarim" }],
-      [{ text: "✂️ Qayta bron" }, { text: "📞 Aloqa" }],
+      [{ text: "🔄 Qayta bron qilish" }, { text: "📞 Aloqa" }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -260,7 +260,11 @@ export function clientReceiptMessage(input: {
   time: string;
   minutesLeft: number;
   bookingId?: string | null;
-}): { text: string; reply_markup: ReturnType<typeof clientMenuKeyboard> | ReturnType<typeof clientCancelKeyboard> } {
+}): {
+  text: string;
+  reply_markup: ReturnType<typeof clientMenuKeyboard>;
+  cancelMarkup: ReturnType<typeof clientCancelKeyboard> | null;
+} {
   const limit = normalizeCancelLimit(input.barber.cancelLimit);
   const canCancel = input.minutesLeft > limit && !!input.bookingId;
   const text = lines(
@@ -280,7 +284,8 @@ export function clientReceiptMessage(input: {
   );
   return {
     text,
-    reply_markup: canCancel ? clientCancelKeyboard(input.bookingId!) : clientMenuKeyboard(),
+    reply_markup: clientMenuKeyboard(),
+    cancelMarkup: canCancel ? clientCancelKeyboard(input.bookingId!) : null,
   };
 }
 
@@ -631,6 +636,11 @@ export async function deliverBookingReceipt(
   });
   const ok = await send(chat, message.text, { reply_markup: message.reply_markup });
   if (!ok) return false;
+  if (message.cancelMarkup) {
+    await send(chat, "Bronni bekor qilmoqchi bo‘lsangiz, shu tugmani bosing.", {
+      reply_markup: message.cancelMarkup,
+    });
+  }
 
   await db.update(bookingsTable).set({
     clientTelegramId: chat,
