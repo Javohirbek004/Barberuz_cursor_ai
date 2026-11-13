@@ -157,7 +157,7 @@ export default function Register() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-          <div className="space-y-5 rounded-3xl border border-white/12 bg-[#16181c]/80 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8">
+          <div className="space-y-5 rounded-3xl border border-white/12 bg-[#16181c]/50 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8">
             <Field
               blockRef={fieldRefs.name}
               inputRef={inputRefs.name}
@@ -316,7 +316,7 @@ function Field({
           autoComplete={autoComplete}
           aria-invalid={error || invalid ? true : undefined}
           className={cn(
-            "h-12 rounded-xl bg-[#10141c] text-white placeholder:text-white/35",
+            "h-12 rounded-xl bg-[#10141c]/55 text-white placeholder:text-white/35",
             trailing && "pr-12",
             error || invalid
               ? "border-red-500 focus-visible:ring-red-500"
