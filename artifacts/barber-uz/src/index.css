@@ -148,3 +148,16 @@ html.light {
 body.sheet-open #bottom-nav-root {
   visibility: hidden;
 }
+
+@keyframes login-register-glow {
+  from {
+    text-shadow: 0 0 0 transparent;
+  }
+  to {
+    text-shadow: 0 0 8px rgba(251, 191, 36, 0.95), 0 0 18px rgba(234, 179, 8, 0.7);
+  }
+}
+
+.login-register-glow {
+  animation: login-register-glow 1.2s ease forwards;
+}

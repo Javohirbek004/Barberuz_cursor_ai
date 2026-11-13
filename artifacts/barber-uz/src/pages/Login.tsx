@@ -18,6 +18,17 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useBotUsername } from "@/lib/bot-link";
 
+type LoginErrorType = "USER_NOT_FOUND" | "INVALID_PASSWORD";
+
+function readLoginError(err: unknown): LoginErrorType | null {
+  if (!err || typeof err !== "object" || !("data" in err)) return null;
+  const data = (err as { data?: unknown }).data;
+  if (!data || typeof data !== "object" || !("error" in data)) return null;
+  const code = (data as { error?: unknown }).error;
+  if (code === "USER_NOT_FOUND" || code === "INVALID_PASSWORD") return code;
+  return null;
+}
+
 function looksLikeLegacyUsername(value: string): boolean {
   return /[a-zA-Z_]/.test(value);
 }
@@ -58,6 +69,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
+  const [errorType, setErrorType] = useState<LoginErrorType | null>(null);
+  const [glowKey, setGlowKey] = useState(0);
   const botUsername = useBotUsername();
   const resetSuccess = new URLSearchParams(window.location.search).get("reset") === "success";
   const entryCode = new URLSearchParams(window.location.search).get("entry");
@@ -86,7 +99,17 @@ export default function Login() {
         toast({ title: t("success") });
         navigate("/dashboard");
       },
-      onError: () => {
+      onError: (err) => {
+        const code = readLoginError(err);
+        if (code === "USER_NOT_FOUND") {
+          setErrorType(code);
+          setGlowKey((n) => n + 1);
+          return;
+        }
+        if (code === "INVALID_PASSWORD") {
+          setErrorType(code);
+          return;
+        }
         toast({
           title: t("error"),
           description: t("login.error.invalid_credentials"),
@@ -167,14 +190,19 @@ export default function Login() {
               <Input
                 value={username}
                 onChange={(e) => {
+                  setErrorType(null);
                   const next = e.target.value;
                   setUsername(looksLikeLegacyUsername(next) ? next : formatUzPhoneMask(next));
                 }}
                 placeholder={t("login.phone_placeholder")}
                 inputMode="tel"
                 autoComplete="tel"
-                className="h-12 rounded-xl border-white/10 bg-[#10141c]/75 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                aria-invalid={errorType === "USER_NOT_FOUND" || undefined}
+                className={`h-12 rounded-xl bg-[#10141c]/75 text-white placeholder:text-white/40 focus-visible:ring-primary ${errorType === "USER_NOT_FOUND" ? "border-red-500 focus-visible:ring-red-500" : "border-white/10"}`}
               />
+              {errorType === "USER_NOT_FOUND" && (
+                <p className="text-sm text-red-400 leading-relaxed">{t("login.error.user_not_found")}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -183,9 +211,13 @@ export default function Login() {
                 <Input
                   type={showPassword ? "text" : "password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setErrorType(null);
+                    setPassword(e.target.value);
+                  }}
                   placeholder="••••••••"
-                  className="h-12 rounded-xl border-white/10 bg-[#10141c]/75 pr-12 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                  aria-invalid={errorType === "INVALID_PASSWORD" || undefined}
+                  className={`h-12 rounded-xl bg-[#10141c]/75 pr-12 text-white placeholder:text-white/40 focus-visible:ring-primary ${errorType === "INVALID_PASSWORD" ? "border-red-500 focus-visible:ring-red-500" : "border-white/10"}`}
                 />
                 <button
                   type="button"
@@ -201,12 +233,15 @@ export default function Login() {
                   )}
                 </button>
               </div>
+              {errorType === "INVALID_PASSWORD" && (
+                <p className="text-sm text-red-400 leading-relaxed">{t("login.error.invalid_password")}</p>
+              )}
             </div>
 
             <button
               type="button"
               onClick={() => setForgotOpen(true)}
-              className="text-sm text-primary hover:underline font-medium text-left"
+              className="text-left text-sm text-primary underline underline-offset-4"
             >
               {t("login.forgot")}
             </button>
@@ -224,9 +259,13 @@ export default function Login() {
           </form>
 
           <div className="mt-6 flex flex-col items-center gap-4">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-zinc-400">
               {t("login.no_account")}{" "}
-              <Link href="/register" className="text-primary hover:underline font-medium">
+              <Link
+                key={glowKey}
+                href="/register"
+                className={`font-semibold text-amber-400 underline underline-offset-4 ${errorType === "USER_NOT_FOUND" ? "login-register-glow" : ""}`}
+              >
                 {t("register.title")}
               </Link>
             </p>
