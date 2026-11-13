@@ -127,14 +127,27 @@ export default function Login() {
         className="w-full max-w-md relative z-10"
       >
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 shadow-2xl shadow-primary/10 mb-6">
-            <img
-              src={`${import.meta.env.BASE_URL}images/logo.png`}
-              alt="Barber.uz"
-              className="w-12 h-12 object-contain"
-            />
-          </div>
-          <h1 className="text-4xl font-display font-bold text-gradient mb-2">Barber.uz</h1>
+          <img
+            src={`${import.meta.env.BASE_URL}images/zumio-pin.png`}
+            alt=""
+            width={263}
+            height={327}
+            className="mx-auto mb-3 h-16 w-auto object-contain"
+          />
+          <h1 aria-label="Zumio" className="mb-2 flex items-end justify-center font-display text-5xl font-extrabold leading-none tracking-tight text-[#0E72BF]">
+            <span aria-hidden>Zum</span>
+            <span aria-hidden className="relative mx-[0.01em] inline-block">
+              <span className="inline-block h-[0.72em] overflow-hidden leading-none">i</span>
+              <img
+                src={`${import.meta.env.BASE_URL}images/zumio-i-pin.png`}
+                alt=""
+                width={52}
+                height={66}
+                className="absolute bottom-[0.78em] left-1/2 h-[0.42em] w-auto -translate-x-1/2 object-contain"
+              />
+            </span>
+            <span aria-hidden>o</span>
+          </h1>
           <p className="text-muted-foreground">{t("login.title")}</p>
         </div>
 
