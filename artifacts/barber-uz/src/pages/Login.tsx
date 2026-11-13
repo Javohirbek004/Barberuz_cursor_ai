@@ -114,7 +114,7 @@ export default function Login() {
           alt=""
           className="h-full w-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/55 to-black/72" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/42 to-black/62" />
       </div>
 
       <div className="absolute top-6 right-6 z-50">
@@ -134,7 +134,7 @@ export default function Login() {
             height={321}
             className="mx-auto mb-3 h-20 w-auto object-contain"
           />
-          <h1 aria-label="Zumio" className="mb-2 flex items-end justify-center font-display text-5xl font-extrabold leading-none tracking-tight text-[#061B30]">
+          <h1 aria-label="Zumio" className="mb-2 flex items-end justify-center font-display text-5xl font-extrabold leading-none tracking-tight text-[#12304A]">
             <span aria-hidden>Zum</span>
             <span aria-hidden className="relative mx-[0.01em] inline-block">
               <span className="inline-block h-[0.72em] overflow-hidden leading-none">i</span>
@@ -154,7 +154,7 @@ export default function Login() {
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="rounded-3xl border border-white/12 bg-[#16181c]/80 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8"
+          className="rounded-3xl border border-white/12 bg-[#16181c]/62 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8"
         >
           <form onSubmit={handleSubmit} className="space-y-5">
             {resetSuccess && (
@@ -173,7 +173,7 @@ export default function Login() {
                 placeholder={t("login.phone_placeholder")}
                 inputMode="tel"
                 autoComplete="tel"
-                className="h-12 rounded-xl border-white/10 bg-[#10141c] text-white placeholder:text-white/40 focus-visible:ring-primary"
+                className="h-12 rounded-xl border-white/10 bg-[#10141c]/75 text-white placeholder:text-white/40 focus-visible:ring-primary"
               />
             </div>
 
@@ -185,7 +185,7 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="h-12 rounded-xl border-white/10 bg-[#10141c] pr-12 text-white placeholder:text-white/35 focus-visible:ring-primary"
+                  className="h-12 rounded-xl border-white/10 bg-[#10141c]/75 pr-12 text-white placeholder:text-white/40 focus-visible:ring-primary"
                 />
                 <button
                   type="button"
