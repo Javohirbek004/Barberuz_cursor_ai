@@ -177,7 +177,7 @@ export default function Login() {
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="rounded-3xl border border-white/12 bg-[#16181c]/62 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8"
+          className="rounded-3xl border border-white/12 bg-[#16181c]/55 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8"
         >
           <form onSubmit={handleSubmit} className="space-y-5">
             {resetSuccess && (
@@ -198,7 +198,7 @@ export default function Login() {
                 inputMode="tel"
                 autoComplete="tel"
                 aria-invalid={errorType === "USER_NOT_FOUND" || undefined}
-                className={`h-12 rounded-xl bg-[#10141c]/75 text-white placeholder:text-white/40 focus-visible:ring-primary ${errorType === "USER_NOT_FOUND" ? "border-red-500 focus-visible:ring-red-500" : "border-white/10"}`}
+                className={`h-12 rounded-xl bg-[#10141c]/60 text-white placeholder:text-white/40 focus-visible:ring-primary ${errorType === "USER_NOT_FOUND" ? "border-red-500 focus-visible:ring-red-500" : "border-white/10"}`}
               />
               {errorType === "USER_NOT_FOUND" && (
                 <p className="text-sm text-red-400 leading-relaxed">{t("login.error.user_not_found")}</p>
@@ -217,7 +217,7 @@ export default function Login() {
                   }}
                   placeholder="••••••••"
                   aria-invalid={errorType === "INVALID_PASSWORD" || undefined}
-                  className={`h-12 rounded-xl bg-[#10141c]/75 pr-12 text-white placeholder:text-white/40 focus-visible:ring-primary ${errorType === "INVALID_PASSWORD" ? "border-red-500 focus-visible:ring-red-500" : "border-white/10"}`}
+                  className={`h-12 rounded-xl bg-[#10141c]/60 pr-12 text-white placeholder:text-white/40 focus-visible:ring-primary ${errorType === "INVALID_PASSWORD" ? "border-red-500 focus-visible:ring-red-500" : "border-white/10"}`}
                 />
                 <button
                   type="button"
