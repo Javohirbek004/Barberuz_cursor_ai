@@ -129,7 +129,14 @@ export default function Register() {
 
   return (
     <div className="min-h-screen relative flex items-center justify-center p-4 py-12">
-      <div className="absolute inset-0 z-0 bg-background" />
+      <div className="absolute inset-0 z-0">
+        <img
+          src={`${import.meta.env.BASE_URL}images/auth-shop.jpg`}
+          alt=""
+          className="h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/62 via-black/76 to-black/84" />
+      </div>
 
       <div className="absolute top-6 right-6 z-50">
         <LanguageSwitcher />

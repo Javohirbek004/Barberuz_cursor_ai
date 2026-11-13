@@ -110,11 +110,11 @@ export default function Login() {
     <div className="min-h-screen relative flex items-center justify-center p-4">
       <div className="absolute inset-0 z-0">
         <img
-          src={`${import.meta.env.BASE_URL}images/hero-barber.png`}
-          alt="Barbershop Background"
-          className="w-full h-full object-cover opacity-30"
+          src={`${import.meta.env.BASE_URL}images/auth-shop.jpg`}
+          alt=""
+          className="h-full w-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-background/40 via-background/80 to-background" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/55 to-black/72" />
       </div>
 
       <div className="absolute top-6 right-6 z-50">
@@ -130,11 +130,11 @@ export default function Login() {
           <img
             src={`${import.meta.env.BASE_URL}images/zumio-pin.png`}
             alt=""
-            width={263}
-            height={327}
+            width={257}
+            height={321}
             className="mx-auto mb-3 h-16 w-auto object-contain"
           />
-          <h1 aria-label="Zumio" className="mb-2 flex items-end justify-center font-display text-5xl font-extrabold leading-none tracking-tight text-[#0E72BF]">
+          <h1 aria-label="Zumio" className="mb-2 flex items-end justify-center font-display text-5xl font-extrabold leading-none tracking-tight text-[#061B30]">
             <span aria-hidden>Zum</span>
             <span aria-hidden className="relative mx-[0.01em] inline-block">
               <span className="inline-block h-[0.72em] overflow-hidden leading-none">i</span>
