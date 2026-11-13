@@ -132,7 +132,7 @@ export default function Login() {
             alt=""
             width={257}
             height={321}
-            className="mx-auto mb-3 h-16 w-auto object-contain"
+            className="mx-auto mb-3 h-20 w-auto object-contain"
           />
           <h1 aria-label="Zumio" className="mb-2 flex items-end justify-center font-display text-5xl font-extrabold leading-none tracking-tight text-[#061B30]">
             <span aria-hidden>Zum</span>
@@ -154,7 +154,7 @@ export default function Login() {
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="glass-panel p-6 sm:p-8 rounded-3xl"
+          className="rounded-3xl border border-white/12 bg-[#16181c]/80 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8"
         >
           <form onSubmit={handleSubmit} className="space-y-5">
             {resetSuccess && (
@@ -173,7 +173,7 @@ export default function Login() {
                 placeholder={t("login.phone_placeholder")}
                 inputMode="tel"
                 autoComplete="tel"
-                className="bg-black/20 border-white/10 focus-visible:ring-primary h-12 rounded-xl"
+                className="h-12 rounded-xl border-white/10 bg-[#10141c] text-white placeholder:text-white/40 focus-visible:ring-primary"
               />
             </div>
 
@@ -185,7 +185,7 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="bg-black/20 border-white/10 focus-visible:ring-primary h-12 rounded-xl pr-12"
+                  className="h-12 rounded-xl border-white/10 bg-[#10141c] pr-12 text-white placeholder:text-white/35 focus-visible:ring-primary"
                 />
                 <button
                   type="button"
