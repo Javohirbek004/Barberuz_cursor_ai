@@ -109,12 +109,12 @@ router.post("/login", async (req, res) => {
     }
     const user = await findUserForLogin(String(username));
     if (!user) {
-      res.status(401).json({ error: "unauthorized", message: "Invalid credentials" });
+      res.status(401).json({ error: "USER_NOT_FOUND", message: "User not found" });
       return;
     }
     const check = await verifyPassword(password, user.passwordHash);
     if (!check.ok) {
-      res.status(401).json({ error: "unauthorized", message: "Invalid credentials" });
+      res.status(401).json({ error: "INVALID_PASSWORD", message: "Invalid password" });
       return;
     }
     clearRateLimit(`login:id:${ip}:${ident}`);

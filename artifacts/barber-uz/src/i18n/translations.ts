@@ -37,6 +37,8 @@ export const translations = {
     'register.error.fill_required': "Majburiy maydonlarni to'ldiring",
     'register.error.register_failed': "Ro'yxatdan o'tishda xatolik yuz berdi. Qayta urinib ko'ring.",
     'login.error.invalid_credentials': "Telefon raqam yoki parol noto'g'ri. Qayta urinib ko'ring.",
+    'login.error.user_not_found': "Kechirasiz, bu raqam roʻyxatdan oʻtmagan. Davom etish uchun pastdagi Roʻyxatdan oʻtish havolasidan foydalaning.",
+    'login.error.invalid_password': "Parol notoʻgʻri, qayta urinib koʻring.",
 
     // Login
     'login.phone_label': "Telefon raqamingizni kiriting:",
@@ -346,6 +348,8 @@ export const translations = {
     'register.error.fill_required': "Заполните обязательные поля",
     'register.error.register_failed': "Ошибка регистрации. Попробуйте ещё раз.",
     'login.error.invalid_credentials': "Неверный номер телефона или пароль. Попробуйте ещё раз.",
+    'login.error.user_not_found': "Извините, этот номер не зарегистрирован. Пожалуйста, используйте ссылку регистрации внизу для продолжения.",
+    'login.error.invalid_password': "Неверный пароль, попробуйте снова.",
 
     // Login
     'login.phone_label': "Введите номер телефона:",
