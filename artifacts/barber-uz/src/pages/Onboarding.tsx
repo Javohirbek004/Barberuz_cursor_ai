@@ -52,11 +52,11 @@ type Draft = {
 };
 
 const TEMPLATES: ServiceDraft[] = [
-  { key: "soch", name: "Soch olish", duration: 30, price: 50000, category: "Soch", on: true },
-  { key: "soqol", name: "Soqol olish", duration: 20, price: 30000, category: "Soqol", on: true },
-  { key: "kompleks", name: "Soch va soqol (Kompleks)", duration: 45, price: 70000, category: "Kompleks xizmatlar", on: true },
-  { key: "bola", name: "Bolalar sochi", duration: 20, price: 40000, category: "Soch", on: true },
-  { key: "yuz", name: "Yuzni tozalash / Maskalar", duration: 25, price: 60000, category: "Yuz parvarishi", on: true },
+  { key: "soch", name: "Soch olish", duration: 30, price: 50000, category: "Soch", on: false },
+  { key: "soqol", name: "Soqol olish", duration: 20, price: 30000, category: "Soqol", on: false },
+  { key: "kompleks", name: "Soch va soqol (Kompleks)", duration: 45, price: 70000, category: "Kompleks xizmatlar", on: false },
+  { key: "bola", name: "Bolalar sochi", duration: 20, price: 40000, category: "Soch", on: false },
+  { key: "yuz", name: "Yuzni tozalash / Maskalar", duration: 25, price: 60000, category: "Yuz parvarishi", on: false },
 ];
 
 const SALON = [
@@ -177,9 +177,7 @@ export default function Onboarding() {
 
   const [step, setStep] = useState(() => Math.min(STEPS - 1, Math.max(0, saved.current?.step ?? 0)));
   const [services, setServices] = useState<ServiceDraft[]>(() =>
-    Array.isArray(saved.current?.services) && saved.current.services.length > 0
-      ? saved.current.services
-      : TEMPLATES.map((item) => ({ ...item })),
+    Array.isArray(saved.current?.services) ? saved.current.services : [],
   );
   const [days, setDays] = useState<string[]>(saved.current?.days ?? []);
   const [workStart, setWorkStart] = useState(saved.current?.workStart || "09:00");
@@ -203,7 +201,9 @@ export default function Onboarding() {
   const [gpsBusy, setGpsBusy] = useState(false);
   const [gpsError, setGpsError] = useState("");
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [sheet, setSheet] = useState<null | { key: string | null; name: string; duration: string; price: string; category: string }>(null);
+  const [readyOpen, setReadyOpen] = useState(false);
+  const [ready, setReady] = useState<ServiceDraft[]>([]);
+  const [sheet, setSheet] = useState<null | { key: string | null; name: string; duration: string; price: string; category: string; fromReady?: boolean }>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
@@ -400,6 +400,26 @@ export default function Onboarding() {
     setTemplatesOpen(false);
   }
 
+  function openReady() {
+    setReady(TEMPLATES.map((item) => ({ ...item, on: false })));
+    setReadyOpen(true);
+  }
+
+  function saveReady() {
+    const picked = ready.filter((item) => item.on && item.name.trim());
+    if (picked.length === 0) return;
+    setServices((list) => {
+      const next = [...list];
+      for (const item of picked) {
+        const index = next.findIndex((row) => row.key === item.key);
+        if (index >= 0) next[index] = { ...next[index], name: item.name, duration: item.duration, price: item.price, category: item.category, on: true };
+        else next.push({ ...item, on: true });
+      }
+      return next;
+    });
+    setReadyOpen(false);
+  }
+
   function saveSheet() {
     if (!sheet) return;
     const name = sheet.name.trim();
@@ -409,7 +429,9 @@ export default function Onboarding() {
       warn(t("Nom, vaqt va narxni to‘ldiring", "Заполните название, время и цену"));
       return;
     }
-    if (sheet.key) {
+    if (sheet.key && sheet.fromReady) {
+      setReady((list) => list.map((item) => item.key === sheet.key ? { ...item, name, duration, price } : item));
+    } else if (sheet.key) {
       setServices((list) => list.map((item) => item.key === sheet.key ? { ...item, name, duration, price, on: true } : item));
     } else {
       setServices((list) => [...list, {
@@ -426,6 +448,8 @@ export default function Onboarding() {
   }
 
   const optional = step >= 2;
+  const savedServices = services.filter((item) => item.on && item.name.trim());
+  const readyPicked = ready.filter((item) => item.on).length;
   const names = weekdayNames(lang);
 
   return (
@@ -434,8 +458,8 @@ export default function Onboarding() {
         <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm">
           <div className="h-11 flex items-center justify-between">
             <span className="text-sm text-muted-foreground">{optional ? t("Ixtiyoriy", "Необязательно") : t("Majburiy", "Обязательно")}</span>
-            <button type="button" onClick={goNext} className="h-11 px-1 text-primary text-base font-medium">
-              {busy ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
+            <button type="button" onClick={goNext} disabled={busy} className="h-11 px-1 text-primary text-base font-medium disabled:opacity-100">
+              {busy && step !== 0 ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
             </button>
           </div>
           <div className="flex gap-1.5 pb-3">
@@ -446,41 +470,66 @@ export default function Onboarding() {
         </header>
 
         {step === 0 && (
-          <section>
-            <h1 className="font-display text-[26px] font-medium leading-tight">Xizmatlarni qo‘shing</h1>
-            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Kamida bittasi qolsin. Nom, vaqt va narxni o‘zgartirish mumkin.", "Оставьте хотя бы одну. Название, время и цену можно изменить.")}</p>
-            <div className="mt-5 space-y-2">
-              {services.map((item) => (
-                <div key={item.key} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-card px-3 py-3">
-                  <button
-                    type="button"
-                    aria-pressed={item.on}
-                    onClick={() => setServices((list) => list.map((row) => row.key === item.key ? { ...row, on: !row.on } : row))}
-                    className={`h-6 w-6 shrink-0 rounded-md border flex items-center justify-center ${item.on ? "bg-primary border-primary text-black" : "border-white/20"}`}
-                  >
-                    {item.on && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{item.name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{item.duration} {t("daqiqa", "мин")} · {money(item.price)}</p>
+          <section className="flex flex-1 flex-col min-h-[calc(100dvh-6.5rem)]">
+            <h1 className="font-display text-[26px] font-medium leading-tight">
+              {savedServices.length > 0 ? t("Saqlangan xizmatlar", "Сохранённые услуги") : t("Xizmatlarni qo‘shing", "Добавьте услуги")}
+            </h1>
+            {savedServices.length > 0 && (
+              <p className="mt-1.5 text-sm text-muted-foreground">{savedServices.length} {t("ta", "шт.")}</p>
+            )}
+            {savedServices.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center text-center px-2">
+                <h2 className="font-display text-[26px] font-medium leading-tight">{t("Hali xizmat yo‘q", "Услуг пока нет")}</h2>
+                <p className="mt-2 text-sm text-muted-foreground leading-snug">
+                  {t("Mijozlaringiz bron qilishi uchun kamida bitta xizmat qo‘shing yoki pastdagi tayyor ro‘yxatdan foydalaning", "Добавьте хотя бы одну услугу для записи или выберите готовый список внизу.")}
+                </p>
+              </div>
+            ) : (
+              <div className="mt-4 flex-1 space-y-2">
+                {savedServices.map((item) => (
+                  <div key={item.key} className="flex items-center gap-1 rounded-2xl border border-white/10 bg-card px-1.5 py-1">
+                    <button
+                      type="button"
+                      aria-pressed={item.on}
+                      aria-label={item.name}
+                      onClick={() => setServices((list) => list.map((row) => row.key === item.key ? { ...row, on: !row.on } : row))}
+                      className="h-11 w-11 shrink-0 flex items-center justify-center"
+                    >
+                      <span className="h-6 w-6 rounded-lg bg-primary border border-primary text-black flex items-center justify-center">
+                        <Check className="w-3.5 h-3.5" />
+                      </span>
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{item.name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{item.duration} {t("daqiqa", "мин")} · {money(item.price)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSheet({ key: item.key, name: item.name, duration: String(item.duration), price: String(item.price), category: item.category })}
+                      className="h-11 px-2 text-sm text-primary"
+                    >
+                      {t("Tahrir", "Изменить")}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setSheet({ key: item.key, name: item.name, duration: String(item.duration), price: String(item.price), category: item.category })}
-                    className="h-11 px-2 text-sm text-primary"
-                  >
-                    {t("Tahrir", "Изменить")}
-                  </button>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+            <div className="mt-4 space-y-2 pb-4">
+              <button
+                type="button"
+                onClick={() => setSheet({ key: null, name: "", duration: "30", price: "", category: "Asosiy" })}
+                className="h-12 w-full rounded-2xl border border-primary/30 text-sm font-medium"
+              >
+                <Plus className="inline w-4 h-4 mr-1 -mt-0.5" /> {t("Yangi xizmat qo‘shish", "Добавить услугу")}
+              </button>
+              <button
+                type="button"
+                onClick={openReady}
+                className="h-12 w-full rounded-2xl border border-primary/30 text-sm font-medium"
+              >
+                <Plus className="inline w-4 h-4 mr-1 -mt-0.5" /> {t("Tayyor ro‘yxatni qo‘shish", "Добавить готовый список")}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setSheet({ key: null, name: "", duration: "30", price: "", category: "Asosiy" })}
-              className="mt-3 h-12 w-full rounded-2xl border border-primary/30 text-sm font-medium"
-            >
-              <Plus className="inline w-4 h-4 mr-1 -mt-0.5" /> {t("Yangi xizmat qo‘shish", "Добавить услугу")}
-            </button>
           </section>
         )}
 
@@ -645,8 +694,51 @@ export default function Onboarding() {
         )}
       </div>
 
+      {readyOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 flex items-end" onClick={() => setReadyOpen(false)}>
+          <div className="w-full max-w-md mx-auto rounded-t-2xl bg-card border-t border-primary/30 px-4 pt-3 pb-4 max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="w-9 h-1 rounded-full bg-zinc-700 mx-auto mb-3" />
+            <h2 className="font-display text-xl font-medium">{t("Tayyor ro‘yxat", "Готовый список")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t("Xizmatni tanlang", "Выберите услугу")}</p>
+            <div className="mt-2 space-y-2 overflow-y-auto">
+              {ready.map((item) => (
+                <div key={item.key} className="flex items-center gap-1 rounded-2xl border border-white/10 bg-background px-1.5 py-1">
+                  <button
+                    type="button"
+                    aria-pressed={item.on}
+                    aria-label={item.name}
+                    onClick={() => setReady((list) => list.map((row) => row.key === item.key ? { ...row, on: !row.on } : row))}
+                    className="h-11 w-11 shrink-0 flex items-center justify-center"
+                  >
+                    <span className={`h-6 w-6 rounded-lg border flex items-center justify-center ${item.on ? "bg-primary border-primary text-black" : "border-white/25"}`}>
+                      {item.on && <Check className="w-3.5 h-3.5" />}
+                    </span>
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{item.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{item.duration} {t("daqiqa", "мин")} · {money(item.price)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSheet({ key: item.key, name: item.name, duration: String(item.duration), price: String(item.price), category: item.category, fromReady: true })}
+                    className="h-11 px-2 text-sm text-primary"
+                  >
+                    {t("Tahrir", "Изменить")}
+                  </button>
+                </div>
+              ))}
+            </div>
+            {readyPicked > 0 && (
+              <button type="button" onClick={saveReady} className="mt-3 h-12 w-full shrink-0 rounded-xl bg-primary text-black font-medium">
+                {t("Xizmatni saqlash", "Сохранить услугу")}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {sheet && (
-        <div className="fixed inset-0 z-40 bg-black/60 flex items-end" onClick={() => setSheet(null)}>
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end" onClick={() => setSheet(null)}>
           <div className="w-full max-w-md mx-auto rounded-t-2xl bg-card border-t border-primary/30 p-4" onClick={(e) => e.stopPropagation()}>
             <h2 className="font-display text-xl">{sheet.key ? t("Xizmatni tahrirlash", "Изменить услугу") : t("Yangi xizmat", "Новая услуга")}</h2>
             <Field label={t("Nomi", "Название")}>
