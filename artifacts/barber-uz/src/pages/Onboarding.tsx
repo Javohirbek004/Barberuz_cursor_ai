@@ -17,6 +17,7 @@ import { ONBOARDING_PENDING_KEY, ONBOARDING_READY_KEY } from "@/lib/onboarding";
 
 const DRAFT_KEY = "barber_onboarding_draft";
 const STEPS = 7;
+const OPEN_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat"];
 const CLOCK_HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
 const CLOCK_MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"));
 
@@ -188,7 +189,9 @@ export default function Onboarding() {
   const [services, setServices] = useState<ServiceDraft[]>(() =>
     Array.isArray(saved.current?.services) ? saved.current.services : [],
   );
-  const [days, setDays] = useState<string[]>(saved.current?.days ?? []);
+  const [days, setDays] = useState<string[]>(
+    Array.isArray(saved.current?.days) && saved.current.days.length > 0 ? saved.current.days : OPEN_DAYS,
+  );
   const [workStart, setWorkStart] = useState(saved.current?.workStart || "09:00");
   const [workEnd, setWorkEnd] = useState(saved.current?.workEnd || "20:00");
   const [lunchOn, setLunchOn] = useState(!!saved.current?.lunchOn);
@@ -344,10 +347,15 @@ export default function Onboarding() {
         warn(t("Tushlik ish vaqti ichida bo‘lsin", "Обед должен быть внутри рабочего времени"));
         return;
       }
+      stepLock.current = true;
+      setStep(2);
+      saveHours().catch(() => warn(t("Saqlanmadi. Qayta urinib ko‘ring", "Не сохранилось. Попробуйте ещё раз"))).finally(() => {
+        stepLock.current = false;
+      });
+      return;
     }
     setBusy(true);
     try {
-      if (step === 1) await saveHours();
       if (step === 2 && (address.trim() || mapLink.trim() || latitude)) {
         const link = mapLink.trim();
         const mapLinkValue = /^https?:\/\//i.test(link) || !link ? link : (link.includes(".") ? `https://${link}` : link);
@@ -483,7 +491,7 @@ export default function Onboarding() {
         <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm">
           <div className="h-11 flex items-center justify-between">
             <span className="text-sm text-muted-foreground">{optional ? t("Ixtiyoriy", "Необязательно") : t("Majburiy", "Обязательно")}</span>
-            {step === 0 || step === 1 ? <span className="h-11" /> : (
+            {step <= 2 ? <span className="h-11" /> : (
               <button type="button" onClick={goNext} disabled={busy} className="h-11 px-1 text-primary text-base font-medium disabled:opacity-100">
                 {busy ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
               </button>
@@ -632,7 +640,7 @@ export default function Onboarding() {
         )}
 
         {step === 2 && (
-          <section>
+          <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
             <h1 className="font-display text-[26px] font-medium leading-tight">{t("Manzil", "Адрес")}</h1>
             <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijoz qayerga kelishini biladi. Bo‘sh qoldirish mumkin.", "Клиент узнает, куда прийти. Можно пропустить.")}</p>
             <div className="mt-5 grid grid-cols-2 gap-2">
@@ -652,6 +660,16 @@ export default function Onboarding() {
             <Field label={t("Xarita havolasi", "Ссылка на карту")}>
               <input value={mapLink} onChange={(e) => setMapLink(e.target.value)} placeholder="https://maps.google.com/..." className="h-12 w-full rounded-xl bg-card border border-white/10 px-3" />
             </Field>
+            <div className="mt-auto pt-6 flex gap-2">
+              <button type="button" onClick={() => setStep(1)} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
+                <ChevronLeft className="w-5 h-5" />
+                {t("Orqaga", "Назад")}
+              </button>
+              <button type="button" onClick={goNext} className="h-12 flex-1 rounded-xl bg-primary text-black text-base font-medium flex items-center justify-center gap-2">
+                {t("Keyingi", "Далее")}
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
           </section>
         )}
 
