@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import "leaflet/dist/leaflet.css";
 import { useLocation } from "wouter";
-import { Camera, Check, MapPin, Navigation, Plus, Star, X } from "lucide-react";
+import { Camera, Check, ChevronLeft, ChevronRight, MapPin, Navigation, Plus, Star, X } from "lucide-react";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { pick, weekdayNames } from "@/i18n/pick";
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +17,15 @@ import { ONBOARDING_PENDING_KEY, ONBOARDING_READY_KEY } from "@/lib/onboarding";
 
 const DRAFT_KEY = "barber_onboarding_draft";
 const STEPS = 7;
+const CLOCK_HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+const CLOCK_MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"));
+
+function splitClock(value: string): [string, string] {
+  const [rawHour = "09", rawMinute = "00"] = value.split(":");
+  const hour = Math.min(23, Math.max(0, Number(rawHour) || 0));
+  const minute = Math.min(55, Math.max(0, Math.round((Number(rawMinute) || 0) / 5) * 5));
+  return [String(hour).padStart(2, "0"), String(minute).padStart(2, "0")];
+}
 
 type ServiceDraft = {
   key: string;
@@ -201,6 +210,8 @@ export default function Onboarding() {
   const [gpsBusy, setGpsBusy] = useState(false);
   const [gpsError, setGpsError] = useState("");
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [clock, setClock] = useState<null | { field: "workStart" | "workEnd" | "lunchStart" | "lunchEnd"; title: string }>(null);
+  const stepLock = useRef(false);
   const [readyOpen, setReadyOpen] = useState(false);
   const [ready, setReady] = useState<ServiceDraft[]>([]);
   const [sheet, setSheet] = useState<null | { key: string | null; name: string; duration: string; price: string; category: string; fromReady?: boolean }>(null);
@@ -296,8 +307,17 @@ export default function Onboarding() {
     });
   }
 
+  function saveClock(value: string) {
+    if (!clock) return;
+    if (clock.field === "workStart") setWorkStart(value);
+    if (clock.field === "workEnd") setWorkEnd(value);
+    if (clock.field === "lunchStart") setLunchStart(value);
+    if (clock.field === "lunchEnd") setLunchEnd(value);
+    setClock(null);
+  }
+
   async function goNext() {
-    if (busy) return;
+    if (busy || stepLock.current) return;
     if (step === 0) {
       const chosen = services.filter((item) => item.on && item.name.trim());
       if (chosen.length === 0) {
@@ -308,6 +328,12 @@ export default function Onboarding() {
         warn(t("Vaqt va narxni to‘g‘ri yozing", "Укажите время и цену"));
         return;
       }
+      stepLock.current = true;
+      setStep(1);
+      saveServices().catch(() => warn(t("Saqlanmadi. Qayta urinib ko‘ring", "Не сохранилось. Попробуйте ещё раз"))).finally(() => {
+        stepLock.current = false;
+      });
+      return;
     }
     if (step === 1) {
       if (days.length === 0 || !isValidHHMM(workStart) || !isValidHHMM(workEnd) || toMins(workStart) >= toMins(workEnd)) {
@@ -321,7 +347,6 @@ export default function Onboarding() {
     }
     setBusy(true);
     try {
-      if (step === 0) await saveServices();
       if (step === 1) await saveHours();
       if (step === 2 && (address.trim() || mapLink.trim() || latitude)) {
         const link = mapLink.trim();
@@ -458,7 +483,7 @@ export default function Onboarding() {
         <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm">
           <div className="h-11 flex items-center justify-between">
             <span className="text-sm text-muted-foreground">{optional ? t("Ixtiyoriy", "Необязательно") : t("Majburiy", "Обязательно")}</span>
-            {step === 0 ? <span className="h-11" /> : (
+            {step === 0 || step === 1 ? <span className="h-11" /> : (
               <button type="button" onClick={goNext} disabled={busy} className="h-11 px-1 text-primary text-base font-medium disabled:opacity-100">
                 {busy ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
               </button>
@@ -544,10 +569,10 @@ export default function Onboarding() {
         )}
 
         {step === 1 && (
-          <section>
+          <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
             <h1 className="font-display text-[26px] font-medium leading-tight">{t("Ish kunlari va vaqti", "Рабочие дни и время")}</h1>
-            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Kamida bitta kun va ish vaqtini belgilang. Tushlik ixtiyoriy.", "Выберите хотя бы один день и часы. Обед необязателен.")}</p>
-            <div className="mt-5 flex flex-wrap gap-2">
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Ish vaqtlarini belgilang. Tushlik vaqtini qo‘shish ixtiyoriy.", "Укажите часы работы. Обеденный перерыв можно не добавлять.")}</p>
+            <div className="mt-5 flex flex-nowrap gap-1">
               {["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((key, i) => {
                 const on = days.includes(key);
                 return (
@@ -556,7 +581,7 @@ export default function Onboarding() {
                     type="button"
                     aria-pressed={on}
                     onClick={() => setDays((list) => on ? list.filter((d) => d !== key) : [...list, key])}
-                    className={`h-11 w-11 rounded-xl text-sm font-medium border ${on ? "bg-primary text-black border-primary" : "border-white/10 text-muted-foreground"}`}
+                    className={`h-11 min-w-0 flex-1 rounded-xl text-sm font-medium border ${on ? "bg-primary text-black border-primary" : "border-white/10 text-muted-foreground"}`}
                   >
                     {names[i]}
                   </button>
@@ -565,24 +590,44 @@ export default function Onboarding() {
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <Field label={t("Ochilish", "Открытие")}>
-                <input type="time" value={workStart} onChange={(e) => setWorkStart(e.target.value)} className="h-12 w-full rounded-xl bg-card border border-white/10 px-3 text-center" />
+                <button type="button" onClick={() => setClock({ field: "workStart", title: t("Ochilish", "Открытие") })} className="h-12 w-full rounded-xl bg-card border border-white/10 px-3 text-center">{workStart}</button>
               </Field>
               <Field label={t("Yopilish", "Закрытие")}>
-                <input type="time" value={workEnd} onChange={(e) => setWorkEnd(e.target.value)} className="h-12 w-full rounded-xl bg-card border border-white/10 px-3 text-center" />
+                <button type="button" onClick={() => setClock({ field: "workEnd", title: t("Yopilish", "Закрытие") })} className="h-12 w-full rounded-xl bg-card border border-white/10 px-3 text-center">{workEnd}</button>
               </Field>
             </div>
             <div className="mt-6 flex items-center justify-between">
               <span className="text-sm">{t("Tushlik", "Обед")}</span>
-              <button type="button" aria-pressed={lunchOn} onClick={() => setLunchOn((v) => !v)} className={`h-7 w-12 rounded-full relative ${lunchOn ? "bg-primary" : "bg-white/15"}`}>
-                <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white transition-transform ${lunchOn ? "translate-x-5" : "translate-x-0.5"}`} />
+              <button
+                type="button"
+                role="switch"
+                aria-checked={lunchOn}
+                onClick={() => setLunchOn((v) => !v)}
+                className={`relative shrink-0 overflow-hidden rounded-full p-0 ${lunchOn ? "bg-primary" : "bg-white/15"}`}
+                style={{ width: 48, height: 28 }}
+              >
+                <span
+                  className="absolute rounded-full bg-white"
+                  style={{ top: 2, width: 24, height: 24, left: lunchOn ? 22 : 2 }}
+                />
               </button>
             </div>
             {lunchOn && (
               <div className="mt-3 grid grid-cols-2 gap-3">
-                <input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} className="h-12 rounded-xl bg-card border border-white/10 px-3 text-center" />
-                <input type="time" value={lunchEnd} onChange={(e) => setLunchEnd(e.target.value)} className="h-12 rounded-xl bg-card border border-white/10 px-3 text-center" />
+                <button type="button" onClick={() => setClock({ field: "lunchStart", title: t("Tushlik boshi", "Начало обеда") })} className="h-12 rounded-xl bg-card border border-white/10 px-3 text-center">{lunchStart}</button>
+                <button type="button" onClick={() => setClock({ field: "lunchEnd", title: t("Tushlik oxiri", "Конец обеда") })} className="h-12 rounded-xl bg-card border border-white/10 px-3 text-center">{lunchEnd}</button>
               </div>
             )}
+            <div className="mt-auto pt-6 flex gap-2">
+              <button type="button" onClick={() => setStep(0)} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
+                <ChevronLeft className="w-5 h-5" />
+                {t("Orqaga", "Назад")}
+              </button>
+              <button type="button" onClick={goNext} disabled={busy} className="h-12 flex-1 rounded-xl bg-primary text-black text-base font-medium flex items-center justify-center gap-2 disabled:opacity-100">
+                {t("Keyingi", "Далее")}
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
           </section>
         )}
 
@@ -785,6 +830,18 @@ export default function Onboarding() {
         </div>
       )}
 
+      {clock && (
+        <ClockSheet
+          title={clock.title}
+          value={clock.field === "workStart" ? workStart : clock.field === "workEnd" ? workEnd : clock.field === "lunchStart" ? lunchStart : lunchEnd}
+          hourLabel={t("Soat", "Час")}
+          minuteLabel={t("Daqiqa", "Минута")}
+          saveLabel={t("Tayyor", "Готово")}
+          onClose={() => setClock(null)}
+          onSave={saveClock}
+        />
+      )}
+
       {mapOpen && (
         <MapSheet
           lat={latitude ? Number(latitude) : 41.2995}
@@ -847,6 +904,117 @@ function TelegramMark() {
       <circle cx="12" cy="12" r="9" fill="#2AABEE" />
       <path d="M7.2 12.1l9.2-3.6c.4-.2.8.2.7.6l-1.6 7.4c-.1.5-.6.7-1 .4l-2.6-1.9-1.3 1.2c-.2.2-.5.1-.5-.2l.2-2.2 4.8-4.3c.2-.2 0-.3-.2-.1l-5.9 3.7-2.1-.7c-.5-.1-.5-.7.1-.9z" fill="#fff" />
     </svg>
+  );
+}
+
+function ClockWheel({
+  values,
+  selected,
+  onSelect,
+}: {
+  values: string[];
+  selected: string;
+  onSelect: (value: string) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const placed = useRef(false);
+
+  useEffect(() => {
+    if (placed.current) return;
+    const box = ref.current;
+    const item = box?.querySelector(`[data-v="${selected}"]`) as HTMLElement | null;
+    if (!box || !item) return;
+    placed.current = true;
+    box.scrollTop = item.offsetTop - box.clientHeight / 2 + item.offsetHeight / 2;
+  }, [selected]);
+
+  return (
+    <div
+      ref={ref}
+      className="h-48 flex-1 overflow-y-auto snap-y snap-mandatory [scrollbar-width:none]"
+      onScroll={(event) => {
+        const box = event.currentTarget;
+        const mid = box.scrollTop + box.clientHeight / 2;
+        let best = values[0];
+        let dist = Number.POSITIVE_INFINITY;
+        for (const node of box.querySelectorAll("button")) {
+          const next = Math.abs(node.offsetTop + node.offsetHeight / 2 - mid);
+          if (next < dist) {
+            dist = next;
+            best = node.dataset.v || best;
+          }
+        }
+        if (best !== selected) onSelect(best);
+      }}
+    >
+      <div className="h-[72px]" />
+      {values.map((value) => (
+        <button
+          key={value}
+          type="button"
+          data-v={value}
+          onClick={() => onSelect(value)}
+          className={`h-12 w-full snap-center text-2xl font-medium ${value === selected ? "text-foreground" : "text-muted-foreground"}`}
+        >
+          {value}
+        </button>
+      ))}
+      <div className="h-[72px]" />
+    </div>
+  );
+}
+
+function ClockSheet({
+  title,
+  value,
+  hourLabel,
+  minuteLabel,
+  saveLabel,
+  onClose,
+  onSave,
+}: {
+  title: string;
+  value: string;
+  hourLabel: string;
+  minuteLabel: string;
+  saveLabel: string;
+  onClose: () => void;
+  onSave: (value: string) => void;
+}) {
+  const [hour, minute] = splitClock(value);
+  const [pickedHour, setHour] = useState(hour);
+  const [pickedMinute, setMinute] = useState(minute);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-end" onClick={onClose}>
+      <div className="w-full max-w-md mx-auto rounded-t-2xl bg-card border-t border-primary/30 px-4 pt-3 pb-4" onClick={(event) => event.stopPropagation()}>
+        <div className="w-9 h-1 rounded-full bg-zinc-700 mx-auto mb-3" />
+        <h2 className="font-display text-xl font-medium">{title}</h2>
+        <div className="mt-3 flex gap-2">
+          <div className="flex-1">
+            <p className="mb-1 text-center text-[13px] text-muted-foreground">{hourLabel}</p>
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-x-1 top-1/2 z-0 h-12 -translate-y-1/2 rounded-xl bg-white/8" />
+              <div className="relative z-10">
+                <ClockWheel values={CLOCK_HOURS} selected={pickedHour} onSelect={setHour} />
+              </div>
+            </div>
+          </div>
+          <div className="flex-1">
+            <p className="mb-1 text-center text-[13px] text-muted-foreground">{minuteLabel}</p>
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-x-1 top-1/2 z-0 h-12 -translate-y-1/2 rounded-xl bg-white/8" />
+              <div className="relative z-10">
+                <ClockWheel values={CLOCK_MINUTES} selected={pickedMinute} onSelect={setMinute} />
+              </div>
+            </div>
+          </div>
+        </div>
+        <button type="button" onClick={() => onSave(`${pickedHour}:${pickedMinute}`)} className="mt-3 h-12 w-full rounded-xl bg-primary text-black font-medium">
+          {saveLabel}
+        </button>
+      </div>
+    </div>
   );
 }
 
