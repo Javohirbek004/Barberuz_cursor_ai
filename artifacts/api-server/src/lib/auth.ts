@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { Request, Response, NextFunction } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { getLivePendingRegistration, openAccountFromPending } from "./pending-registration";
 
 const INSECURE_DEFAULTS = new Set([
   "barber_salt_2024",
@@ -240,7 +241,11 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       res.status(401).json({ error: "unauthorized", message: "Invalid token" });
       return;
     }
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, claims.sub)).limit(1);
+    let [user] = await db.select().from(usersTable).where(eq(usersTable.id, claims.sub)).limit(1);
+    if (!user) {
+      const pending = await getLivePendingRegistration(claims.sub);
+      if (pending) user = await openAccountFromPending(pending);
+    }
     if (!user) {
       res.status(401).json({ error: "unauthorized", message: "User not found" });
       return;

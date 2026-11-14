@@ -458,9 +458,11 @@ export default function Onboarding() {
         <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm">
           <div className="h-11 flex items-center justify-between">
             <span className="text-sm text-muted-foreground">{optional ? t("Ixtiyoriy", "Необязательно") : t("Majburiy", "Обязательно")}</span>
-            <button type="button" onClick={goNext} disabled={busy} className="h-11 px-1 text-primary text-base font-medium disabled:opacity-100">
-              {busy && step !== 0 ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
-            </button>
+            {step === 0 ? <span className="h-11" /> : (
+              <button type="button" onClick={goNext} disabled={busy} className="h-11 px-1 text-primary text-base font-medium disabled:opacity-100">
+                {busy ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
+              </button>
+            )}
           </div>
           <div className="flex gap-1.5 pb-3">
             {Array.from({ length: STEPS }, (_, i) => (
@@ -528,6 +530,14 @@ export default function Onboarding() {
                 className="h-12 w-full rounded-2xl border border-primary/30 text-sm font-medium"
               >
                 <Plus className="inline w-4 h-4 mr-1 -mt-0.5" /> {t("Tayyor ro‘yxatni qo‘shish", "Добавить готовый список")}
+              </button>
+              <button
+                type="button"
+                onClick={goNext}
+                disabled={busy}
+                className={`h-12 w-full rounded-xl text-base font-medium disabled:opacity-100 ${savedServices.length > 0 ? "bg-primary text-black" : "border border-white/15 text-muted-foreground"}`}
+              >
+                {t("Keyingi", "Далее")}
               </button>
             </div>
           </section>

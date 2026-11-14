@@ -5,7 +5,7 @@ import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { makePasswordHash, verifyPassword, generateToken, authenticate, getUser, secretsEqual, readAppEntry } from "../lib/auth";
 import { clearRateLimit, clientIp, consumeRateLimit } from "../lib/rate-limit";
 import { getTelegramLoginResult, storeLoginToken } from "../lib/telegram-bot";
-import { getLivePendingRegistration, savePendingRegistration } from "../lib/pending-registration";
+import { getLivePendingRegistration, openAccountFromPending, savePendingRegistration } from "../lib/pending-registration";
 import { getTelegramBotUsername } from "../lib/telegram-token";
 
 const router = Router();
@@ -62,7 +62,7 @@ router.post("/register", async (req, res) => {
     }
     // The public address comes from the shop name, then the barber's name.
     // A name the client sends is ignored so the first link stays readable.
-    // The account row is created only after the phone is shared in Telegram.
+    // The account opens now. Telegram can be linked later from the profile.
     void providedUsername;
     const pending = await savePendingRegistration({
       name,
@@ -71,19 +71,10 @@ router.post("/register", async (req, res) => {
       mode: mode === "team" ? "team" : "solo",
       lang: lang === "ru" ? "ru" : "uz",
     });
-    const token = generateToken(pending.id, 7 * 24 * 60 * 60, 0);
+    const user = await openAccountFromPending(pending);
+    const token = generateToken(user.id, 7 * 24 * 60 * 60, user.sessionEpoch ?? 0);
     res.status(201).json({
-      user: {
-        id: pending.id,
-        name: pending.name,
-        username: pending.username,
-        brandName: pending.brandName,
-        mode: pending.mode,
-        lang: pending.lang,
-        telegramVerified: false,
-        telegramId: null,
-        createdAt: pending.createdAt,
-      },
+      user: formatUser(user),
       token,
       telegramVerified: false,
     });

@@ -139,3 +139,52 @@ export async function createUserFromPending(
   await db.delete(pendingRegistrationsTable).where(eq(pendingRegistrationsTable.id, pending.id));
   return user;
 }
+
+/** Open the barber account as soon as they finish the signup form. Telegram can be linked later. */
+export async function openAccountFromPending(pending: PendingRegistration) {
+  const [existing] = await db.select().from(usersTable).where(eq(usersTable.id, pending.id)).limit(1);
+  if (existing) {
+    await db.delete(pendingRegistrationsTable).where(eq(pendingRegistrationsTable.id, pending.id));
+    return existing;
+  }
+
+  let username = pending.username;
+  if (!(await isSlugAvailable(username, pending.id))) {
+    username = await allocatePublicSlug({
+      brandName: pending.brandName,
+      name: pending.name,
+    });
+  }
+
+  const values = {
+    id: pending.id,
+    name: pending.name,
+    username,
+    brandName: pending.brandName,
+    passwordHash: pending.passwordHash,
+    mode: pending.mode,
+    lang: pending.lang,
+    telegramVerified: false,
+  };
+
+  let user;
+  try {
+    [user] = await db.insert(usersTable).values(values).returning();
+  } catch (err) {
+    const [raced] = await db.select().from(usersTable).where(eq(usersTable.id, pending.id)).limit(1);
+    if (raced) {
+      await db.delete(pendingRegistrationsTable).where(eq(pendingRegistrationsTable.id, pending.id));
+      return raced;
+    }
+    values.username = await allocatePublicSlug({
+      brandName: pending.brandName,
+      name: pending.name,
+    });
+    [user] = await db.insert(usersTable).values(values).returning();
+    if (!user) throw err;
+  }
+
+  if (!user) throw new Error("signup save failed");
+  await db.delete(pendingRegistrationsTable).where(eq(pendingRegistrationsTable.id, pending.id));
+  return user;
+}
