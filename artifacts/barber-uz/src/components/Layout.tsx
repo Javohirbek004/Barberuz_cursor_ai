@@ -1,8 +1,8 @@
 import { ReactNode, useEffect } from "react";
 import { BottomNav } from "./BottomNav";
 import { useLocation } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
 import { touchThisDevice } from "@/lib/device";
+import { pathAfterAuth } from "@/lib/onboarding";
 
 /** Bottom menu only on the four main tabs. Any nested page, including /settings/..., hides it. */
 const ROOT_TAB_PATHS = new Set(["/", "/dashboard", "/calendar", "/clients", "/settings"]);
@@ -15,16 +15,13 @@ function isRootTab(pathname: string): boolean {
 
 export function Layout({ children, hideBottomNav }: { children: ReactNode; hideBottomNav?: boolean }) {
   const [location, navigate] = useLocation();
-  const { user, isLoading } = useAuth(false);
   const showBottomNav = !hideBottomNav && isRootTab(location);
 
   useEffect(() => { touchThisDevice(); }, []);
 
   useEffect(() => {
-    if (!isLoading && !!user && user?.telegramVerified !== true && location !== "/verify-telegram") {
-      navigate("/verify-telegram");
-    }
-  }, [user, isLoading, location, navigate]);
+    if (pathAfterAuth() === "/onboarding" && location !== "/onboarding") navigate("/onboarding");
+  }, [location, navigate]);
 
   return (
     <div className={`min-h-screen bg-background relative ${showBottomNav ? "pb-28" : "pb-4"}`}>

@@ -91,6 +91,7 @@ router.put("/profile", authenticate, async (req, res) => {
       bufferTime: rawBufferTime,
       address, mapLink: rawMapLink, latitude, longitude,
       instagram: rawInstagram, galleryImages,
+      telegramUsername: rawTelegram,
     } = req.body;
     // Only the supported gap sizes are accepted; anything else is ignored.
     const bufferTime = typeof rawBufferTime === "number" && ALLOWED_BUFFER_MINUTES.includes(rawBufferTime)
@@ -102,6 +103,9 @@ router.put("/profile", authenticate, async (req, res) => {
     const instagram = typeof rawInstagram === "string"
       ? rawInstagram.replace(/^@+/, "")
       : rawInstagram;
+    const telegramUsername = typeof rawTelegram === "string"
+      ? rawTelegram.trim().replace(/^https?:\/\//i, "").replace(/^(www\.)?(t\.me|telegram\.me)\//i, "").replace(/^@+/, "").split(/[/?#\s]/)[0]
+      : undefined;
     const [updated] = await db.update(usersTable)
       .set({
         ...(name !== undefined && { name }),
@@ -125,6 +129,7 @@ router.put("/profile", authenticate, async (req, res) => {
         ...(latitude !== undefined && { latitude }),
         ...(longitude !== undefined && { longitude }),
         ...(instagram !== undefined && { instagram }),
+        ...(telegramUsername !== undefined && { telegramUsername }),
         ...(galleryImages !== undefined && { galleryImages }),
         updatedAt: new Date(),
       })

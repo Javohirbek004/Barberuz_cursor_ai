@@ -33,6 +33,8 @@ import {
   type ServiceCategory,
 } from "@/hooks/useCategories";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { ONBOARDING_READY_KEY } from "@/lib/onboarding";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -2251,6 +2253,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
 export default function PersonalPage() {
   const { user } = useAuth();
   const { lang } = useTranslation();
+  const { toast } = useToast();
   const isTeam = user?.mode === "team";
 
   const [tab, setTab] = useState<Tab>("asosiy");
@@ -2264,6 +2267,14 @@ export default function PersonalPage() {
   const [userSlug, setUserSlug] = useState(user?.username || "");
 
   useEffect(() => { setUserSlug(user?.username || ""); }, [user?.username]);
+
+  useEffect(() => {
+    if (sessionStorage.getItem(ONBOARDING_READY_KEY) !== "1") return;
+    sessionStorage.removeItem(ONBOARDING_READY_KEY);
+    const item = toast({ title: pick(lang, "Tabriklaymiz! Sahifangiz tayyor", "Поздравляем! Страница готова"), duration: 4000 });
+    const timer = window.setTimeout(() => item.dismiss(), 4000);
+    return () => window.clearTimeout(timer);
+  }, [lang, toast]);
 
   useEffect(() => {
     let cancelled = false;

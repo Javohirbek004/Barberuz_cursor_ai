@@ -7,7 +7,7 @@ export const SLUG_REGEX = /^[a-z0-9_-]{3,24}$/;
 const RESERVED = new Set([
   "admin", "login", "settings", "services", "barber",
   "register", "dashboard", "calendar", "clients", "client",
-  "api", "b", "verify-telegram", "barber-setup", "feedback",
+  "api", "b", "verify-telegram", "barber-setup", "feedback", "onboarding",
 ]);
 
 export type SlugProblem = "ok" | "space" | "format" | "length" | "reserved";

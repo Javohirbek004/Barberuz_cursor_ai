@@ -27,6 +27,8 @@ import ThemeSettings from "@/pages/settings/ThemeSettings";
 import BarberSetup from "@/pages/BarberSetup";
 import BarberPublicPage from "@/pages/BarberPublicPage";
 import BarberByIdPage from "@/pages/BarberByIdPage";
+import Onboarding from "@/pages/Onboarding";
+import { pathAfterAuth } from "@/lib/onboarding";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,8 +41,9 @@ const queryClient = new QueryClient({
 
 /** Smart root redirect — checks for token without blocking render */
 function RootRedirect() {
-  const token = localStorage.getItem('barber_token');
-  return token ? <Redirect to="/dashboard" /> : <Redirect to="/register" />;
+  const token = localStorage.getItem("barber_token");
+  if (!token) return <Redirect to="/register" />;
+  return <Redirect to={pathAfterAuth()} />;
 }
 
 function AppRoutes() {
@@ -49,6 +52,7 @@ function AppRoutes() {
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/verify-telegram" component={TelegramVerify} />
+      <Route path="/onboarding" component={Onboarding} />
 
       {/* Root: go to dashboard if logged in, otherwise registration */}
       <Route path="/" component={RootRedirect} />

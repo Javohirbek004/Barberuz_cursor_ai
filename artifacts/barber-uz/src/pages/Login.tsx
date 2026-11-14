@@ -17,6 +17,7 @@ import { motion } from "framer-motion";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useBotUsername } from "@/lib/bot-link";
+import { pathAfterAuth } from "@/lib/onboarding";
 
 type LoginErrorType = "USER_NOT_FOUND" | "INVALID_PASSWORD";
 
@@ -82,7 +83,7 @@ export default function Login() {
     fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => {
         if (r.ok) {
-          navigate("/dashboard");
+          navigate(pathAfterAuth());
         } else {
           localStorage.removeItem("barber_token");
           localStorage.removeItem("barber_user");
@@ -97,7 +98,7 @@ export default function Login() {
         localStorage.setItem("barber_token", data.token);
         localStorage.setItem("barber_user", JSON.stringify(data.user));
         toast({ title: t("success") });
-        navigate("/dashboard");
+        navigate(pathAfterAuth());
       },
       onError: (err) => {
         const code = readLoginError(err);

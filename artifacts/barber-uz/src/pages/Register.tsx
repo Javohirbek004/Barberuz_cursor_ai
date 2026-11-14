@@ -10,6 +10,7 @@ import { motion } from "framer-motion";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { ONBOARDING_PENDING_KEY } from "@/lib/onboarding";
 
 function generateUsername(name: string): string {
   const base = name
@@ -61,8 +62,9 @@ export default function Register() {
         localStorage.removeItem("telegram_auth_code_ts");
         localStorage.setItem("barber_token", data.token);
         localStorage.setItem("barber_user", JSON.stringify(data.user));
+        localStorage.setItem(ONBOARDING_PENDING_KEY, "1");
         toast({ title: t("success") });
-        navigate("/verify-telegram");
+        navigate("/onboarding");
       },
       onError: () => {
         toast({

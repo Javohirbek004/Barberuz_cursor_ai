@@ -1,0 +1,823 @@
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import "leaflet/dist/leaflet.css";
+import { useLocation } from "wouter";
+import { Camera, Check, MapPin, Navigation, Plus, Star, X } from "lucide-react";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { pick, weekdayNames } from "@/i18n/pick";
+import { useToast } from "@/hooks/use-toast";
+import {
+  DAY_KEYS,
+  SHORT_BY_DAY,
+  isValidHHMM,
+  toMins,
+  writeScheduleJson,
+  type WeekSchedule,
+} from "@/lib/schedule";
+import { ONBOARDING_PENDING_KEY, ONBOARDING_READY_KEY } from "@/lib/onboarding";
+
+const DRAFT_KEY = "barber_onboarding_draft";
+const STEPS = 7;
+
+type ServiceDraft = {
+  key: string;
+  name: string;
+  duration: number;
+  price: number;
+  category: string;
+  on: boolean;
+  custom?: boolean;
+  savedId?: string;
+};
+
+type Draft = {
+  step: number;
+  services: ServiceDraft[];
+  days: string[];
+  workStart: string;
+  workEnd: string;
+  lunchOn: boolean;
+  lunchStart: string;
+  lunchEnd: string;
+  address: string;
+  mapLink: string;
+  latitude: string;
+  longitude: string;
+  phone: string;
+  phoneVisible: boolean;
+  bio: string;
+  avatarUrl: string;
+  gallery: string[];
+  instagram: string;
+  telegram: string;
+};
+
+const TEMPLATES: ServiceDraft[] = [
+  { key: "soch", name: "Soch olish", duration: 30, price: 50000, category: "Soch", on: true },
+  { key: "soqol", name: "Soqol olish", duration: 20, price: 30000, category: "Soqol", on: true },
+  { key: "kompleks", name: "Soch va soqol (Kompleks)", duration: 45, price: 70000, category: "Kompleks xizmatlar", on: true },
+  { key: "bola", name: "Bolalar sochi", duration: 20, price: 40000, category: "Soch", on: true },
+  { key: "yuz", name: "Yuzni tozalash / Maskalar", duration: 25, price: 60000, category: "Yuz parvarishi", on: true },
+];
+
+const SALON = [
+  { id: "stul", name: "Stul", file: "stul.jpg" },
+  { id: "oyna", name: "Oyna", file: "oyna.jpg" },
+  { id: "kutish", name: "Kutish joyi", file: "kutish.jpg" },
+  { id: "asbob", name: "Asboblar", file: "asbob.jpg" },
+];
+
+function templateUrl(file: string): string {
+  const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+  return `${base}/images/salon/${file}`;
+}
+
+function token(): string {
+  return localStorage.getItem("barber_token") || "";
+}
+
+async function api(path: string, method: string, body?: unknown) {
+  const res = await fetch(path, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token()}`,
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+  if (!res.ok) throw new Error(`${method} ${path} ${res.status}`);
+  return res.json();
+}
+
+function money(n: number): string {
+  return `${n.toLocaleString("uz-UZ")} so‘m`;
+}
+
+function cleanHandle(raw: string): string {
+  let s = raw.trim();
+  s = s.replace(/^https?:\/\//i, "");
+  s = s.replace(/^(www\.)?(instagram\.com|t\.me|telegram\.me)\//i, "");
+  s = s.replace(/^@+/, "");
+  s = s.split(/[/?#\s]/)[0] || "";
+  return /^[A-Za-z0-9._]{2,32}$/.test(s) ? s : "";
+}
+
+function loadDraft(): Partial<Draft> | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as Partial<Draft>;
+    return data && typeof data === "object" ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`,
+      { headers: { "Accept-Language": "uz,ru,en" } },
+    );
+    const data = await res.json();
+    return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  } catch {
+    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  }
+}
+
+function readImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 1280;
+      const scale = Math.min(1, max / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        reject(new Error("canvas"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("image"));
+    };
+    img.src = url;
+  });
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block mt-6">
+      <span className="block mb-2 text-[13px] text-muted-foreground">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+export default function Onboarding() {
+  const { lang } = useTranslation();
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const saved = useRef(loadDraft());
+  const t = (uz: string, ru: string) => pick(lang, uz, ru);
+
+  const [step, setStep] = useState(() => Math.min(STEPS - 1, Math.max(0, saved.current?.step ?? 0)));
+  const [services, setServices] = useState<ServiceDraft[]>(() =>
+    Array.isArray(saved.current?.services) && saved.current.services.length > 0
+      ? saved.current.services
+      : TEMPLATES.map((item) => ({ ...item })),
+  );
+  const [days, setDays] = useState<string[]>(saved.current?.days ?? []);
+  const [workStart, setWorkStart] = useState(saved.current?.workStart || "09:00");
+  const [workEnd, setWorkEnd] = useState(saved.current?.workEnd || "20:00");
+  const [lunchOn, setLunchOn] = useState(!!saved.current?.lunchOn);
+  const [lunchStart, setLunchStart] = useState(saved.current?.lunchStart || "13:00");
+  const [lunchEnd, setLunchEnd] = useState(saved.current?.lunchEnd || "14:00");
+  const [address, setAddress] = useState(saved.current?.address || "");
+  const [mapLink, setMapLink] = useState(saved.current?.mapLink || "");
+  const [latitude, setLatitude] = useState(saved.current?.latitude || "");
+  const [longitude, setLongitude] = useState(saved.current?.longitude || "");
+  const [phone, setPhone] = useState(saved.current?.phone || "");
+  const [phoneVisible, setPhoneVisible] = useState(saved.current?.phoneVisible !== false);
+  const [bio, setBio] = useState(saved.current?.bio || "");
+  const [avatarUrl, setAvatarUrl] = useState(saved.current?.avatarUrl || "");
+  const [gallery, setGallery] = useState<string[]>(saved.current?.gallery ?? []);
+  const [instagram, setInstagram] = useState(saved.current?.instagram || "");
+  const [telegram, setTelegram] = useState(saved.current?.telegram || "");
+  const [busy, setBusy] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [gpsBusy, setGpsBusy] = useState(false);
+  const [gpsError, setGpsError] = useState("");
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [sheet, setSheet] = useState<null | { key: string | null; name: string; duration: string; price: string; category: string }>(null);
+  const avatarRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!token()) navigate("/register");
+    else if (localStorage.getItem(ONBOARDING_PENDING_KEY) !== "1") navigate("/dashboard");
+  }, [navigate]);
+
+  useEffect(() => {
+    const draft: Draft = {
+      step, services, days, workStart, workEnd, lunchOn, lunchStart, lunchEnd,
+      address, mapLink, latitude, longitude, phone, phoneVisible, bio, avatarUrl, gallery, instagram, telegram,
+    };
+    try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore quota */ }
+  }, [step, services, days, workStart, workEnd, lunchOn, lunchStart, lunchEnd, address, mapLink, latitude, longitude, phone, phoneVisible, bio, avatarUrl, gallery, instagram, telegram]);
+
+  function warn(title: string) {
+    const item = toast({ title, duration: 4000 });
+    window.setTimeout(() => item.dismiss(), 4000);
+  }
+
+  function applyPlace(lat: number, lng: number, place: string) {
+    setLatitude(String(lat));
+    setLongitude(String(lng));
+    setAddress(place);
+    setMapLink(`https://www.google.com/maps?q=${lat},${lng}`);
+  }
+
+  function locate() {
+    if (!navigator.geolocation) {
+      setGpsError(t("Telefon joylashuvni ko‘rsata olmaydi", "Телефон не показывает местоположение"));
+      return;
+    }
+    setGpsBusy(true);
+    setGpsError("");
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const place = await reverseGeocode(pos.coords.latitude, pos.coords.longitude);
+        applyPlace(pos.coords.latitude, pos.coords.longitude, place);
+        setGpsBusy(false);
+      },
+      () => {
+        setGpsBusy(false);
+        setGpsError(t("Joylashuvni aniqlab bo‘lmadi", "Не удалось определить местоположение"));
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }
+
+  async function saveServices() {
+    const chosen = services.filter((item) => item.on && item.name.trim());
+    const seeded = await api("/api/categories/seed", "POST", {});
+    const byName = new Map<string, string>();
+    for (const cat of (seeded.categories || []) as { id: string; name: string }[]) byName.set(cat.name, cat.id);
+    async function ensure(name: string) {
+      const found = byName.get(name);
+      if (found) return found;
+      const created = await api("/api/categories", "POST", { name }) as { id: string };
+      byName.set(name, created.id);
+      return created.id;
+    }
+    const next = [...services];
+    for (let i = 0; i < next.length; i++) {
+      const item = next[i];
+      if (!item.on || !item.name.trim()) continue;
+      const categoryId = await ensure(item.category);
+      const body = { name: item.name.trim(), duration: item.duration, price: item.price, categoryId };
+      if (item.savedId) await api(`/api/services/${item.savedId}`, "PUT", body);
+      else {
+        const created = await api("/api/services", "POST", body) as { id: string };
+        next[i] = { ...item, savedId: created.id };
+      }
+      setServices([...next]);
+    }
+  }
+
+  async function saveHours() {
+    const week = {} as WeekSchedule;
+    for (const key of DAY_KEYS) {
+      const open = days.includes(SHORT_BY_DAY[key]);
+      week[key] = { enabled: open, start: workStart, end: workEnd };
+    }
+    await api("/api/settings/profile", "PUT", {
+      workingHoursStart: workStart,
+      workingHoursEnd: workEnd,
+      scheduleJson: writeScheduleJson(week),
+      lunchBreakEnabled: lunchOn,
+      lunchBreakStart: lunchStart,
+      lunchBreakEnd: lunchEnd,
+    });
+  }
+
+  async function goNext() {
+    if (busy) return;
+    if (step === 0) {
+      const chosen = services.filter((item) => item.on && item.name.trim());
+      if (chosen.length === 0) {
+        warn(t("Davom etish uchun kamida bitta xizmat tanlang yoki yangisini qo‘shing", "Чтобы продолжить, выберите хотя бы одну услугу или добавьте свою"));
+        return;
+      }
+      if (chosen.some((item) => item.duration < 5 || item.price < 0)) {
+        warn(t("Vaqt va narxni to‘g‘ri yozing", "Укажите время и цену"));
+        return;
+      }
+    }
+    if (step === 1) {
+      if (days.length === 0 || !isValidHHMM(workStart) || !isValidHHMM(workEnd) || toMins(workStart) >= toMins(workEnd)) {
+        warn(t("Oldin shu majburiy oynani to‘ldiring", "Сначала заполните этот обязательный экран"));
+        return;
+      }
+      if (lunchOn && (!isValidHHMM(lunchStart) || !isValidHHMM(lunchEnd) || toMins(lunchStart) >= toMins(lunchEnd) || toMins(lunchStart) < toMins(workStart) || toMins(lunchEnd) > toMins(workEnd))) {
+        warn(t("Tushlik ish vaqti ichida bo‘lsin", "Обед должен быть внутри рабочего времени"));
+        return;
+      }
+    }
+    setBusy(true);
+    try {
+      if (step === 0) await saveServices();
+      if (step === 1) await saveHours();
+      if (step === 2 && (address.trim() || mapLink.trim() || latitude)) {
+        const link = mapLink.trim();
+        const mapLinkValue = /^https?:\/\//i.test(link) || !link ? link : (link.includes(".") ? `https://${link}` : link);
+        await api("/api/settings/profile", "PUT", {
+          address: address.trim(),
+          mapLink: mapLinkValue,
+          latitude: latitude || null,
+          longitude: longitude || null,
+        });
+        const item = toast({ title: t("Manzil saqlandi", "Адрес сохранён"), duration: 2500 });
+        window.setTimeout(() => item.dismiss(), 2500);
+      }
+      if (step === 3 && (phone.trim() || phoneVisible === false)) {
+        await api("/api/settings/profile", "PUT", { phone: phone.trim(), phoneVisible });
+      }
+      if (step === 4 && bio.trim()) {
+        await api("/api/settings/profile", "PUT", { bio: bio.trim() });
+      }
+      if (step === 5 && (avatarUrl || gallery.length > 0)) {
+        await api("/api/settings/profile", "PUT", { avatarUrl, galleryImages: JSON.stringify(gallery) });
+      }
+      if (step === 6) {
+        const ig = cleanHandle(instagram);
+        const tg = cleanHandle(telegram);
+        if (ig || tg) {
+          await api("/api/settings/profile", "PUT", {
+            ...(ig ? { instagram: ig } : {}),
+            ...(tg ? { telegramUsername: tg } : {}),
+          });
+        }
+        localStorage.removeItem(ONBOARDING_PENDING_KEY);
+        sessionStorage.removeItem(DRAFT_KEY);
+        sessionStorage.setItem(ONBOARDING_READY_KEY, "1");
+        navigate("/settings/page");
+        return;
+      }
+      setStep((n) => n + 1);
+    } catch {
+      warn(t("Saqlanmadi. Qayta urinib ko‘ring", "Не сохранилось. Попробуйте ещё раз"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onAvatar(file?: File) {
+    if (!file) return;
+    try { setAvatarUrl(await readImage(file)); } catch { warn(t("Rasm ochilmadi", "Фото не открылось")); }
+  }
+
+  async function onGallery(file?: File) {
+    if (!file) return;
+    if (gallery.length >= 5) {
+      warn(t("5 ta rasm to‘lgan. Avval bittasini olib tashlang", "Уже 5 фото. Сначала уберите одно"));
+      return;
+    }
+    try {
+      const url = await readImage(file);
+      setGallery((list) => list.length >= 5 ? list : [...list, url]);
+    } catch {
+      warn(t("Rasm ochilmadi", "Фото не открылось"));
+    }
+  }
+
+  function addTemplate(file: string) {
+    const url = templateUrl(file);
+    if (gallery.includes(url)) {
+      setTemplatesOpen(false);
+      return;
+    }
+    if (gallery.length >= 5) {
+      warn(t("5 ta rasm to‘lgan. Avval bittasini olib tashlang", "Уже 5 фото. Сначала уберите одно"));
+      return;
+    }
+    setGallery((list) => [...list, url]);
+    setTemplatesOpen(false);
+  }
+
+  function saveSheet() {
+    if (!sheet) return;
+    const name = sheet.name.trim();
+    const duration = Number(sheet.duration);
+    const price = Number(String(sheet.price).replace(/\s/g, ""));
+    if (!name || !Number.isFinite(duration) || duration < 5 || !Number.isFinite(price) || price < 0) {
+      warn(t("Nom, vaqt va narxni to‘ldiring", "Заполните название, время и цену"));
+      return;
+    }
+    if (sheet.key) {
+      setServices((list) => list.map((item) => item.key === sheet.key ? { ...item, name, duration, price, on: true } : item));
+    } else {
+      setServices((list) => [...list, {
+        key: `custom-${Date.now()}`,
+        name,
+        duration,
+        price,
+        category: "Asosiy",
+        on: true,
+        custom: true,
+      }]);
+    }
+    setSheet(null);
+  }
+
+  const optional = step >= 2;
+  const names = weekdayNames(lang);
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="max-w-md mx-auto px-4 pb-8">
+        <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm">
+          <div className="h-11 flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">{optional ? t("Ixtiyoriy", "Необязательно") : t("Majburiy", "Обязательно")}</span>
+            <button type="button" onClick={goNext} className="h-11 px-1 text-primary text-base font-medium">
+              {busy ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
+            </button>
+          </div>
+          <div className="flex gap-1.5 pb-3">
+            {Array.from({ length: STEPS }, (_, i) => (
+              <i key={i} className={`h-1 flex-1 rounded-full ${i <= step ? "bg-primary" : "bg-zinc-700"}`} />
+            ))}
+          </div>
+        </header>
+
+        {step === 0 && (
+          <section>
+            <h1 className="font-display text-[26px] font-medium leading-tight">Xizmatlarni qo‘shing</h1>
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Kamida bittasi qolsin. Nom, vaqt va narxni o‘zgartirish mumkin.", "Оставьте хотя бы одну. Название, время и цену можно изменить.")}</p>
+            <div className="mt-5 space-y-2">
+              {services.map((item) => (
+                <div key={item.key} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-card px-3 py-3">
+                  <button
+                    type="button"
+                    aria-pressed={item.on}
+                    onClick={() => setServices((list) => list.map((row) => row.key === item.key ? { ...row, on: !row.on } : row))}
+                    className={`h-6 w-6 shrink-0 rounded-md border flex items-center justify-center ${item.on ? "bg-primary border-primary text-black" : "border-white/20"}`}
+                  >
+                    {item.on && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{item.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{item.duration} {t("daqiqa", "мин")} · {money(item.price)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSheet({ key: item.key, name: item.name, duration: String(item.duration), price: String(item.price), category: item.category })}
+                    className="h-11 px-2 text-sm text-primary"
+                  >
+                    {t("Tahrir", "Изменить")}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setSheet({ key: null, name: "", duration: "30", price: "", category: "Asosiy" })}
+              className="mt-3 h-12 w-full rounded-2xl border border-primary/30 text-sm font-medium"
+            >
+              <Plus className="inline w-4 h-4 mr-1 -mt-0.5" /> {t("Yangi xizmat qo‘shish", "Добавить услугу")}
+            </button>
+          </section>
+        )}
+
+        {step === 1 && (
+          <section>
+            <h1 className="font-display text-[26px] font-medium leading-tight">{t("Ish kunlari va vaqti", "Рабочие дни и время")}</h1>
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Kamida bitta kun va ish vaqtini belgilang. Tushlik ixtiyoriy.", "Выберите хотя бы один день и часы. Обед необязателен.")}</p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              {["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((key, i) => {
+                const on = days.includes(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setDays((list) => on ? list.filter((d) => d !== key) : [...list, key])}
+                    className={`h-11 w-11 rounded-xl text-sm font-medium border ${on ? "bg-primary text-black border-primary" : "border-white/10 text-muted-foreground"}`}
+                  >
+                    {names[i]}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <Field label={t("Ochilish", "Открытие")}>
+                <input type="time" value={workStart} onChange={(e) => setWorkStart(e.target.value)} className="h-12 w-full rounded-xl bg-card border border-white/10 px-3 text-center" />
+              </Field>
+              <Field label={t("Yopilish", "Закрытие")}>
+                <input type="time" value={workEnd} onChange={(e) => setWorkEnd(e.target.value)} className="h-12 w-full rounded-xl bg-card border border-white/10 px-3 text-center" />
+              </Field>
+            </div>
+            <div className="mt-6 flex items-center justify-between">
+              <span className="text-sm">{t("Tushlik", "Обед")}</span>
+              <button type="button" aria-pressed={lunchOn} onClick={() => setLunchOn((v) => !v)} className={`h-7 w-12 rounded-full relative ${lunchOn ? "bg-primary" : "bg-white/15"}`}>
+                <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white transition-transform ${lunchOn ? "translate-x-5" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+            {lunchOn && (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} className="h-12 rounded-xl bg-card border border-white/10 px-3 text-center" />
+                <input type="time" value={lunchEnd} onChange={(e) => setLunchEnd(e.target.value)} className="h-12 rounded-xl bg-card border border-white/10 px-3 text-center" />
+              </div>
+            )}
+          </section>
+        )}
+
+        {step === 2 && (
+          <section>
+            <h1 className="font-display text-[26px] font-medium leading-tight">{t("Manzil", "Адрес")}</h1>
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijoz qayerga kelishini biladi. Bo‘sh qoldirish mumkin.", "Клиент узнает, куда прийти. Можно пропустить.")}</p>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setMapOpen(true)} className="h-24 rounded-2xl border border-primary/30 bg-card flex flex-col items-center justify-center gap-2 text-sm">
+                <MapPin className="w-5 h-5 text-primary" />
+                {t("Xaritadan tanlash", "Выбрать на карте")}
+              </button>
+              <button type="button" onClick={locate} disabled={gpsBusy} className="h-24 rounded-2xl border border-primary/30 bg-card flex flex-col items-center justify-center gap-2 text-sm disabled:opacity-60">
+                <Navigation className="w-5 h-5 text-primary" />
+                {gpsBusy ? t("Aniqlanmoqda...", "Определяется...") : t("Joylashuvimni aniqlash", "Определить моё место")}
+              </button>
+            </div>
+            {gpsError && <p className="mt-2 text-sm text-destructive">{gpsError}</p>}
+            <Field label={t("Joy nomi", "Название места")}>
+              <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("Masalan: Chilonzor, 12-mavze", "Например: Чиланзар, 12-квартал")} className="h-12 w-full rounded-xl bg-card border border-white/10 px-3" />
+            </Field>
+            <Field label={t("Xarita havolasi", "Ссылка на карту")}>
+              <input value={mapLink} onChange={(e) => setMapLink(e.target.value)} placeholder="https://maps.google.com/..." className="h-12 w-full rounded-xl bg-card border border-white/10 px-3" />
+            </Field>
+          </section>
+        )}
+
+        {step === 3 && (
+          <section>
+            <h1 className="font-display text-[26px] font-medium leading-tight">{t("Telefon", "Телефон")}</h1>
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijoz qo‘ng‘iroq qila oladi. Ko‘rsatishni o‘zingiz yoqasiz.", "Клиент сможет позвонить. Показ включаете вы.")}</p>
+            <Field label={t("Telefon raqam", "Номер телефона")}>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="+998" className="h-12 w-full rounded-xl bg-card border border-white/10 px-3" />
+            </Field>
+            <div className="mt-5 flex items-center justify-between">
+              <span className="text-sm">{t("Mijozga ko‘rinsin", "Показывать клиенту")}</span>
+              <button type="button" aria-pressed={phoneVisible} onClick={() => setPhoneVisible((v) => !v)} className={`h-7 w-12 rounded-full relative ${phoneVisible ? "bg-primary" : "bg-white/15"}`}>
+                <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white transition-transform ${phoneVisible ? "translate-x-5" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+          </section>
+        )}
+
+        {step === 4 && (
+          <section>
+            <h1 className="font-display text-[26px] font-medium leading-tight">{t("Tavsif", "Описание")}</h1>
+            <Field label={t("Tavsif (BIO)", "Описание (BIO)")}>
+              <textarea
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                rows={5}
+                placeholder="Masalan: 3yillik tajriba ga ega Barber. Soch, soqol ustasi."
+                className="w-full rounded-xl bg-card border border-white/10 px-3 py-3 resize-none"
+              />
+            </Field>
+          </section>
+        )}
+
+        {step === 5 && (
+          <section>
+            <h1 className="font-display text-[26px] font-medium leading-tight">{t("Profil va ish joyi rasmlari", "Фото профиля и рабочего места")}</h1>
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijozlar ishonchini oshirish uchun o‘zingiz va ishxonangiz rasmini qo‘shing. Keyinroq ham o‘zgartirish mumkin.", "Добавьте своё фото и фото места работы. Позже можно изменить.")}</p>
+            <p className="mt-5 text-[13px] text-muted-foreground">{t("Profil rasmi (Yuzingiz)", "Фото профиля")}</p>
+            <div className="mt-2 flex items-center gap-3">
+              <button type="button" onClick={() => avatarRef.current?.click()} className="h-20 w-20 rounded-full border border-primary overflow-hidden bg-card flex items-center justify-center shrink-0">
+                {avatarUrl ? <img src={avatarUrl} alt="" className="h-full w-full object-cover" /> : <Camera className="w-5 h-5 text-primary" />}
+              </button>
+              <div>
+                <p className="text-sm font-medium">{t("Yuz rasmini yuklash", "Загрузить фото лица")}</p>
+                <p className="text-[13px] text-muted-foreground mt-1">{t("Aniq va tabassumli rasm tavsiya etiladi.", "Лучше чёткое фото с улыбкой.")}</p>
+                <button type="button" onClick={() => avatarRef.current?.click()} className="mt-2 h-9 px-3 rounded-xl border border-primary/30 bg-card text-[13px]">{t("Rasmni tanlash", "Выбрать фото")}</button>
+              </div>
+            </div>
+            <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={(e) => { onAvatar(e.target.files?.[0]); e.target.value = ""; }} />
+            <div className="mt-6 flex items-center justify-between text-[13px]">
+              <span>{t("Ish joyi rasmlari (Limit 5 rasm)", "Фото рабочего места (до 5)")}</span>
+              <span className="text-muted-foreground">{gallery.length}/5</span>
+            </div>
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+              {gallery.map((src, i) => (
+                <div key={`${src}-${i}`} className="w-[132px] shrink-0">
+                  <div className="relative h-28 rounded-t-xl overflow-hidden border border-primary/30 border-b-0">
+                    <img src={src} alt="" className="h-full w-full object-cover" />
+                    <button type="button" aria-label={t("Olib tashlash", "Убрать")} onClick={() => setGallery((list) => list.filter((_, j) => j !== i))} className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-black/70 flex items-center justify-center">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setGallery((list) => [list[i], ...list.filter((_, j) => j !== i)])}
+                    className={`h-9 w-full rounded-b-xl border border-primary/30 text-xs flex items-center justify-center gap-1 ${i === 0 ? "text-primary" : "text-muted-foreground"}`}
+                  >
+                    <Star className={`w-3 h-3 ${i === 0 ? "fill-primary" : ""}`} />
+                    {i === 0 ? t("Muqova", "Обложка") : t("Muqova qilish", "Сделать обложкой")}
+                  </button>
+                </div>
+              ))}
+              {gallery.length < 5 && (
+                <button type="button" onClick={() => galleryRef.current?.click()} className="h-[148px] w-28 shrink-0 rounded-xl border border-primary/30 text-primary text-2xl">+</button>
+              )}
+            </div>
+            <input ref={galleryRef} type="file" accept="image/*" className="hidden" onChange={(e) => { onGallery(e.target.files?.[0]); e.target.value = ""; }} />
+            <button type="button" onClick={() => setTemplatesOpen(true)} className="mt-4 h-11 w-full rounded-full border border-primary/30 bg-card text-sm">
+              {t("Tayyor salon shablonlaridan tanlash", "Выбрать готовый шаблон салона")}
+            </button>
+          </section>
+        )}
+
+        {step === 6 && (
+          <section>
+            <h1 className="font-display text-[26px] font-medium leading-tight">{t("Ijtimoiy tarmoq", "Соцсеть")}</h1>
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijozlaringiz sizni topishi va ishlaringizni ko‘rishi uchun profillaringizni qo‘shish tavsiya qilinadi.", "Добавьте профили, чтобы клиенты могли найти вас и увидеть работы.")}</p>
+            <SocialField label="Instagram" value={instagram} onChange={setInstagram} placeholder="instagram.com/..." ok={!!cleanHandle(instagram)} mark="ig" />
+            <SocialField label="Telegram" value={telegram} onChange={setTelegram} placeholder="t.me/..." ok={!!cleanHandle(telegram)} mark="tg" />
+            <button type="button" onClick={goNext} className="mt-8 h-12 w-full rounded-xl bg-primary text-black font-medium">
+              {busy ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
+            </button>
+          </section>
+        )}
+      </div>
+
+      {sheet && (
+        <div className="fixed inset-0 z-40 bg-black/60 flex items-end" onClick={() => setSheet(null)}>
+          <div className="w-full max-w-md mx-auto rounded-t-2xl bg-card border-t border-primary/30 p-4" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-display text-xl">{sheet.key ? t("Xizmatni tahrirlash", "Изменить услугу") : t("Yangi xizmat", "Новая услуга")}</h2>
+            <Field label={t("Nomi", "Название")}>
+              <input value={sheet.name} onChange={(e) => setSheet({ ...sheet, name: e.target.value })} className="h-12 w-full rounded-xl bg-background border border-white/10 px-3" />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t("Daqiqa", "Минуты")}>
+                <input inputMode="numeric" value={sheet.duration} onChange={(e) => setSheet({ ...sheet, duration: e.target.value })} className="h-12 w-full rounded-xl bg-background border border-white/10 px-3" />
+              </Field>
+              <Field label={t("Narx, so‘m", "Цена, сум")}>
+                <input inputMode="numeric" value={sheet.price} onChange={(e) => setSheet({ ...sheet, price: e.target.value })} className="h-12 w-full rounded-xl bg-background border border-white/10 px-3" />
+              </Field>
+            </div>
+            <button type="button" onClick={saveSheet} className="mt-5 h-12 w-full rounded-xl bg-primary text-black font-medium">{sheet.key ? t("Saqlash", "Сохранить") : t("Qo‘shish", "Добавить")}</button>
+          </div>
+        </div>
+      )}
+
+      {templatesOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 flex items-end" onClick={() => setTemplatesOpen(false)}>
+          <div className="w-full max-w-md mx-auto rounded-t-2xl bg-card border-t border-primary/30 p-4" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-display text-xl">{t("Tayyor salon rasmlari", "Готовые фото салона")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t("Birini tanlasangiz, ish joyi rasmlariga qo‘shiladi.", "Выбранное фото добавится к фото рабочего места.")}</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {SALON.map((item) => (
+                <button key={item.id} type="button" onClick={() => addTemplate(item.file)} className="text-left">
+                  <img src={templateUrl(item.file)} alt={item.name} className="h-32 w-full object-cover rounded-xl border border-primary/30" />
+                  <span className="block mt-1 text-sm">{item.name}</span>
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={() => setTemplatesOpen(false)} className="mt-4 h-11 w-full rounded-xl border border-primary/30">{t("Yopish", "Закрыть")}</button>
+          </div>
+        </div>
+      )}
+
+      {mapOpen && (
+        <MapSheet
+          lat={latitude ? Number(latitude) : 41.2995}
+          lng={longitude ? Number(longitude) : 69.2401}
+          title={t("Manzilni xaritadan tanlang", "Выберите адрес на карте")}
+          saveLabel={t("Saqlash", "Сохранить")}
+          onClose={() => setMapOpen(false)}
+          onSave={(lat, lng, place) => {
+            applyPlace(lat, lng, place);
+            setMapOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function SocialField({
+  label, value, onChange, placeholder, ok, mark,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  ok: boolean;
+  mark: "ig" | "tg";
+}) {
+  return (
+    <label className="block mt-6">
+      <span className="block mb-2 text-[13px] text-muted-foreground">{label}</span>
+      <span className={`h-12 flex items-center gap-2 rounded-xl bg-card border px-3 ${ok ? "border-primary/40" : "border-white/10"}`}>
+        {mark === "ig" ? <InstagramMark /> : <TelegramMark />}
+        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="flex-1 min-w-0 bg-transparent outline-none" />
+        {ok && <Check className="w-4 h-4 text-emerald-400" />}
+      </span>
+    </label>
+  );
+}
+
+function InstagramMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+      <defs>
+        <linearGradient id="ig" x1="0" y1="24" x2="24" y2="0">
+          <stop offset="0" stopColor="#f9ce34" />
+          <stop offset="0.5" stopColor="#ee2a7b" />
+          <stop offset="1" stopColor="#6228d7" />
+        </linearGradient>
+      </defs>
+      <rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="url(#ig)" strokeWidth="1.8" />
+      <circle cx="12" cy="12" r="4" fill="none" stroke="url(#ig)" strokeWidth="1.8" />
+      <circle cx="17.2" cy="6.8" r="1" fill="url(#ig)" />
+    </svg>
+  );
+}
+
+function TelegramMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" fill="#2AABEE" />
+      <path d="M7.2 12.1l9.2-3.6c.4-.2.8.2.7.6l-1.6 7.4c-.1.5-.6.7-1 .4l-2.6-1.9-1.3 1.2c-.2.2-.5.1-.5-.2l.2-2.2 4.8-4.3c.2-.2 0-.3-.2-.1l-5.9 3.7-2.1-.7c-.5-.1-.5-.7.1-.9z" fill="#fff" />
+    </svg>
+  );
+}
+
+function MapSheet({
+  lat, lng, title, saveLabel, onClose, onSave,
+}: {
+  lat: number;
+  lng: number;
+  title: string;
+  saveLabel: string;
+  onClose: () => void;
+  onSave: (lat: number, lng: number, address: string) => void;
+}) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const markerRef = useRef<{ getLatLng: () => { lat: number; lng: number } } | null>(null);
+  const [place, setPlace] = useState("");
+
+  useEffect(() => {
+    let destroyed = false;
+    let map: { remove: () => void } | null = null;
+    import("leaflet").then(async (mod) => {
+      const L = mod.default;
+      if (destroyed || !mapRef.current) return;
+      const iconBase = "https://unpkg.com/leaflet@1.9.4/dist/images/";
+      // @ts-expect-error leaflet private field
+      delete L.Icon.Default.prototype._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: iconBase + "marker-icon-2x.png",
+        iconUrl: iconBase + "marker-icon.png",
+        shadowUrl: iconBase + "marker-shadow.png",
+      });
+      const created = L.map(mapRef.current).setView([lat, lng], 15);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(created);
+      const marker = L.marker([lat, lng], { draggable: true }).addTo(created);
+      markerRef.current = marker;
+      map = created;
+      const show = async (la: number, ln: number) => {
+        const text = await reverseGeocode(la, ln);
+        if (!destroyed) setPlace(text);
+      };
+      show(lat, lng);
+      marker.on("dragend", () => {
+        const pos = marker.getLatLng();
+        show(pos.lat, pos.lng);
+      });
+      created.on("click", (e: { latlng: { lat: number; lng: number } }) => {
+        marker.setLatLng(e.latlng);
+        show(e.latlng.lat, e.latlng.lng);
+      });
+    });
+    return () => {
+      destroyed = true;
+      map?.remove();
+    };
+  }, [lat, lng]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-background">
+      <div className="flex items-center gap-3 px-4 h-14 border-b border-white/10">
+        <button type="button" onClick={onClose} className="h-10 w-10 rounded-xl border border-white/10"><X className="w-4 h-4 mx-auto" /></button>
+        <p className="flex-1 text-sm font-medium truncate">{place || title}</p>
+        <button
+          type="button"
+          onClick={() => {
+            const pos = markerRef.current?.getLatLng();
+            if (pos) onSave(pos.lat, pos.lng, place);
+          }}
+          className="h-10 px-3 rounded-xl bg-primary text-black text-sm font-medium"
+        >
+          {saveLabel}
+        </button>
+      </div>
+      <div ref={mapRef} className="flex-1" />
+    </div>
+  );
+}
