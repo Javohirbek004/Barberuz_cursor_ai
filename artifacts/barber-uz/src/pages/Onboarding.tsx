@@ -163,13 +163,15 @@ function readImage(file: File): Promise<string> {
   });
 }
 
-function StepName({ title, mark, tone }: { title: string; mark: string; tone: "need" | "skip" }) {
+function StepName({ title, mark, tone }: { title: string; mark?: string; tone: "need" | "skip" }) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <h1 className="font-display text-[26px] font-medium leading-tight">{title}</h1>
-      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[13px] leading-5 ${tone === "need" ? "bg-primary/15 font-medium text-primary" : "bg-white/10 font-normal text-muted-foreground"}`}>
-        {mark}
-      </span>
+      {mark && (
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[13px] leading-5 ${tone === "need" ? "bg-primary/15 font-medium text-primary" : "bg-white/10 font-normal text-muted-foreground"}`}>
+          {mark}
+        </span>
+      )}
     </div>
   );
 }
@@ -535,7 +537,7 @@ export default function Onboarding() {
           <section className="flex flex-1 flex-col min-h-[calc(100dvh-6.5rem)]">
             <StepName
               title={savedServices.length > 0 ? t("Saqlangan xizmatlar", "Сохранённые услуги") : t("Xizmatlarni qo‘shing", "Добавьте услуги")}
-              mark={stepMark}
+              mark={savedServices.length > 0 ? undefined : stepMark}
               tone={stepTone}
             />
             {savedServices.length > 0 && (
@@ -798,25 +800,34 @@ export default function Onboarding() {
             <p className="mt-1 text-sm text-muted-foreground">{t("Xizmatni tanlang", "Выберите услугу")}</p>
             <div className="mt-2 space-y-2 overflow-y-auto">
               {ready.map((item) => (
-                <div key={item.key} className="flex items-center gap-1 rounded-2xl border border-white/10 bg-background px-1.5 py-1">
-                  <button
-                    type="button"
-                    aria-pressed={item.on}
-                    aria-label={item.name}
-                    onClick={() => setReady((list) => list.map((row) => row.key === item.key ? { ...row, on: !row.on } : row))}
-                    className="h-11 w-11 shrink-0 flex items-center justify-center"
-                  >
+                <div
+                  key={item.key}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={item.on}
+                  onClick={() => setReady((list) => list.map((row) => row.key === item.key ? { ...row, on: !row.on } : row))}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.preventDefault();
+                    setReady((list) => list.map((row) => row.key === item.key ? { ...row, on: !row.on } : row));
+                  }}
+                  className="flex items-center gap-1 rounded-2xl border border-white/10 bg-background px-1.5 py-1 cursor-pointer"
+                >
+                  <span className="h-11 w-11 shrink-0 flex items-center justify-center" aria-hidden="true">
                     <span className={`h-6 w-6 rounded-lg border flex items-center justify-center ${item.on ? "bg-primary border-primary text-black" : "border-white/25"}`}>
                       {item.on && <Check className="w-3.5 h-3.5" />}
                     </span>
-                  </button>
-                  <div className="min-w-0 flex-1">
+                  </span>
+                  <div className="min-w-0 flex-1 py-2">
                     <p className="text-sm font-medium truncate">{item.name}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">{item.duration} {t("daqiqa", "мин")} · {money(item.price)}</p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setSheet({ key: item.key, name: item.name, duration: String(item.duration), price: String(item.price), category: item.category, fromReady: true })}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSheet({ key: item.key, name: item.name, duration: String(item.duration), price: String(item.price), category: item.category, fromReady: true });
+                    }}
                     className="h-11 px-2 text-sm text-primary"
                   >
                     {t("Tahrir", "Изменить")}
