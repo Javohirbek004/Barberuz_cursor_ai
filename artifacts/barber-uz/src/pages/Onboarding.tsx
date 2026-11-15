@@ -163,6 +163,17 @@ function readImage(file: File): Promise<string> {
   });
 }
 
+function StepName({ title, mark, tone }: { title: string; mark: string; tone: "need" | "skip" }) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <h1 className="font-display text-[26px] font-medium leading-tight">{title}</h1>
+      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[13px] leading-5 ${tone === "need" ? "bg-primary/15 font-medium text-primary" : "bg-white/10 font-normal text-muted-foreground"}`}>
+        {mark}
+      </span>
+    </div>
+  );
+}
+
 function Field({
   label,
   children,
@@ -218,6 +229,7 @@ export default function Onboarding() {
   const [readyOpen, setReadyOpen] = useState(false);
   const [ready, setReady] = useState<ServiceDraft[]>([]);
   const [sheet, setSheet] = useState<null | { key: string | null; name: string; duration: string; price: string; category: string; fromReady?: boolean }>(null);
+  const [drop, setDrop] = useState(false);
   const avatarRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
@@ -480,23 +492,38 @@ export default function Onboarding() {
     setSheet(null);
   }
 
+  function removeService() {
+    if (!sheet?.key || sheet.fromReady) return;
+    const current = services.find((item) => item.key === sheet.key);
+    if (!current) return;
+    setServices((list) => list.filter((item) => item.key !== current.key));
+    setDrop(false);
+    setSheet(null);
+    if (!current.savedId) return;
+    api(`/api/services/${current.savedId}`, "DELETE").catch(() => {
+      setServices((list) => (list.some((item) => item.key === current.key) ? list : [...list, current]));
+      warn(t("O‘chirilmadi. Qayta urinib ko‘ring", "Не удалось удалить. Попробуйте ещё раз"));
+    });
+  }
+
   const optional = step >= 2;
   const savedServices = services.filter((item) => item.on && item.name.trim());
   const readyPicked = ready.filter((item) => item.on).length;
   const names = weekdayNames(lang);
+  const stepMark = optional ? t("Ixtiyoriy", "Необязательно") : t("Majburiy", "Обязательно");
+  const stepTone = optional ? "skip" as const : "need" as const;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-md mx-auto px-4 pb-8">
-        <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm">
-          <div className="h-11 flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">{optional ? t("Ixtiyoriy", "Необязательно") : t("Majburiy", "Обязательно")}</span>
-            {step <= 2 ? <span className="h-11" /> : (
+        <header className={`sticky top-0 z-20 bg-background/95 backdrop-blur-sm ${step <= 2 ? "pt-4" : ""}`}>
+          {step > 2 && (
+            <div className="h-11 flex items-center justify-end">
               <button type="button" onClick={goNext} disabled={busy} className="h-11 px-1 text-primary text-base font-medium disabled:opacity-100">
                 {busy ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
               </button>
-            )}
-          </div>
+            </div>
+          )}
           <div className="flex gap-1.5 pb-3">
             {Array.from({ length: STEPS }, (_, i) => (
               <i key={i} className={`h-1 flex-1 rounded-full ${i <= step ? "bg-primary" : "bg-zinc-700"}`} />
@@ -506,9 +533,11 @@ export default function Onboarding() {
 
         {step === 0 && (
           <section className="flex flex-1 flex-col min-h-[calc(100dvh-6.5rem)]">
-            <h1 className="font-display text-[26px] font-medium leading-tight">
-              {savedServices.length > 0 ? t("Saqlangan xizmatlar", "Сохранённые услуги") : t("Xizmatlarni qo‘shing", "Добавьте услуги")}
-            </h1>
+            <StepName
+              title={savedServices.length > 0 ? t("Saqlangan xizmatlar", "Сохранённые услуги") : t("Xizmatlarni qo‘shing", "Добавьте услуги")}
+              mark={stepMark}
+              tone={stepTone}
+            />
             {savedServices.length > 0 && (
               <p className="mt-1.5 text-sm text-muted-foreground">{savedServices.length} {t("ta", "шт.")}</p>
             )}
@@ -523,17 +552,11 @@ export default function Onboarding() {
               <div className="mt-4 flex-1 space-y-2">
                 {savedServices.map((item) => (
                   <div key={item.key} className="flex items-center gap-1 rounded-2xl border border-white/10 bg-card px-1.5 py-1">
-                    <button
-                      type="button"
-                      aria-pressed={item.on}
-                      aria-label={item.name}
-                      onClick={() => setServices((list) => list.map((row) => row.key === item.key ? { ...row, on: !row.on } : row))}
-                      className="h-11 w-11 shrink-0 flex items-center justify-center"
-                    >
+                    <span className="h-11 w-11 shrink-0 flex items-center justify-center" aria-hidden="true">
                       <span className="h-6 w-6 rounded-lg bg-primary border border-primary text-black flex items-center justify-center">
                         <Check className="w-3.5 h-3.5" />
                       </span>
-                    </button>
+                    </span>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{item.name}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{item.duration} {t("daqiqa", "мин")} · {money(item.price)}</p>
@@ -578,7 +601,7 @@ export default function Onboarding() {
 
         {step === 1 && (
           <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
-            <h1 className="font-display text-[26px] font-medium leading-tight">{t("Ish kunlari va vaqti", "Рабочие дни и время")}</h1>
+            <StepName title={t("Ish kunlari va vaqti", "Рабочие дни и время")} mark={stepMark} tone={stepTone} />
             <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Ish vaqtlarini belgilang. Tushlik vaqtini qo‘shish ixtiyoriy.", "Укажите часы работы. Обеденный перерыв можно не добавлять.")}</p>
             <div className="mt-5 flex flex-nowrap gap-1">
               {["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((key, i) => {
@@ -641,7 +664,7 @@ export default function Onboarding() {
 
         {step === 2 && (
           <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
-            <h1 className="font-display text-[26px] font-medium leading-tight">{t("Manzil", "Адрес")}</h1>
+            <StepName title={t("Manzil", "Адрес")} mark={stepMark} tone={stepTone} />
             <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijoz qayerga kelishini biladi. Bo‘sh qoldirish mumkin.", "Клиент узнает, куда прийти. Можно пропустить.")}</p>
             <div className="mt-5 grid grid-cols-2 gap-2">
               <button type="button" onClick={() => setMapOpen(true)} className="h-24 rounded-2xl border border-primary/30 bg-card flex flex-col items-center justify-center gap-2 text-sm">
@@ -675,7 +698,7 @@ export default function Onboarding() {
 
         {step === 3 && (
           <section>
-            <h1 className="font-display text-[26px] font-medium leading-tight">{t("Telefon", "Телефон")}</h1>
+            <StepName title={t("Telefon", "Телефон")} mark={stepMark} tone={stepTone} />
             <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijoz qo‘ng‘iroq qila oladi. Ko‘rsatishni o‘zingiz yoqasiz.", "Клиент сможет позвонить. Показ включаете вы.")}</p>
             <Field label={t("Telefon raqam", "Номер телефона")}>
               <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="+998" className="h-12 w-full rounded-xl bg-card border border-white/10 px-3" />
@@ -691,7 +714,7 @@ export default function Onboarding() {
 
         {step === 4 && (
           <section>
-            <h1 className="font-display text-[26px] font-medium leading-tight">{t("Tavsif", "Описание")}</h1>
+            <StepName title={t("Tavsif", "Описание")} mark={stepMark} tone={stepTone} />
             <Field label={t("Tavsif (BIO)", "Описание (BIO)")}>
               <textarea
                 value={bio}
@@ -706,7 +729,7 @@ export default function Onboarding() {
 
         {step === 5 && (
           <section>
-            <h1 className="font-display text-[26px] font-medium leading-tight">{t("Profil va ish joyi rasmlari", "Фото профиля и рабочего места")}</h1>
+            <StepName title={t("Profil va ish joyi rasmlari", "Фото профиля и рабочего места")} mark={stepMark} tone={stepTone} />
             <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijozlar ishonchini oshirish uchun o‘zingiz va ishxonangiz rasmini qo‘shing. Keyinroq ham o‘zgartirish mumkin.", "Добавьте своё фото и фото места работы. Позже можно изменить.")}</p>
             <p className="mt-5 text-[13px] text-muted-foreground">{t("Profil rasmi (Yuzingiz)", "Фото профиля")}</p>
             <div className="mt-2 flex items-center gap-3">
@@ -756,7 +779,7 @@ export default function Onboarding() {
 
         {step === 6 && (
           <section>
-            <h1 className="font-display text-[26px] font-medium leading-tight">{t("Ijtimoiy tarmoq", "Соцсеть")}</h1>
+            <StepName title={t("Ijtimoiy tarmoq", "Соцсеть")} mark={stepMark} tone={stepTone} />
             <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijozlaringiz sizni topishi va ishlaringizni ko‘rishi uchun profillaringizni qo‘shish tavsiya qilinadi.", "Добавьте профили, чтобы клиенты могли найти вас и увидеть работы.")}</p>
             <SocialField label="Instagram" value={instagram} onChange={setInstagram} placeholder="instagram.com/..." ok={!!cleanHandle(instagram)} mark="ig" />
             <SocialField label="Telegram" value={telegram} onChange={setTelegram} placeholder="t.me/..." ok={!!cleanHandle(telegram)} mark="tg" />
@@ -810,7 +833,7 @@ export default function Onboarding() {
         </div>
       )}
 
-      {sheet && (
+      {sheet && !drop && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-end" onClick={() => setSheet(null)}>
           <div className="w-full max-w-md mx-auto rounded-t-2xl bg-card border-t border-primary/30 p-4" onClick={(e) => e.stopPropagation()}>
             <h2 className="font-display text-xl">{sheet.key ? t("Xizmatni tahrirlash", "Изменить услугу") : t("Yangi xizmat", "Новая услуга")}</h2>
@@ -826,6 +849,30 @@ export default function Onboarding() {
               </Field>
             </div>
             <button type="button" onClick={saveSheet} className="mt-5 h-12 w-full rounded-xl bg-primary text-black font-medium">{sheet.key ? t("Saqlash", "Сохранить") : t("Qo‘shish", "Добавить")}</button>
+            {sheet.key && !sheet.fromReady && (
+              <button type="button" onClick={() => setDrop(true)} className="mt-2 h-12 w-full text-base font-medium text-rose-400">
+                {t("O‘chirish", "Удалить")}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {drop && sheet && (
+        <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center px-6" onClick={() => setDrop(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-card border border-white/10 px-4 pt-5 pb-4 text-center" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-display text-xl font-medium leading-snug">
+              {t(`${sheet.name.trim() || "Xizmat"} o‘chirilsinmi?`, `Удалить «${sheet.name.trim() || "услугу"}»?`)}
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Bu xizmat ro‘yxatdan olib tashlanadi.", "Услуга исчезнет из списка.")}</p>
+            <div className="mt-4 flex gap-2">
+              <button type="button" onClick={() => setDrop(false)} className="h-12 flex-1 rounded-xl border border-white/15 text-base font-medium">
+                {t("Bekor qilish", "Отмена")}
+              </button>
+              <button type="button" onClick={removeService} className="h-12 flex-1 rounded-xl bg-rose-600 text-white text-base font-medium">
+                {t("O‘chirish", "Удалить")}
+              </button>
+            </div>
           </div>
         </div>
       )}
