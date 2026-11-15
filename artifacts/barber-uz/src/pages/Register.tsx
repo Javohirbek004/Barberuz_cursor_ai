@@ -63,7 +63,6 @@ export default function Register() {
         localStorage.setItem("barber_token", data.token);
         localStorage.setItem("barber_user", JSON.stringify(data.user));
         localStorage.setItem(ONBOARDING_PENDING_KEY, "1");
-        toast({ title: t("success") });
         navigate("/onboarding");
       },
       onError: () => {
