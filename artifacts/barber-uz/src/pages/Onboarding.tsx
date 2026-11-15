@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import "leaflet/dist/leaflet.css";
 import { useLocation } from "wouter";
-import { Camera, Check, ChevronLeft, ChevronRight, MapPin, Navigation, Plus, Star, X } from "lucide-react";
+import { Camera, Check, ChevronLeft, ChevronRight, MapPin, Navigation, Pencil, Plus, Star, X } from "lucide-react";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { pick, weekdayNames } from "@/i18n/pick";
 import { useToast } from "@/hooks/use-toast";
@@ -122,16 +122,90 @@ function loadDraft(): Partial<Draft> | null {
   }
 }
 
-async function reverseGeocode(lat: number, lng: number): Promise<string> {
+const CYR_TO_LAT: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "yo", ж: "zh", з: "z", и: "i", й: "y",
+  к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f",
+  х: "x", ц: "ts", ч: "ch", ш: "sh", щ: "shch", ъ: "", ы: "i", ь: "", э: "e", ю: "yu", я: "ya",
+  ў: "o‘", қ: "q", ғ: "g‘", ҳ: "h",
+};
+
+const LAT_DIGRAPHS: [string, string][] = [
+  ["shch", "щ"], ["sch", "щ"], ["yu", "ю"], ["ya", "я"], ["zh", "ж"],
+  ["ch", "ч"], ["sh", "ш"], ["ts", "ц"], ["kh", "х"],
+];
+
+const LAT_TO_CYR: Record<string, string> = {
+  a: "а", b: "б", c: "к", d: "д", e: "е", f: "ф", g: "г", h: "х", i: "и", j: "ж",
+  k: "к", l: "л", m: "м", n: "н", o: "о", p: "п", q: "қ", r: "р", s: "с", t: "т",
+  u: "у", v: "в", w: "в", x: "кс", y: "й", z: "з",
+  ş: "ш", ç: "ч", ğ: "г", ö: "о", ü: "у", ı: "и", ə: "а",
+};
+
+function cyrillicToLatin(value: string): string {
+  const named = value.replace(/Стамбул/g, "Istanbul").replace(/стамбул/g, "istanbul");
+  let out = "";
+  for (const ch of named) {
+    const lat = CYR_TO_LAT[ch.toLowerCase()];
+    if (lat === undefined) {
+      out += ch;
+      continue;
+    }
+    out += ch === ch.toLowerCase() ? lat : lat.charAt(0).toUpperCase() + lat.slice(1);
+  }
+  return out;
+}
+
+function latinToCyrillic(value: string): string {
+  const named = value.replace(/Istanbul/g, "Стамбул").replace(/istanbul/g, "стамбул");
+  let out = "";
+  for (let i = 0; i < named.length; i++) {
+    const lower = named.slice(i).toLowerCase();
+    const pair = LAT_DIGRAPHS.find(([from]) => lower.startsWith(from));
+    if (pair) {
+      const [from, to] = pair;
+      const upper = named[i] !== named[i].toLowerCase();
+      out += upper ? to.toUpperCase() : to;
+      i += from.length - 1;
+      continue;
+    }
+    const lat = LAT_TO_CYR[lower[0]];
+    if (lat === undefined) {
+      out += named[i];
+      continue;
+    }
+    out += named[i] === named[i].toLowerCase() ? lat : lat.toUpperCase();
+  }
+  return out;
+}
+
+function matchPlaceScript(value: string, lang: string): string {
+  return lang === "ru" ? latinToCyrillic(value) : cyrillicToLatin(value);
+}
+
+function shortPlaceName(address: Record<string, string> | undefined, lang: string): string {
+  const city = address?.city || address?.town || address?.village || address?.municipality || address?.county || "";
+  const area = address?.suburb || address?.neighbourhood || address?.quarter || address?.city_district || "";
+  const road = address?.road || address?.pedestrian || address?.footway || "";
+  const parts: string[] = [];
+  for (const part of [city, area, road]) {
+    const clean = part.trim();
+    if (!clean || parts.some((item) => item.toLowerCase() === clean.toLowerCase())) continue;
+    parts.push(clean);
+  }
+  return matchPlaceScript(parts.slice(0, 3).join(", "), lang);
+}
+
+async function reverseGeocode(lat: number, lng: number, lang: string): Promise<string> {
+  const fallback = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`,
-      { headers: { "Accept-Language": "uz,ru,en" } },
+      { headers: { "Accept-Language": lang === "ru" ? "ru" : "uz" } },
     );
-    const data = await res.json();
-    return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    const data = await res.json() as { address?: Record<string, string> };
+    return shortPlaceName(data.address, lang) || fallback;
   } catch {
-    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    return fallback;
   }
 }
 
@@ -233,6 +307,7 @@ export default function Onboarding() {
   const [sheet, setSheet] = useState<null | { key: string | null; name: string; duration: string; price: string; category: string; fromReady?: boolean }>(null);
   const [drop, setDrop] = useState(false);
   const avatarRef = useRef<HTMLInputElement>(null);
+  const addressRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -258,6 +333,8 @@ export default function Onboarding() {
     setLongitude(String(lng));
     setAddress(place);
     setMapLink(`https://www.google.com/maps?q=${lat},${lng}`);
+    const item = toast({ title: t("Manzil saqlandi", "Адрес сохранён"), duration: 2500 });
+    window.setTimeout(() => item.dismiss(), 2500);
   }
 
   function locate() {
@@ -269,7 +346,7 @@ export default function Onboarding() {
     setGpsError("");
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const place = await reverseGeocode(pos.coords.latitude, pos.coords.longitude);
+        const place = await reverseGeocode(pos.coords.latitude, pos.coords.longitude, lang);
         applyPlace(pos.coords.latitude, pos.coords.longitude, place);
         setGpsBusy(false);
       },
@@ -667,7 +744,7 @@ export default function Onboarding() {
         {step === 2 && (
           <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
             <StepName title={t("Manzil", "Адрес")} mark={stepMark} tone={stepTone} />
-            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijoz qayerga kelishini biladi. Bo‘sh qoldirish mumkin.", "Клиент узнает, куда прийти. Можно пропустить.")}</p>
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijozlaringiz manzilingizni oson topishi uchun joylashuvingizni kiriting.", "Введите место, чтобы клиенты легко вас нашли.")}</p>
             <div className="mt-5 grid grid-cols-2 gap-2">
               <button type="button" onClick={() => setMapOpen(true)} className="h-24 rounded-2xl border border-primary/30 bg-card flex flex-col items-center justify-center gap-2 text-sm">
                 <MapPin className="w-5 h-5 text-primary" />
@@ -679,12 +756,25 @@ export default function Onboarding() {
               </button>
             </div>
             {gpsError && <p className="mt-2 text-sm text-destructive">{gpsError}</p>}
-            <Field label={t("Joy nomi", "Название места")}>
-              <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("Masalan: Chilonzor, 12-mavze", "Например: Чиланзар, 12-квартал")} className="h-12 w-full rounded-xl bg-card border border-white/10 px-3" />
-            </Field>
+            <label className="block mt-6">
+              <span className="block mb-2 text-[13px] text-muted-foreground">{t("Joy nomi", "Название места")}</span>
+              <span className="h-12 flex items-center rounded-xl bg-card border border-white/10 pr-1">
+                <input
+                  ref={addressRef}
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder={t("Tuzla, Postane, Manastır Yolu", "Тузла, Постане, Манастир Йолу")}
+                  className="h-12 min-w-0 flex-1 bg-transparent px-3 outline-none"
+                />
+                <button type="button" aria-label={t("Tahrir", "Изменить")} onClick={() => addressRef.current?.focus()} className="h-11 w-11 shrink-0 text-primary flex items-center justify-center">
+                  <Pencil className="w-4 h-4" />
+                </button>
+              </span>
+            </label>
             <Field label={t("Xarita havolasi", "Ссылка на карту")}>
-              <input value={mapLink} onChange={(e) => setMapLink(e.target.value)} placeholder="https://maps.google.com/..." className="h-12 w-full rounded-xl bg-card border border-white/10 px-3" />
+              <input readOnly value={mapLink} placeholder="https://www.google.com/maps?q=" className="h-12 w-full rounded-xl bg-card border border-white/10 px-3 text-muted-foreground" />
             </Field>
+            {mapLink && <p className="mt-2 text-[13px] text-muted-foreground">{t("Bu havola joydan o‘zi yoziladi.", "Ссылка пишется из места сама.")}</p>}
             <div className="mt-auto pt-6 flex gap-2">
               <button type="button" onClick={() => setStep(1)} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
                 <ChevronLeft className="w-5 h-5" />
@@ -920,6 +1010,7 @@ export default function Onboarding() {
 
       {mapOpen && (
         <MapSheet
+          lang={lang}
           lat={latitude ? Number(latitude) : 41.2995}
           lng={longitude ? Number(longitude) : 69.2401}
           title={t("Manzilni xaritadan tanlang", "Выберите адрес на карте")}
@@ -1095,8 +1186,9 @@ function ClockSheet({
 }
 
 function MapSheet({
-  lat, lng, title, saveLabel, onClose, onSave,
+  lang, lat, lng, title, saveLabel, onClose, onSave,
 }: {
+  lang: string;
   lat: number;
   lng: number;
   title: string;
@@ -1128,7 +1220,7 @@ function MapSheet({
       markerRef.current = marker;
       map = created;
       const show = async (la: number, ln: number) => {
-        const text = await reverseGeocode(la, ln);
+        const text = await reverseGeocode(la, ln, lang);
         if (!destroyed) setPlace(text);
       };
       show(lat, lng);
@@ -1145,7 +1237,7 @@ function MapSheet({
       destroyed = true;
       map?.remove();
     };
-  }, [lat, lng]);
+  }, [lang, lat, lng]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
