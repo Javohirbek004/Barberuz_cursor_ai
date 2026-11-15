@@ -604,7 +604,7 @@ export default function Onboarding() {
         {step === 1 && (
           <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
             <StepName title={t("Ish kunlari va vaqti", "Рабочие дни и время")} mark={stepMark} tone={stepTone} />
-            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Ish vaqtlarini belgilang. Tushlik vaqtini qo‘shish ixtiyoriy.", "Укажите часы работы. Обеденный перерыв можно не добавлять.")}</p>
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Ish kunlari va vaqtlarini sozlang. Tushlik vaqtini qo‘shish ixtiyoriy. Dam olish kunini shunchaki bosib yopib qo‘ying.", "Настройте рабочие дни и часы. Обед можно не добавлять. Выходной день просто нажмите и закройте.")}</p>
             <div className="mt-5 flex flex-nowrap gap-1">
               {["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((key, i) => {
                 const on = days.includes(key);
@@ -656,7 +656,7 @@ export default function Onboarding() {
                 <ChevronLeft className="w-5 h-5" />
                 {t("Orqaga", "Назад")}
               </button>
-              <button type="button" onClick={goNext} disabled={busy} className="h-12 flex-1 rounded-xl bg-primary text-black text-base font-medium flex items-center justify-center gap-2 disabled:opacity-100">
+              <button type="button" onClick={goNext} disabled={busy} className={`h-12 flex-1 rounded-xl text-base font-medium flex items-center justify-center gap-2 disabled:opacity-100 ${days.length > 0 ? "bg-primary text-black" : "border border-white/15 text-muted-foreground"}`}>
                 {t("Keyingi", "Далее")}
                 <ChevronRight className="w-5 h-5" />
               </button>
