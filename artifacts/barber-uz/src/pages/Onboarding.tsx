@@ -597,13 +597,8 @@ export default function Onboarding() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {placeSaved && (
-        <p className="fixed top-4 inset-x-0 z-[80] text-center text-[15px] font-semibold pointer-events-none">
-          {t("Manzil saqlandi ✅", "Адрес сохранён ✅")}
-        </p>
-      )}
       <div className="max-w-md mx-auto px-4 pb-8">
-        <header className={`sticky top-0 z-20 bg-background/95 backdrop-blur-sm ${placeSaved && step === 2 ? "pt-12" : step <= 2 ? "pt-4" : ""}`}>
+        <header className={`sticky top-0 z-20 bg-background/95 backdrop-blur-sm ${step <= 2 ? "pt-4" : ""}`}>
           {step > 2 && (
             <div className="h-11 flex items-center justify-end">
               <button type="button" onClick={goNext} disabled={busy} className="h-11 px-1 text-primary text-base font-medium disabled:opacity-100">
@@ -766,7 +761,7 @@ export default function Onboarding() {
             {gpsError && <p className="mt-2 text-sm text-destructive">{gpsError}</p>}
             <label className="block mt-6">
               <span className="block mb-2 text-[13px] text-muted-foreground">{t("Joy nomi", "Название места")}</span>
-              <span className="h-12 flex items-center rounded-xl bg-card border border-white/10 pr-1">
+              <span className={`h-12 flex items-center rounded-xl bg-card border pr-1 ${placeSaved ? "border-primary" : "border-white/10"}`}>
                 <input
                   ref={addressRef}
                   value={address}
@@ -780,8 +775,11 @@ export default function Onboarding() {
               </span>
             </label>
             <Field label={t("Xarita havolasi", "Ссылка на карту")}>
-              <input readOnly value={mapLink} placeholder="https://www.google.com/maps?q=" className="h-12 w-full rounded-xl bg-card border border-white/10 px-3 text-muted-foreground" />
+              <input readOnly value={mapLink} placeholder="https://www.google.com/maps?q=" className={`h-12 w-full rounded-xl bg-card border px-3 text-muted-foreground ${placeSaved ? "border-primary" : "border-white/10"}`} />
             </Field>
+            {placeSaved && (
+              <p className="mt-3 text-center text-[15px] font-semibold">{t("Manzil saqlandi ✅", "Адрес сохранён ✅")}</p>
+            )}
             <div className="mt-auto pt-6 flex gap-2">
               <button type="button" onClick={() => setStep(1)} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
                 <ChevronLeft className="w-5 h-5" />
