@@ -732,14 +732,6 @@ export default function Onboarding() {
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-md mx-auto px-4 pb-8">
         <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm pt-4">
-          {step === 6 && (
-            <div className="h-11 grid grid-cols-[28px_1fr_28px] items-center">
-              <button type="button" aria-label={t("Yopish", "Закрыть")} onClick={() => { stepLock.current = null; setStep(5); }} className="h-11 w-7 flex items-center justify-start">
-                <X className="w-5 h-5" />
-              </button>
-              <span className="text-center font-display text-lg font-semibold">Zumio</span>
-            </div>
-          )}
           <div className="flex gap-1.5 pb-3">
             {Array.from({ length: STEPS }, (_, i) => (
               <i key={i} className={`h-1 flex-1 rounded-full ${i <= step ? "bg-primary" : "bg-zinc-700"}`} />
@@ -1078,14 +1070,14 @@ export default function Onboarding() {
               <span className="ml-2 inline-block align-middle rounded-full bg-white/10 px-2 py-0.5 text-[13px] font-normal leading-5 text-muted-foreground">{stepMark}</span>
             </h1>
             <p className="mt-2 text-sm leading-snug">{t("Mijozlaringiz sizni topishi va ishlaringizni ko‘rishi uchun profillaringizni qo‘shish tavsiya qilinadi.", "Добавьте профили, чтобы клиенты могли найти вас и увидеть работы.")}</p>
-            <SocialField label={t("Instagram username ni kiriting", "Введите имя в Instagram")} value={instagram} onChange={(v) => setInstagram(formatSocialInput(v))} placeholder="@ali_barber" ok={!!cleanHandle(instagram)} mark="ig" />
-            <SocialField label={t("Telegram username ni kiriting", "Введите имя в Telegram")} value={telegram} onChange={(v) => setTelegram(formatSocialInput(v))} placeholder="@ali_barber" ok={!!cleanHandle(telegram)} mark="tg" />
+            <SocialField label={t("Instagram username ni kiriting", "Введите имя в Instagram")} value={instagram} onChange={setInstagram} placeholder="@ali_barber" ok={!!cleanHandle(instagram)} mark="ig" />
+            <SocialField label={t("Telegram username ni kiriting", "Введите имя в Telegram")} value={telegram} onChange={setTelegram} placeholder="@ali_barber" ok={!!cleanHandle(telegram)} mark="tg" />
             <div className="mt-auto pt-6 flex gap-2">
               <button type="button" onClick={() => { stepLock.current = null; setStep(5); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
                 <ChevronLeft className="w-5 h-5" />
                 {t("Orqaga", "Назад")}
               </button>
-              <button type="button" onClick={goNext} className="h-12 flex-1 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
+              <button type="button" onClick={goNext} className="h-12 flex-1 rounded-xl bg-primary text-black text-base font-medium flex items-center justify-center gap-2">
                 {t("Keyingi", "Далее")}
                 <ChevronRight className="w-5 h-5" />
               </button>
@@ -1249,12 +1241,64 @@ function SocialField({
   ok: boolean;
   mark: "ig" | "tg";
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const caret = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    const pos = caret.current;
+    if (!el || pos == null || document.activeElement !== el) return;
+    caret.current = null;
+    el.setSelectionRange(pos, pos);
+  }, [value]);
+
+  function keepAfterAt(el: HTMLInputElement) {
+    if (!el.value.startsWith("@")) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    if (start >= 1 && end >= 1) return;
+    el.setSelectionRange(Math.max(start, 1), Math.max(end, 1));
+  }
+
+  function showAt(el: HTMLInputElement) {
+    if (el.value.trim()) {
+      keepAfterAt(el);
+      return;
+    }
+    caret.current = 1;
+    onChange("@");
+    el.focus();
+  }
+
   return (
     <label className="block mt-6">
       <span className="block mb-2 text-sm">{label}</span>
       <span className={`h-12 flex items-center gap-2 rounded-xl bg-card border px-3 ${ok ? "border-primary/40" : "border-white/10"}`}>
         {mark === "ig" ? <InstagramMark /> : <TelegramMark />}
-        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="flex-1 min-w-0 bg-transparent outline-none" />
+        <input
+          ref={inputRef}
+          value={value}
+          placeholder={placeholder}
+          onMouseDown={(e) => {
+            if (e.currentTarget.value.trim()) return;
+            e.preventDefault();
+            showAt(e.currentTarget);
+          }}
+          onFocus={(e) => showAt(e.currentTarget)}
+          onClick={(e) => keepAfterAt(e.currentTarget)}
+          onKeyUp={(e) => keepAfterAt(e.currentTarget)}
+          onSelect={(e) => keepAfterAt(e.currentTarget)}
+          onBlur={() => { if (value === "@") onChange(""); }}
+          onChange={(e) => {
+            const next = formatSocialInput(e.target.value);
+            if (!next) {
+              caret.current = 1;
+              onChange("@");
+              return;
+            }
+            onChange(next);
+          }}
+          className="flex-1 min-w-0 bg-transparent outline-none"
+        />
         {ok && <Check className="w-4 h-4 text-emerald-400" />}
       </span>
     </label>
