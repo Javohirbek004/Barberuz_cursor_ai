@@ -866,7 +866,7 @@ export default function Onboarding() {
 
         {step === 3 && (
           <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
-            <StepName title={t("Telefon", "Телефон")} mark={stepMark} tone={stepTone} />
+            <StepName title={t("Aloqa raqami", "Номер для связи")} mark={stepMark} tone={stepTone} />
             <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijozlar siz bilan osongina bog‘lanishi uchun telefon raqamingizni kiriting. Uni mijozlarga ko‘rsatish yoki yashirishni istalgan vaqtda o‘zingiz boshqarasiz.", "Введите номер, чтобы клиенты легко связались с вами. Показ номера вы включаете сами в любой момент.")}</p>
             <input
               value={phone}
