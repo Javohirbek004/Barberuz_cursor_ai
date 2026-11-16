@@ -100,12 +100,17 @@ async function api(path: string, method: string, body?: unknown) {
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
+  const text = await res.text();
+  let data: unknown = {};
+  if (text) {
+    try { data = JSON.parse(text); } catch { data = {}; }
+  }
   if (!res.ok) {
     const error = new Error(`${method} ${path} ${res.status}`) as Error & { status?: number };
     error.status = res.status;
     throw error;
   }
-  return res.json();
+  return data;
 }
 
 function money(n: number): string {
@@ -372,10 +377,10 @@ export default function Onboarding() {
   }
 
   async function saveServices() {
-    const chosen = services.filter((item) => item.on && item.name.trim());
-    const seeded = await api("/api/categories/seed", "POST", {});
+    let seeded: { categories?: { id: string; name: string }[] } = {};
+    try { seeded = await api("/api/categories/seed", "POST", {}) as { categories?: { id: string; name: string }[] }; } catch { seeded = {}; }
     const byName = new Map<string, string>();
-    for (const cat of (seeded.categories || []) as { id: string; name: string }[]) byName.set(cat.name, cat.id);
+    for (const cat of seeded.categories || []) byName.set(cat.name, cat.id);
     async function ensure(name: string) {
       const found = byName.get(name);
       if (found) return found;
@@ -386,26 +391,29 @@ export default function Onboarding() {
     const next = [...services];
     for (let i = 0; i < next.length; i++) {
       const item = next[i];
-      if (!item.on || !item.name.trim()) continue;
-      const categoryId = await ensure(item.category?.trim() || "Asosiy");
-      const body = { name: item.name.trim(), duration: Number(item.duration), price: Number(item.price), categoryId };
-      let savedId = item.savedId;
-      if (savedId) {
-        try {
-          await api(`/api/services/${savedId}`, "PUT", body);
-        } catch (err) {
-          const status = (err as { status?: number }).status;
-          const foreign = status === 404 || (status === 500 && !/^[0-9a-f-]{36}$/i.test(savedId));
-          if (!foreign) throw err;
-          savedId = undefined;
+      const name = String(item.name || "").trim();
+      if (!item.on || !name) continue;
+      try {
+        const categoryId = await ensure(String(item.category || "").trim() || "Asosiy");
+        const body = { name, duration: Number(item.duration), price: Number(item.price), categoryId };
+        let savedId = item.savedId;
+        if (savedId) {
+          try { await api(`/api/services/${savedId}`, "PUT", body); }
+          catch { savedId = undefined; }
         }
-      }
-      if (!savedId) {
-        const created = await api("/api/services", "POST", body) as { id: string };
-        savedId = created.id;
-      }
-      next[i] = { ...item, savedId };
-      setServices([...next]);
+        if (!savedId) {
+          try {
+            const created = await api("/api/services", "POST", body) as { id: string };
+            savedId = created.id;
+          } catch {
+            const created = await api("/api/services", "POST", body) as { id: string };
+            savedId = created.id;
+          }
+        }
+        if (!savedId) continue;
+        next[i] = { ...item, savedId };
+        setServices([...next]);
+      } catch { /* this service stays in the draft and is sent again next time */ }
     }
   }
 
@@ -415,14 +423,18 @@ export default function Onboarding() {
       const open = days.includes(SHORT_BY_DAY[key]);
       week[key] = { enabled: open, start: workStart, end: workEnd };
     }
-    await api("/api/settings/profile", "PUT", {
+    const body = {
       workingHoursStart: workStart,
       workingHoursEnd: workEnd,
       scheduleJson: writeScheduleJson(week),
       lunchBreakEnabled: lunchOn,
       lunchBreakStart: lunchStart,
       lunchBreakEnd: lunchEnd,
-    });
+    };
+    try { await api("/api/settings/profile", "PUT", body); }
+    catch {
+      try { await api("/api/settings/profile", "PUT", body); } catch { /* the hours stay on this page */ }
+    }
   }
 
   function saveClock(value: string) {
@@ -449,7 +461,7 @@ export default function Onboarding() {
       stepLock.current = true;
       setStep(1);
       showPageTop();
-      saveServices().catch(() => warn(t("Saqlanmadi. Qayta urinib ko‘ring", "Не сохранилось. Попробуйте ещё раз"))).finally(() => {
+      saveServices().finally(() => {
         stepLock.current = false;
       });
       return;
@@ -466,7 +478,7 @@ export default function Onboarding() {
       stepLock.current = true;
       setStep(2);
       showPageTop();
-      saveHours().catch(() => warn(t("Saqlanmadi. Qayta urinib ko‘ring", "Не сохранилось. Попробуйте ещё раз"))).finally(() => {
+      saveHours().finally(() => {
         stepLock.current = false;
       });
       return;
@@ -474,10 +486,18 @@ export default function Onboarding() {
     setBusy(true);
     let moved = false;
     try {
+      void saveServices();
+      void saveHours();
+      const putProfile = async (body: Record<string, unknown>) => {
+        try { await api("/api/settings/profile", "PUT", body); }
+        catch {
+          try { await api("/api/settings/profile", "PUT", body); } catch { /* kept for the next try */ }
+        }
+      };
       if (step === 2 && (address.trim() || mapLink.trim() || latitude)) {
         const link = mapLink.trim();
         const mapLinkValue = /^https?:\/\//i.test(link) || !link ? link : (link.includes(".") ? `https://${link}` : link);
-        await api("/api/settings/profile", "PUT", {
+        await putProfile({
           address: address.trim(),
           mapLink: mapLinkValue,
           latitude: latitude || null,
@@ -485,19 +505,19 @@ export default function Onboarding() {
         });
       }
       if (step === 3 && (phone.trim() || phoneVisible === false)) {
-        await api("/api/settings/profile", "PUT", { phone: phone.trim(), phoneVisible });
+        await putProfile({ phone: phone.trim(), phoneVisible });
       }
       if (step === 4 && bio.trim()) {
-        await api("/api/settings/profile", "PUT", { bio: bio.trim() });
+        await putProfile({ bio: bio.trim() });
       }
       if (step === 5 && (avatarUrl || gallery.length > 0)) {
-        await api("/api/settings/profile", "PUT", { avatarUrl, galleryImages: JSON.stringify(gallery) });
+        await putProfile({ avatarUrl, galleryImages: JSON.stringify(gallery) });
       }
       if (step === 6) {
         const ig = cleanHandle(instagram);
         const tg = cleanHandle(telegram);
         if (ig || tg) {
-          await api("/api/settings/profile", "PUT", {
+          await putProfile({
             ...(ig ? { instagram: ig } : {}),
             ...(tg ? { telegramUsername: tg } : {}),
           });
@@ -510,8 +530,6 @@ export default function Onboarding() {
       }
       setStep((n) => n + 1);
       moved = true;
-    } catch {
-      warn(t("Saqlanmadi. Qayta urinib ko‘ring", "Не сохранилось. Попробуйте ещё раз"));
     } finally {
       setBusy(false);
     }
