@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import "leaflet/dist/leaflet.css";
 import { useLocation } from "wouter";
 import { Camera, Check, ChevronLeft, ChevronRight, MapPin, Navigation, Pencil, Plus, Star, X } from "lucide-react";
@@ -131,6 +131,23 @@ function formatUzPhone(raw: string): string | null {
   if (digits.length > 5) out += `-${digits.slice(5, 7)}`;
   if (digits.length > 7) out += `-${digits.slice(7, 9)}`;
   return out;
+}
+
+const PHONE_PREFIX = "+998 ";
+
+function phoneCaretFloor(value: string): number {
+  if (value.startsWith(PHONE_PREFIX)) return PHONE_PREFIX.length;
+  if (value.startsWith("+998")) return 4;
+  return 0;
+}
+
+function keepCaretAfterCode(el: HTMLInputElement) {
+  const floor = phoneCaretFloor(el.value);
+  if (!floor) return;
+  const start = el.selectionStart ?? 0;
+  const end = el.selectionEnd ?? 0;
+  if (start >= floor && end >= floor) return;
+  el.setSelectionRange(Math.max(start, floor), Math.max(end, floor));
 }
 
 function applyPhoneInput(prev: string, next: string): string {
@@ -329,6 +346,8 @@ export default function Onboarding() {
   const [latitude, setLatitude] = useState(saved.current?.latitude || "");
   const [longitude, setLongitude] = useState(saved.current?.longitude || "");
   const [phone, setPhone] = useState(saved.current?.phone || "");
+  const phoneRef = useRef<HTMLInputElement>(null);
+  const phoneCaret = useRef<number | null>(null);
   const [phoneVisible, setPhoneVisible] = useState(saved.current?.phoneVisible !== false);
   const [bio, setBio] = useState(saved.current?.bio || "");
   const [avatarUrl, setAvatarUrl] = useState(saved.current?.avatarUrl || "");
@@ -342,6 +361,13 @@ export default function Onboarding() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [clock, setClock] = useState<null | { field: "workStart" | "workEnd" | "lunchStart" | "lunchEnd"; title: string }>(null);
   const stepLock = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const el = phoneRef.current;
+    const pos = phoneCaret.current;
+    if (!el || pos == null || document.activeElement !== el) return;
+    phoneCaret.current = null;
+    el.setSelectionRange(pos, pos);
+  }, [phone]);
   const [readyOpen, setReadyOpen] = useState(false);
   const [ready, setReady] = useState<ServiceDraft[]>([]);
   const [sheet, setSheet] = useState<null | { key: string | null; name: string; duration: string; price: string; category: string; fromReady?: boolean }>(null);
@@ -522,6 +548,17 @@ export default function Onboarding() {
       }
       return;
     }
+    if (step === 3) {
+      stepLock.current = 3;
+      const body = { phone: phone.trim(), phoneVisible };
+      const shouldSave = Boolean(body.phone || phoneVisible === false);
+      setStep(4);
+      showPageTop();
+      if (shouldSave) {
+        void api("/api/settings/profile", "PUT", body).catch(() => api("/api/settings/profile", "PUT", body).catch(() => undefined));
+      }
+      return;
+    }
     setBusy(true);
     let moved = false;
     try {
@@ -533,9 +570,6 @@ export default function Onboarding() {
           try { await api("/api/settings/profile", "PUT", body); } catch { /* kept for the next try */ }
         }
       };
-      if (step === 3 && (phone.trim() || phoneVisible === false)) {
-        await putProfile({ phone: phone.trim(), phoneVisible });
-      }
       if (step === 4 && bio.trim()) {
         await putProfile({ bio: bio.trim() });
       }
@@ -869,8 +903,26 @@ export default function Onboarding() {
             <StepName title={t("Aloqa raqami", "Номер для связи")} mark={stepMark} tone={stepTone} />
             <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijozlar siz bilan osongina bog‘lanishi uchun telefon raqamingizni kiriting. Uni mijozlarga ko‘rsatish yoki yashirishni istalgan vaqtda o‘zingiz boshqarasiz.", "Введите номер, чтобы клиенты легко связались с вами. Показ номера вы включаете сами в любой момент.")}</p>
             <input
+              ref={phoneRef}
               value={phone}
-              onFocus={() => { if (!phone.trim()) setPhone("+998 "); }}
+              onMouseDown={(e) => {
+                if (e.currentTarget.value.trim()) return;
+                e.preventDefault();
+                phoneCaret.current = PHONE_PREFIX.length;
+                setPhone(PHONE_PREFIX);
+                e.currentTarget.focus();
+              }}
+              onFocus={(e) => {
+                if (!e.currentTarget.value.trim()) {
+                  phoneCaret.current = PHONE_PREFIX.length;
+                  setPhone(PHONE_PREFIX);
+                  return;
+                }
+                keepCaretAfterCode(e.currentTarget);
+              }}
+              onClick={(e) => keepCaretAfterCode(e.currentTarget)}
+              onKeyUp={(e) => keepCaretAfterCode(e.currentTarget)}
+              onSelect={(e) => keepCaretAfterCode(e.currentTarget)}
               onChange={(e) => setPhone(applyPhoneInput(phone, e.target.value))}
               inputMode="tel"
               placeholder="+998 90 123-45-67"
