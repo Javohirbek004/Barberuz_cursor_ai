@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { useRegisterUser } from "@workspace/api-client-react";
@@ -7,10 +7,30 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { motion } from "framer-motion";
-import { Loader2, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { ONBOARDING_PENDING_KEY, ONBOARDING_INTRO_KEY } from "@/lib/onboarding";
+
+function WaitSpinner() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" className="animate-spin" style={{ animationDuration: "0.8s" }}>
+      {Array.from({ length: 12 }, (_, i) => (
+        <rect
+          key={i}
+          x="8.15"
+          y="1.1"
+          width="1.7"
+          height="4.6"
+          rx="0.85"
+          fill="currentColor"
+          opacity={0.18 + (i / 11) * 0.82}
+          transform={`rotate(${i * 30} 9 9)`}
+        />
+      ))}
+    </svg>
+  );
+}
 
 function generateUsername(name: string): string {
   const base = name
@@ -27,7 +47,7 @@ function generateUsername(name: string): string {
 type FieldKey = "name" | "password" | "confirmPassword";
 
 export default function Register() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
@@ -41,6 +61,18 @@ export default function Register() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [attempted, setAttempted] = useState(false);
+  const [waitPhase, setWaitPhase] = useState<null | "account" | "pages">(null);
+  const waitTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (waitTimer.current != null) window.clearTimeout(waitTimer.current);
+  }, []);
+
+  function stopWait() {
+    if (waitTimer.current != null) window.clearTimeout(waitTimer.current);
+    waitTimer.current = null;
+    setWaitPhase(null);
+  }
 
   const fieldRefs = {
     name: useRef<HTMLDivElement>(null),
@@ -58,6 +90,7 @@ export default function Register() {
   const registerMutation = useRegisterUser({
     mutation: {
       onSuccess: (data) => {
+        if (waitTimer.current != null) window.clearTimeout(waitTimer.current);
         localStorage.removeItem("telegram_auth_code");
         localStorage.removeItem("telegram_auth_code_ts");
         localStorage.setItem("barber_token", data.token);
@@ -67,6 +100,7 @@ export default function Register() {
         navigate("/onboarding");
       },
       onError: () => {
+        stopWait();
         toast({
           title: t("error"),
           description: t("register.error.register_failed"),
@@ -96,7 +130,7 @@ export default function Register() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (registerMutation.isPending) return;
+    if (registerMutation.isPending || waitPhase) return;
 
     setAttempted(true);
     const firstInvalid = (Object.keys(errors) as FieldKey[]).find((key) => errors[key]);
@@ -117,6 +151,8 @@ export default function Register() {
       return;
     }
 
+    setWaitPhase("account");
+    waitTimer.current = window.setTimeout(() => setWaitPhase("pages"), 1500);
     registerMutation.mutate({
       data: {
         name: formData.name.trim(),
@@ -242,10 +278,15 @@ export default function Register() {
 
           <Button
             type="submit"
-            className="w-full h-14 text-lg font-bold rounded-xl bg-gradient-to-r from-primary to-amber-600 hover:shadow-xl hover:shadow-primary/30 text-black border-0 mt-4 transition-all"
+            disabled={waitPhase !== null}
+            className="w-full h-14 text-lg font-bold rounded-xl bg-gradient-to-r from-primary to-amber-600 hover:shadow-xl hover:shadow-primary/30 text-black border-0 mt-4 transition-all flex items-center justify-center gap-2 disabled:opacity-100"
           >
-            {registerMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
-            {t("register.submit")}
+            {waitPhase && <WaitSpinner />}
+            {waitPhase === "account"
+              ? (lang === "ru" ? "Создаётся аккаунт..." : "Hisob yaratilmoqda...")
+              : waitPhase === "pages"
+                ? (lang === "ru" ? "Готовятся страницы..." : "Sahifalar tayyorlanmoqda...")
+                : t("register.submit")}
           </Button>
 
           <p className="text-center text-sm text-muted-foreground pt-2 pb-4">
