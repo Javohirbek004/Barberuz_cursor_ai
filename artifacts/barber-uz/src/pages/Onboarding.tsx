@@ -316,7 +316,7 @@ export default function Onboarding() {
   const [gpsError, setGpsError] = useState("");
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [clock, setClock] = useState<null | { field: "workStart" | "workEnd" | "lunchStart" | "lunchEnd"; title: string }>(null);
-  const stepLock = useRef(false);
+  const stepLock = useRef<number | null>(null);
   const [readyOpen, setReadyOpen] = useState(false);
   const [ready, setReady] = useState<ServiceDraft[]>([]);
   const [sheet, setSheet] = useState<null | { key: string | null; name: string; duration: string; price: string; category: string; fromReady?: boolean }>(null);
@@ -447,7 +447,7 @@ export default function Onboarding() {
   }
 
   async function goNext() {
-    if (busy || stepLock.current) return;
+    if (busy || stepLock.current === step) return;
     if (step === 0) {
       const chosen = services.filter((item) => item.on && item.name.trim());
       if (chosen.length === 0) {
@@ -458,12 +458,10 @@ export default function Onboarding() {
         warn(t("Vaqt va narxni to‘g‘ri yozing", "Укажите время и цену"));
         return;
       }
-      stepLock.current = true;
+      stepLock.current = 0;
       setStep(1);
       showPageTop();
-      saveServices().finally(() => {
-        stepLock.current = false;
-      });
+      void saveServices();
       return;
     }
     if (step === 1) {
@@ -475,12 +473,10 @@ export default function Onboarding() {
         warn(t("Tushlik ish vaqti ichida bo‘lsin", "Обед должен быть внутри рабочего времени"));
         return;
       }
-      stepLock.current = true;
+      stepLock.current = 1;
       setStep(2);
       showPageTop();
-      saveHours().finally(() => {
-        stepLock.current = false;
-      });
+      void saveHours();
       return;
     }
     setBusy(true);
@@ -774,7 +770,7 @@ export default function Onboarding() {
               </div>
             )}
             <div className="mt-auto pt-6 flex gap-2">
-              <button type="button" onClick={() => setStep(0)} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
+              <button type="button" onClick={() => { stepLock.current = null; setStep(0); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
                 <ChevronLeft className="w-5 h-5" />
                 {t("Orqaga", "Назад")}
               </button>
@@ -823,7 +819,7 @@ export default function Onboarding() {
               <p className="mt-3 text-center text-[15px] font-semibold">{t("Manzil saqlandi ✅", "Адрес сохранён ✅")}</p>
             )}
             <div className="mt-auto pt-6 flex gap-2">
-              <button type="button" onClick={() => setStep(1)} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
+              <button type="button" onClick={() => { stepLock.current = null; setStep(1); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
                 <ChevronLeft className="w-5 h-5" />
                 {t("Orqaga", "Назад")}
               </button>
