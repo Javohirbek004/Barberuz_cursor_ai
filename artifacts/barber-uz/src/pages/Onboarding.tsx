@@ -100,7 +100,11 @@ async function api(path: string, method: string, body?: unknown) {
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
-  if (!res.ok) throw new Error(`${method} ${path} ${res.status}`);
+  if (!res.ok) {
+    const error = new Error(`${method} ${path} ${res.status}`) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
+  }
   return res.json();
 }
 
@@ -383,13 +387,24 @@ export default function Onboarding() {
     for (let i = 0; i < next.length; i++) {
       const item = next[i];
       if (!item.on || !item.name.trim()) continue;
-      const categoryId = await ensure(item.category);
-      const body = { name: item.name.trim(), duration: item.duration, price: item.price, categoryId };
-      if (item.savedId) await api(`/api/services/${item.savedId}`, "PUT", body);
-      else {
-        const created = await api("/api/services", "POST", body) as { id: string };
-        next[i] = { ...item, savedId: created.id };
+      const categoryId = await ensure(item.category?.trim() || "Asosiy");
+      const body = { name: item.name.trim(), duration: Number(item.duration), price: Number(item.price), categoryId };
+      let savedId = item.savedId;
+      if (savedId) {
+        try {
+          await api(`/api/services/${savedId}`, "PUT", body);
+        } catch (err) {
+          const status = (err as { status?: number }).status;
+          const foreign = status === 404 || (status === 500 && !/^[0-9a-f-]{36}$/i.test(savedId));
+          if (!foreign) throw err;
+          savedId = undefined;
+        }
       }
+      if (!savedId) {
+        const created = await api("/api/services", "POST", body) as { id: string };
+        savedId = created.id;
+      }
+      next[i] = { ...item, savedId };
       setServices([...next]);
     }
   }
@@ -457,6 +472,7 @@ export default function Onboarding() {
       return;
     }
     setBusy(true);
+    let moved = false;
     try {
       if (step === 2 && (address.trim() || mapLink.trim() || latitude)) {
         const link = mapLink.trim();
@@ -493,12 +509,13 @@ export default function Onboarding() {
         return;
       }
       setStep((n) => n + 1);
-      showPageTop();
+      moved = true;
     } catch {
       warn(t("Saqlanmadi. Qayta urinib ko‘ring", "Не сохранилось. Попробуйте ещё раз"));
     } finally {
       setBusy(false);
     }
+    if (moved) showPageTop();
   }
 
   async function onAvatar(file?: File) {
