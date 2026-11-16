@@ -1,5 +1,6 @@
 export const ONBOARDING_PENDING_KEY = "barber_onboarding_pending";
 export const ONBOARDING_READY_KEY = "barber_page_ready";
+export const ONBOARDING_INTRO_KEY = "barber_onboarding_intro";
 
 /** Where a signed-in barber should land. New accounts finish the 7 screens first. */
 export function pathAfterAuth(): string {

@@ -13,7 +13,7 @@ import {
   writeScheduleJson,
   type WeekSchedule,
 } from "@/lib/schedule";
-import { ONBOARDING_PENDING_KEY, ONBOARDING_READY_KEY } from "@/lib/onboarding";
+import { ONBOARDING_PENDING_KEY, ONBOARDING_READY_KEY, ONBOARDING_INTRO_KEY } from "@/lib/onboarding";
 
 const DRAFT_KEY = "barber_onboarding_draft";
 const STEPS = 7;
@@ -386,6 +386,9 @@ export default function Onboarding() {
   const [sheet, setSheet] = useState<null | { key: string | null; name: string; duration: string; price: string; category: string; fromReady?: boolean }>(null);
   const [drop, setDrop] = useState(false);
   const [placeSaved, setPlaceSaved] = useState(false);
+  const [introOpen, setIntroOpen] = useState(() => {
+    try { return sessionStorage.getItem(ONBOARDING_INTRO_KEY) === "1"; } catch { return false; }
+  });
   const placeSavedTimer = useRef<number | null>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const addressRef = useRef<HTMLInputElement>(null);
@@ -730,6 +733,31 @@ export default function Onboarding() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {introOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-center justify-center px-5">
+          <div className="w-full max-w-sm rounded-2xl bg-card border border-white/10 px-4 pt-5 pb-4">
+            <h2 className="font-display text-xl font-medium leading-snug">{t("Boshlashdan oldin qisqa eslatma 💡", "Перед началом короткое напоминание 💡")}</h2>
+            <p className="mt-4 text-sm leading-snug">
+              <span className="mr-1 inline-block align-middle rounded-full bg-primary/15 px-2 py-0.5 text-[13px] font-medium leading-5 text-primary">{t("Majburiy", "Обязательно")}</span>
+              {t("belgili sahifalar — Bu ma’lumotlarni kiritish shart, chunki ular ilovani to‘liq ishga tushirish uchun zarur.", "страницы обязательны — эти данные нужны, чтобы приложение заработало полностью.")}
+            </p>
+            <p className="mt-3 text-sm leading-snug">
+              <span className="mr-1 inline-block align-middle rounded-full bg-white/10 px-2 py-0.5 text-[13px] font-normal leading-5 text-muted-foreground">{t("Ixtiyoriy", "Необязательно")}</span>
+              {t("belgili sahifalar — Bularni hozir to‘ldirish majburiy emas, lekin kiritib qo‘ysangiz mijozlaringiz uchun juda foydali bo‘ladi. Xohlasangiz pastdagi «Keyingi» tugmasini bosib o‘tkazib yuborishingiz va keyinroq ilova ichida to‘ldirishingiz mumkin.", "страницы можно пропустить — заполнить сейчас не обязательно, но клиентам это очень поможет. Нажмите «Далее» внизу и заполните позже в приложении.")}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                try { sessionStorage.removeItem(ONBOARDING_INTRO_KEY); } catch { /* storage can be blocked */ }
+                setIntroOpen(false);
+              }}
+              className="mt-5 h-12 w-full rounded-xl bg-primary text-black text-base font-medium"
+            >
+              {t("Tushunarli", "Понятно")}
+            </button>
+          </div>
+        </div>
+      )}
       <div className="max-w-md mx-auto px-4 pb-8">
         <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm pt-4">
           <div className="flex gap-1.5 pb-3">

@@ -10,7 +10,7 @@ import { motion } from "framer-motion";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ONBOARDING_PENDING_KEY } from "@/lib/onboarding";
+import { ONBOARDING_PENDING_KEY, ONBOARDING_INTRO_KEY } from "@/lib/onboarding";
 
 function generateUsername(name: string): string {
   const base = name
@@ -63,6 +63,7 @@ export default function Register() {
         localStorage.setItem("barber_token", data.token);
         localStorage.setItem("barber_user", JSON.stringify(data.user));
         localStorage.setItem(ONBOARDING_PENDING_KEY, "1");
+        sessionStorage.setItem(ONBOARDING_INTRO_KEY, "1");
         navigate("/onboarding");
       },
       onError: () => {
