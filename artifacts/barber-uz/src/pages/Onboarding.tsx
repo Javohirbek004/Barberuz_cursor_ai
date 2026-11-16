@@ -117,6 +117,31 @@ function money(n: number): string {
   return `${n.toLocaleString("uz-UZ")} so‘m`;
 }
 
+function formatUzPhone(raw: string): string | null {
+  const compact = raw.replace(/[\s-]/g, "");
+  let national = "";
+  if (compact.startsWith("+998")) national = compact.slice(4);
+  else if (compact.startsWith("998")) national = compact.slice(3);
+  else return null;
+  const digits = national.replace(/\D/g, "").slice(0, 9);
+  let out = "+998";
+  if (!digits) return "+998 ";
+  out += ` ${digits.slice(0, 2)}`;
+  if (digits.length > 2) out += ` ${digits.slice(2, 5)}`;
+  if (digits.length > 5) out += `-${digits.slice(5, 7)}`;
+  if (digits.length > 7) out += `-${digits.slice(7, 9)}`;
+  return out;
+}
+
+function applyPhoneInput(prev: string, next: string): string {
+  const formatted = formatUzPhone(next);
+  if (!formatted) return next;
+  const compact = next.replace(/[\s-]/g, "");
+  const national = (compact.startsWith("+998") ? compact.slice(4) : compact.slice(3)).replace(/\D/g, "");
+  if (!national && next.length < prev.length) return next;
+  return formatted;
+}
+
 function cleanHandle(raw: string): string {
   let s = raw.trim();
   s = s.replace(/^https?:\/\//i, "");
@@ -644,8 +669,8 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-md mx-auto px-4 pb-8">
-        <header className={`sticky top-0 z-20 bg-background/95 backdrop-blur-sm ${step <= 2 ? "pt-4" : ""}`}>
-          {step > 2 && (
+        <header className={`sticky top-0 z-20 bg-background/95 backdrop-blur-sm ${step <= 3 ? "pt-4" : ""}`}>
+          {step > 3 && (
             <div className="h-11 flex items-center justify-end">
               <button type="button" onClick={goNext} disabled={busy} className="h-11 px-1 text-primary text-base font-medium disabled:opacity-100">
                 {busy ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
@@ -840,16 +865,38 @@ export default function Onboarding() {
         )}
 
         {step === 3 && (
-          <section>
+          <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
             <StepName title={t("Telefon", "Телефон")} mark={stepMark} tone={stepTone} />
-            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijoz qo‘ng‘iroq qila oladi. Ko‘rsatishni o‘zingiz yoqasiz.", "Клиент сможет позвонить. Показ включаете вы.")}</p>
-            <Field label={t("Telefon raqam", "Номер телефона")}>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="+998" className="h-12 w-full rounded-xl bg-card border border-white/10 px-3" />
-            </Field>
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijozlar siz bilan osongina bog‘lanishi uchun telefon raqamingizni kiriting. Uni mijozlarga ko‘rsatish yoki yashirishni istalgan vaqtda o‘zingiz boshqarasiz.", "Введите номер, чтобы клиенты легко связались с вами. Показ номера вы включаете сами в любой момент.")}</p>
+            <input
+              value={phone}
+              onFocus={() => { if (!phone.trim()) setPhone("+998 "); }}
+              onChange={(e) => setPhone(applyPhoneInput(phone, e.target.value))}
+              inputMode="tel"
+              placeholder="+998 90 123-45-67"
+              className="mt-5 h-12 w-full rounded-xl bg-card border border-white/10 px-3 outline-none placeholder:text-muted-foreground"
+            />
             <div className="mt-5 flex items-center justify-between">
-              <span className="text-sm">{t("Mijozga ko‘rinsin", "Показывать клиенту")}</span>
-              <button type="button" aria-pressed={phoneVisible} onClick={() => setPhoneVisible((v) => !v)} className={`h-7 w-12 rounded-full relative ${phoneVisible ? "bg-primary" : "bg-white/15"}`}>
-                <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white transition-transform ${phoneVisible ? "translate-x-5" : "translate-x-0.5"}`} />
+              <span className="text-sm">{t("Mijozlarga ko‘rinsin", "Показывать клиентам")}</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={phoneVisible}
+                onClick={() => setPhoneVisible((v) => !v)}
+                className={`relative shrink-0 overflow-hidden rounded-full p-0 ${phoneVisible ? "bg-primary" : "bg-white/15"}`}
+                style={{ width: 48, height: 28 }}
+              >
+                <span className="absolute rounded-full bg-white" style={{ top: 2, width: 24, height: 24, left: phoneVisible ? 22 : 2 }} />
+              </button>
+            </div>
+            <div className="mt-auto pt-6 flex gap-2">
+              <button type="button" onClick={() => { stepLock.current = null; setStep(2); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
+                <ChevronLeft className="w-5 h-5" />
+                {t("Orqaga", "Назад")}
+              </button>
+              <button type="button" onClick={goNext} className="h-12 flex-1 rounded-xl bg-primary text-black text-base font-medium flex items-center justify-center gap-2">
+                {t("Keyingi", "Далее")}
+                <ChevronRight className="w-5 h-5" />
               </button>
             </div>
           </section>
