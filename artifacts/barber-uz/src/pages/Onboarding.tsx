@@ -70,10 +70,10 @@ const TEMPLATES: ServiceDraft[] = [
 ];
 
 const SALON = [
-  { id: "stul", name: "Stul", file: "stul.jpg" },
-  { id: "oyna", name: "Oyna", file: "oyna.jpg" },
-  { id: "kutish", name: "Kutish joyi", file: "kutish.jpg" },
-  { id: "asbob", name: "Asboblar", file: "asbob.jpg" },
+  { id: "kreslo", file: "kreslo.jpg", uz: "Kreslo va ish joyi", ru: "Кресло и рабочее место" },
+  { id: "qurol", file: "qurol.jpg", uz: "Ish qurollari", ru: "Инструменты" },
+  { id: "kutish", file: "kutish-joy.jpg", uz: "Kutish joyi", ru: "Зона ожидания" },
+  { id: "umumiy", file: "umumiy.jpg", uz: "Umumiy ko‘rinish", ru: "Общий вид" },
 ];
 
 function templateUrl(file: string): string {
@@ -1168,18 +1168,19 @@ export default function Onboarding() {
 
       {templatesOpen && (
         <div className="fixed inset-0 z-40 bg-black/60 flex items-end" onClick={() => setTemplatesOpen(false)}>
-          <div className="w-full max-w-md mx-auto rounded-t-2xl bg-card border-t border-primary/30 p-4" onClick={(e) => e.stopPropagation()}>
-            <h2 className="font-display text-xl">{t("Tayyor salon rasmlari", "Готовые фото салона")}</h2>
+          <div className="w-full max-w-md mx-auto rounded-t-3xl bg-card border-t border-white/10 px-4 pt-2.5 pb-5" onClick={(e) => e.stopPropagation()}>
+            <div className="w-9 h-1 rounded-full bg-zinc-700 mx-auto mb-3" />
+            <h2 className="font-display text-xl font-medium">{t("Tayyor salon rasmlari", "Готовые фото салона")}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{t("Birini tanlasangiz, ish joyi rasmlariga qo‘shiladi.", "Выбранное фото добавится к фото рабочего места.")}</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-x-2.5 gap-y-3">
               {SALON.map((item) => (
-                <button key={item.id} type="button" onClick={() => addTemplate(item.file)} className="text-left">
-                  <img src={templateUrl(item.file)} alt={item.name} className="h-32 w-full object-cover rounded-xl border border-primary/30" />
-                  <span className="block mt-1 text-sm">{item.name}</span>
+                <button key={item.id} type="button" onClick={() => addTemplate(item.file)} className="text-center">
+                  <img src={templateUrl(item.file)} alt={t(item.uz, item.ru)} className="h-28 w-full object-cover rounded-xl border border-white/25" />
+                  <span className="block mt-1.5 text-sm font-semibold">{t(item.uz, item.ru)}</span>
                 </button>
               ))}
             </div>
-            <button type="button" onClick={() => setTemplatesOpen(false)} className="mt-4 h-11 w-full rounded-xl border border-primary/30">{t("Yopish", "Закрыть")}</button>
+            <button type="button" onClick={() => setTemplatesOpen(false)} className="mt-4 h-11 w-full rounded-full border border-white/25 text-sm">{t("Yopish", "Закрыть")}</button>
           </div>
         </div>
       )}
