@@ -479,6 +479,24 @@ export default function Onboarding() {
       void saveHours();
       return;
     }
+    if (step === 2) {
+      stepLock.current = 2;
+      const link = mapLink.trim();
+      const hasPlace = Boolean(address.trim() || link || latitude);
+      const mapLinkValue = /^https?:\/\//i.test(link) || !link ? link : (link.includes(".") ? `https://${link}` : link);
+      setStep(3);
+      showPageTop();
+      if (hasPlace) {
+        const body = {
+          address: address.trim(),
+          mapLink: mapLinkValue,
+          latitude: latitude || null,
+          longitude: longitude || null,
+        };
+        void api("/api/settings/profile", "PUT", body).catch(() => api("/api/settings/profile", "PUT", body).catch(() => undefined));
+      }
+      return;
+    }
     setBusy(true);
     let moved = false;
     try {
@@ -490,16 +508,6 @@ export default function Onboarding() {
           try { await api("/api/settings/profile", "PUT", body); } catch { /* kept for the next try */ }
         }
       };
-      if (step === 2 && (address.trim() || mapLink.trim() || latitude)) {
-        const link = mapLink.trim();
-        const mapLinkValue = /^https?:\/\//i.test(link) || !link ? link : (link.includes(".") ? `https://${link}` : link);
-        await putProfile({
-          address: address.trim(),
-          mapLink: mapLinkValue,
-          latitude: latitude || null,
-          longitude: longitude || null,
-        });
-      }
       if (step === 3 && (phone.trim() || phoneVisible === false)) {
         await putProfile({ phone: phone.trim(), phoneVisible });
       }
