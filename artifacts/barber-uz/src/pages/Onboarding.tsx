@@ -569,6 +569,17 @@ export default function Onboarding() {
       }
       return;
     }
+    if (step === 5) {
+      stepLock.current = 5;
+      const photos = { avatarUrl, galleryImages: JSON.stringify(gallery) };
+      const shouldSave = Boolean(avatarUrl || gallery.length > 0);
+      setStep(6);
+      showPageTop();
+      if (shouldSave) {
+        void api("/api/settings/profile", "PUT", photos).catch(() => api("/api/settings/profile", "PUT", photos).catch(() => undefined));
+      }
+      return;
+    }
     setBusy(true);
     let moved = false;
     try {
@@ -580,9 +591,6 @@ export default function Onboarding() {
           try { await api("/api/settings/profile", "PUT", body); } catch { /* kept for the next try */ }
         }
       };
-      if (step === 5 && (avatarUrl || gallery.length > 0)) {
-        await putProfile({ avatarUrl, galleryImages: JSON.stringify(gallery) });
-      }
       if (step === 6) {
         const ig = cleanHandle(instagram);
         const tg = cleanHandle(telegram);
@@ -710,8 +718,8 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-md mx-auto px-4 pb-8">
-        <header className={`sticky top-0 z-20 bg-background/95 backdrop-blur-sm ${step <= 4 ? "pt-4" : ""}`}>
-          {step > 4 && (
+        <header className={`sticky top-0 z-20 bg-background/95 backdrop-blur-sm ${step <= 5 ? "pt-4" : ""}`}>
+          {step > 5 && (
             <div className="h-11 flex items-center justify-end">
               <button type="button" onClick={goNext} disabled={busy} className="h-11 px-1 text-primary text-base font-medium disabled:opacity-100">
                 {busy ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
@@ -988,17 +996,16 @@ export default function Onboarding() {
         )}
 
         {step === 5 && (
-          <section>
+          <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
             <StepName title={t("Profil va ish joyi rasmlari", "Фото профиля и рабочего места")} mark={stepMark} tone={stepTone} />
-            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijozlar ishonchini oshirish uchun o‘zingiz va ishxonangiz rasmini qo‘shing. Keyinroq ham o‘zgartirish mumkin.", "Добавьте своё фото и фото места работы. Позже можно изменить.")}</p>
-            <p className="mt-5 text-[13px] text-muted-foreground">{t("Profil rasmi (Yuzingiz)", "Фото профиля")}</p>
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijozlar ishonchini oshirish uchun o‘zingiz va ishxonangiz rasmini qo‘shing. Keyinroq ham o‘zgartirishingiz mumkin.", "Добавьте своё фото и фото места работы. Позже можно изменить.")}</p>
+            <p className="mt-5 text-[13px] text-muted-foreground">{t("Profil rasmi", "Фото профиля")}</p>
             <div className="mt-2 flex items-center gap-3">
               <button type="button" onClick={() => avatarRef.current?.click()} className="h-20 w-20 rounded-full border border-primary overflow-hidden bg-card flex items-center justify-center shrink-0">
                 {avatarUrl ? <img src={avatarUrl} alt="" className="h-full w-full object-cover" /> : <Camera className="w-5 h-5 text-primary" />}
               </button>
               <div>
-                <p className="text-sm font-medium">{t("Yuz rasmini yuklash", "Загрузить фото лица")}</p>
-                <p className="text-[13px] text-muted-foreground mt-1">{t("Aniq va tabassumli rasm tavsiya etiladi.", "Лучше чёткое фото с улыбкой.")}</p>
+                <p className="text-[13px] text-muted-foreground leading-snug">{t("O‘zingizning tiniq va sifatli rasmingizni yuklang.", "Загрузите своё чёткое и качественное фото.")}</p>
                 <button type="button" onClick={() => avatarRef.current?.click()} className="mt-2 h-9 px-3 rounded-xl border border-primary/30 bg-card text-[13px]">{t("Rasmni tanlash", "Выбрать фото")}</button>
               </div>
             </div>
@@ -1034,6 +1041,16 @@ export default function Onboarding() {
             <button type="button" onClick={() => setTemplatesOpen(true)} className="mt-4 h-11 w-full rounded-full border border-primary/30 bg-card text-sm">
               {t("Tayyor salon shablonlaridan tanlash", "Выбрать готовый шаблон салона")}
             </button>
+            <div className="mt-auto pt-6 flex gap-2">
+              <button type="button" onClick={() => { stepLock.current = null; setStep(4); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
+                <ChevronLeft className="w-5 h-5" />
+                {t("Orqaga", "Назад")}
+              </button>
+              <button type="button" onClick={goNext} className="h-12 flex-1 rounded-xl bg-primary text-black text-base font-medium flex items-center justify-center gap-2">
+                {t("Keyingi", "Далее")}
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
           </section>
         )}
 
