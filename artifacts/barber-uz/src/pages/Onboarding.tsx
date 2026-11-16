@@ -997,7 +997,10 @@ export default function Onboarding() {
 
         {step === 5 && (
           <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
-            <StepName title={t("Profil va ish joyi rasmlari", "Фото профиля и рабочего места")} mark={stepMark} tone={stepTone} />
+            <h1 className="font-display text-[26px] font-medium leading-tight">
+              {t("Profil va ish joyi rasmlari", "Фото профиля и рабочего места")}
+              <span className={`ml-2 inline-block align-middle rounded-full px-2 py-0.5 text-[13px] leading-5 ${stepTone === "need" ? "bg-primary/15 font-medium text-primary" : "bg-white/10 font-normal text-muted-foreground"}`}>{stepMark}</span>
+            </h1>
             <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijozlar ishonchini oshirish uchun o‘zingiz va ishxonangiz rasmini qo‘shing. Keyinroq ham o‘zgartirishingiz mumkin.", "Добавьте своё фото и фото места работы. Позже можно изменить.")}</p>
             <p className="mt-5 text-[13px] text-muted-foreground">{t("Profil rasmi", "Фото профиля")}</p>
             <div className="mt-2 flex items-center gap-3">
