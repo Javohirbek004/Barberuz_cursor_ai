@@ -168,6 +168,19 @@ function cleanHandle(raw: string): string {
   return /^[A-Za-z0-9._]{2,32}$/.test(s) ? s : "";
 }
 
+function formatSocialInput(raw: string): string {
+  let s = raw.trim().replace(/^@+/, "");
+  if (!s) return "";
+  if (/instagram\.com|t\.me|telegram\.me|https?:\/\//i.test(s) || s.includes("/")) {
+    s = s.replace(/^https?:\/\//i, "");
+    s = s.replace(/^(www\.)?(instagram\.com|t\.me|telegram\.me)\//i, "");
+    s = s.split(/[/?#\s]/)[0] || "";
+    s = s.replace(/^@+/, "");
+  }
+  s = s.replace(/\s/g, "");
+  return s ? `@${s}` : "";
+}
+
 function loadDraft(): Partial<Draft> | null {
   try {
     const raw = sessionStorage.getItem(DRAFT_KEY);
@@ -718,12 +731,13 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-md mx-auto px-4 pb-8">
-        <header className={`sticky top-0 z-20 bg-background/95 backdrop-blur-sm ${step <= 5 ? "pt-4" : ""}`}>
-          {step > 5 && (
-            <div className="h-11 flex items-center justify-end">
-              <button type="button" onClick={goNext} disabled={busy} className="h-11 px-1 text-primary text-base font-medium disabled:opacity-100">
-                {busy ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
+        <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm pt-4">
+          {step === 6 && (
+            <div className="h-11 grid grid-cols-[28px_1fr_28px] items-center">
+              <button type="button" aria-label={t("Yopish", "Закрыть")} onClick={() => { stepLock.current = null; setStep(5); }} className="h-11 w-7 flex items-center justify-start">
+                <X className="w-5 h-5" />
               </button>
+              <span className="text-center font-display text-lg font-semibold">Zumio</span>
             </div>
           )}
           <div className="flex gap-1.5 pb-3">
@@ -1058,14 +1072,24 @@ export default function Onboarding() {
         )}
 
         {step === 6 && (
-          <section>
-            <StepName title={t("Ijtimoiy tarmoq", "Соцсеть")} mark={stepMark} tone={stepTone} />
-            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijozlaringiz sizni topishi va ishlaringizni ko‘rishi uchun profillaringizni qo‘shish tavsiya qilinadi.", "Добавьте профили, чтобы клиенты могли найти вас и увидеть работы.")}</p>
-            <SocialField label="Instagram" value={instagram} onChange={setInstagram} placeholder="instagram.com/..." ok={!!cleanHandle(instagram)} mark="ig" />
-            <SocialField label="Telegram" value={telegram} onChange={setTelegram} placeholder="t.me/..." ok={!!cleanHandle(telegram)} mark="tg" />
-            <button type="button" onClick={goNext} className="mt-8 h-12 w-full rounded-xl bg-primary text-black font-medium">
-              {busy ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
-            </button>
+          <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
+            <h1 className="font-display text-[26px] font-medium leading-tight">
+              {t("Ijtimoiy tarmoqlar", "Соцсети")}
+              <span className="ml-2 inline-block align-middle rounded-full bg-white/10 px-2 py-0.5 text-[13px] font-normal leading-5 text-muted-foreground">{stepMark}</span>
+            </h1>
+            <p className="mt-2 text-sm leading-snug">{t("Mijozlaringiz sizni topishi va ishlaringizni ko‘rishi uchun profillaringizni qo‘shish tavsiya qilinadi.", "Добавьте профили, чтобы клиенты могли найти вас и увидеть работы.")}</p>
+            <SocialField label={t("Instagram username ni kiriting", "Введите имя в Instagram")} value={instagram} onChange={(v) => setInstagram(formatSocialInput(v))} placeholder="@ali_barber" ok={!!cleanHandle(instagram)} mark="ig" />
+            <SocialField label={t("Telegram username ni kiriting", "Введите имя в Telegram")} value={telegram} onChange={(v) => setTelegram(formatSocialInput(v))} placeholder="@ali_barber" ok={!!cleanHandle(telegram)} mark="tg" />
+            <div className="mt-auto pt-6 flex gap-2">
+              <button type="button" onClick={() => { stepLock.current = null; setStep(5); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
+                <ChevronLeft className="w-5 h-5" />
+                {t("Orqaga", "Назад")}
+              </button>
+              <button type="button" onClick={goNext} className="h-12 flex-1 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
+                {t("Keyingi", "Далее")}
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
           </section>
         )}
       </div>
@@ -1227,7 +1251,7 @@ function SocialField({
 }) {
   return (
     <label className="block mt-6">
-      <span className="block mb-2 text-[13px] text-muted-foreground">{label}</span>
+      <span className="block mb-2 text-sm">{label}</span>
       <span className={`h-12 flex items-center gap-2 rounded-xl bg-card border px-3 ${ok ? "border-primary/40" : "border-white/10"}`}>
         {mark === "ig" ? <InstagramMark /> : <TelegramMark />}
         <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="flex-1 min-w-0 bg-transparent outline-none" />
