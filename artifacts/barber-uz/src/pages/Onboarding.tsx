@@ -85,6 +85,12 @@ function token(): string {
   return localStorage.getItem("barber_token") || "";
 }
 
+function showPageTop() {
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+}
+
 async function api(path: string, method: string, body?: unknown) {
   const res = await fetch(path, {
     method,
@@ -427,6 +433,7 @@ export default function Onboarding() {
       }
       stepLock.current = true;
       setStep(1);
+      showPageTop();
       saveServices().catch(() => warn(t("Saqlanmadi. Qayta urinib ko‘ring", "Не сохранилось. Попробуйте ещё раз"))).finally(() => {
         stepLock.current = false;
       });
@@ -443,6 +450,7 @@ export default function Onboarding() {
       }
       stepLock.current = true;
       setStep(2);
+      showPageTop();
       saveHours().catch(() => warn(t("Saqlanmadi. Qayta urinib ko‘ring", "Не сохранилось. Попробуйте ещё раз"))).finally(() => {
         stepLock.current = false;
       });
@@ -459,8 +467,6 @@ export default function Onboarding() {
           latitude: latitude || null,
           longitude: longitude || null,
         });
-        const item = toast({ title: t("Manzil saqlandi", "Адрес сохранён"), duration: 2500 });
-        window.setTimeout(() => item.dismiss(), 2500);
       }
       if (step === 3 && (phone.trim() || phoneVisible === false)) {
         await api("/api/settings/profile", "PUT", { phone: phone.trim(), phoneVisible });
@@ -487,6 +493,7 @@ export default function Onboarding() {
         return;
       }
       setStep((n) => n + 1);
+      showPageTop();
     } catch {
       warn(t("Saqlanmadi. Qayta urinib ko‘ring", "Не сохранилось. Попробуйте ещё раз"));
     } finally {
