@@ -559,6 +559,16 @@ export default function Onboarding() {
       }
       return;
     }
+    if (step === 4) {
+      stepLock.current = 4;
+      const text = bio.trim();
+      setStep(5);
+      showPageTop();
+      if (text) {
+        void api("/api/settings/profile", "PUT", { bio: text }).catch(() => api("/api/settings/profile", "PUT", { bio: text }).catch(() => undefined));
+      }
+      return;
+    }
     setBusy(true);
     let moved = false;
     try {
@@ -570,9 +580,6 @@ export default function Onboarding() {
           try { await api("/api/settings/profile", "PUT", body); } catch { /* kept for the next try */ }
         }
       };
-      if (step === 4 && bio.trim()) {
-        await putProfile({ bio: bio.trim() });
-      }
       if (step === 5 && (avatarUrl || gallery.length > 0)) {
         await putProfile({ avatarUrl, galleryImages: JSON.stringify(gallery) });
       }
@@ -703,8 +710,8 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-md mx-auto px-4 pb-8">
-        <header className={`sticky top-0 z-20 bg-background/95 backdrop-blur-sm ${step <= 3 ? "pt-4" : ""}`}>
-          {step > 3 && (
+        <header className={`sticky top-0 z-20 bg-background/95 backdrop-blur-sm ${step <= 4 ? "pt-4" : ""}`}>
+          {step > 4 && (
             <div className="h-11 flex items-center justify-end">
               <button type="button" onClick={goNext} disabled={busy} className="h-11 px-1 text-primary text-base font-medium disabled:opacity-100">
                 {busy ? t("Saqlanmoqda...", "Сохраняется...") : t("Keyingi", "Далее")}
@@ -955,17 +962,28 @@ export default function Onboarding() {
         )}
 
         {step === 4 && (
-          <section>
-            <StepName title={t("Tavsif", "Описание")} mark={stepMark} tone={stepTone} />
-            <Field label={t("Tavsif (BIO)", "Описание (BIO)")}>
-              <textarea
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                rows={5}
-                placeholder="Masalan: 3yillik tajriba ga ega Barber. Soch, soqol ustasi."
-                className="w-full rounded-xl bg-card border border-white/10 px-3 py-3 resize-none"
-              />
-            </Field>
+          <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
+            <StepName title={t("Tavsif (BIO)", "Описание (BIO)")} mark={stepMark} tone={stepTone} />
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("O‘zingiz va mutaxassisligingiz haqida qisqacha yozing.", "Коротко напишите о себе и своей специальности.")}</p>
+            <textarea
+              value={bio}
+              onChange={(e) => setBio(e.target.value.slice(0, 200))}
+              rows={4}
+              maxLength={200}
+              placeholder="Masalan: 5 yillik tajribaga ega Barber. Soch, soqol ustasi."
+              className="mt-5 w-full rounded-xl bg-card border border-white/10 px-3 py-3 resize-none leading-snug"
+            />
+            <p className={`mt-2 text-xs text-right tabular-nums ${bio.length >= 180 ? "text-primary" : "text-muted-foreground/40"}`}>{bio.length} / 200</p>
+            <div className="mt-auto pt-6 flex gap-2">
+              <button type="button" onClick={() => { stepLock.current = null; setStep(3); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
+                <ChevronLeft className="w-5 h-5" />
+                {t("Orqaga", "Назад")}
+              </button>
+              <button type="button" onClick={goNext} className="h-12 flex-1 rounded-xl bg-primary text-black text-base font-medium flex items-center justify-center gap-2">
+                {t("Keyingi", "Далее")}
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
           </section>
         )}
 
