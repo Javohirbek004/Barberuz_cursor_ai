@@ -16,7 +16,8 @@ import {
 import { ONBOARDING_PENDING_KEY, ONBOARDING_READY_KEY, ONBOARDING_INTRO_KEY } from "@/lib/onboarding";
 
 const DRAFT_KEY = "barber_onboarding_draft";
-const STEPS = 7;
+const STEPS = 6;
+const FLOW = 2;
 const OPEN_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat"];
 const CLOCK_HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
 const CLOCK_MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"));
@@ -40,6 +41,7 @@ type ServiceDraft = {
 };
 
 type Draft = {
+  flow?: number;
   step: number;
   services: ServiceDraft[];
   days: string[];
@@ -52,8 +54,6 @@ type Draft = {
   mapLink: string;
   latitude: string;
   longitude: string;
-  phone: string;
-  phoneVisible: boolean;
   bio: string;
   avatarUrl: string;
   gallery: string[];
@@ -117,48 +117,6 @@ function money(n: number): string {
   return `${n.toLocaleString("uz-UZ")} so‘m`;
 }
 
-function formatUzPhone(raw: string): string | null {
-  const compact = raw.replace(/[\s-]/g, "");
-  let national = "";
-  if (compact.startsWith("+998")) national = compact.slice(4);
-  else if (compact.startsWith("998")) national = compact.slice(3);
-  else return null;
-  const digits = national.replace(/\D/g, "").slice(0, 9);
-  let out = "+998";
-  if (!digits) return "+998 ";
-  out += ` ${digits.slice(0, 2)}`;
-  if (digits.length > 2) out += ` ${digits.slice(2, 5)}`;
-  if (digits.length > 5) out += `-${digits.slice(5, 7)}`;
-  if (digits.length > 7) out += `-${digits.slice(7, 9)}`;
-  return out;
-}
-
-const PHONE_PREFIX = "+998 ";
-
-function phoneCaretFloor(value: string): number {
-  if (value.startsWith(PHONE_PREFIX)) return PHONE_PREFIX.length;
-  if (value.startsWith("+998")) return 4;
-  return 0;
-}
-
-function keepCaretAfterCode(el: HTMLInputElement) {
-  const floor = phoneCaretFloor(el.value);
-  if (!floor) return;
-  const start = el.selectionStart ?? 0;
-  const end = el.selectionEnd ?? 0;
-  if (start >= floor && end >= floor) return;
-  el.setSelectionRange(Math.max(start, floor), Math.max(end, floor));
-}
-
-function applyPhoneInput(prev: string, next: string): string {
-  const formatted = formatUzPhone(next);
-  if (!formatted) return next;
-  const compact = next.replace(/[\s-]/g, "");
-  const national = (compact.startsWith("+998") ? compact.slice(4) : compact.slice(3)).replace(/\D/g, "");
-  if (!national && next.length < prev.length) return next;
-  return formatted;
-}
-
 function cleanHandle(raw: string): string {
   let s = raw.trim();
   s = s.replace(/^https?:\/\//i, "");
@@ -186,7 +144,9 @@ function loadDraft(): Partial<Draft> | null {
     const raw = sessionStorage.getItem(DRAFT_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw) as Partial<Draft>;
-    return data && typeof data === "object" ? data : null;
+    if (!data || typeof data !== "object") return null;
+    if (data.flow !== FLOW && typeof data.step === "number" && data.step >= 3) data.step -= 1;
+    return data;
   } catch {
     return null;
   }
@@ -358,10 +318,6 @@ export default function Onboarding() {
   const [mapLink, setMapLink] = useState(saved.current?.mapLink || "");
   const [latitude, setLatitude] = useState(saved.current?.latitude || "");
   const [longitude, setLongitude] = useState(saved.current?.longitude || "");
-  const [phone, setPhone] = useState(saved.current?.phone || "");
-  const phoneRef = useRef<HTMLInputElement>(null);
-  const phoneCaret = useRef<number | null>(null);
-  const [phoneVisible, setPhoneVisible] = useState(saved.current?.phoneVisible !== false);
   const [bio, setBio] = useState(saved.current?.bio || "");
   const [avatarUrl, setAvatarUrl] = useState(saved.current?.avatarUrl || "");
   const [gallery, setGallery] = useState<string[]>(saved.current?.gallery ?? []);
@@ -374,13 +330,6 @@ export default function Onboarding() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [clock, setClock] = useState<null | { field: "workStart" | "workEnd" | "lunchStart" | "lunchEnd"; title: string }>(null);
   const stepLock = useRef<number | null>(null);
-  useLayoutEffect(() => {
-    const el = phoneRef.current;
-    const pos = phoneCaret.current;
-    if (!el || pos == null || document.activeElement !== el) return;
-    phoneCaret.current = null;
-    el.setSelectionRange(pos, pos);
-  }, [phone]);
   const [readyOpen, setReadyOpen] = useState(false);
   const [ready, setReady] = useState<ServiceDraft[]>([]);
   const [sheet, setSheet] = useState<null | { key: string | null; name: string; duration: string; price: string; category: string; fromReady?: boolean }>(null);
@@ -401,11 +350,12 @@ export default function Onboarding() {
 
   useEffect(() => {
     const draft: Draft = {
+      flow: FLOW,
       step, services, days, workStart, workEnd, lunchOn, lunchStart, lunchEnd,
-      address, mapLink, latitude, longitude, phone, phoneVisible, bio, avatarUrl, gallery, instagram, telegram,
+      address, mapLink, latitude, longitude, bio, avatarUrl, gallery, instagram, telegram,
     };
     try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore quota */ }
-  }, [step, services, days, workStart, workEnd, lunchOn, lunchStart, lunchEnd, address, mapLink, latitude, longitude, phone, phoneVisible, bio, avatarUrl, gallery, instagram, telegram]);
+  }, [step, services, days, workStart, workEnd, lunchOn, lunchStart, lunchEnd, address, mapLink, latitude, longitude, bio, avatarUrl, gallery, instagram, telegram]);
 
   function warn(title: string) {
     const item = toast({ title, duration: 4000 });
@@ -566,30 +516,19 @@ export default function Onboarding() {
     }
     if (step === 3) {
       stepLock.current = 3;
-      const body = { phone: phone.trim(), phoneVisible };
-      const shouldSave = Boolean(body.phone || phoneVisible === false);
-      setStep(4);
-      showPageTop();
-      if (shouldSave) {
-        void api("/api/settings/profile", "PUT", body).catch(() => api("/api/settings/profile", "PUT", body).catch(() => undefined));
-      }
-      return;
-    }
-    if (step === 4) {
-      stepLock.current = 4;
       const text = bio.trim();
-      setStep(5);
+      setStep(4);
       showPageTop();
       if (text) {
         void api("/api/settings/profile", "PUT", { bio: text }).catch(() => api("/api/settings/profile", "PUT", { bio: text }).catch(() => undefined));
       }
       return;
     }
-    if (step === 5) {
-      stepLock.current = 5;
+    if (step === 4) {
+      stepLock.current = 4;
       const photos = { avatarUrl, galleryImages: JSON.stringify(gallery) };
       const shouldSave = Boolean(avatarUrl || gallery.length > 0);
-      setStep(6);
+      setStep(5);
       showPageTop();
       if (shouldSave) {
         void api("/api/settings/profile", "PUT", photos).catch(() => api("/api/settings/profile", "PUT", photos).catch(() => undefined));
@@ -607,7 +546,7 @@ export default function Onboarding() {
           try { await api("/api/settings/profile", "PUT", body); } catch { /* kept for the next try */ }
         }
       };
-      if (step === 6) {
+      if (step === 5) {
         const ig = cleanHandle(instagram);
         const tg = cleanHandle(telegram);
         if (ig || tg) {
@@ -949,47 +888,17 @@ export default function Onboarding() {
 
         {step === 3 && (
           <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
-            <StepName title={t("Aloqa raqami", "Номер для связи")} mark={stepMark} tone={stepTone} />
-            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("Mijozlar siz bilan osongina bog‘lanishi uchun telefon raqamingizni kiriting. Uni mijozlarga ko‘rsatish yoki yashirishni istalgan vaqtda o‘zingiz boshqarasiz.", "Введите номер, чтобы клиенты легко связались с вами. Показ номера вы включаете сами в любой момент.")}</p>
-            <input
-              ref={phoneRef}
-              value={phone}
-              onMouseDown={(e) => {
-                if (e.currentTarget.value.trim()) return;
-                e.preventDefault();
-                phoneCaret.current = PHONE_PREFIX.length;
-                setPhone(PHONE_PREFIX);
-                e.currentTarget.focus();
-              }}
-              onFocus={(e) => {
-                if (!e.currentTarget.value.trim()) {
-                  phoneCaret.current = PHONE_PREFIX.length;
-                  setPhone(PHONE_PREFIX);
-                  return;
-                }
-                keepCaretAfterCode(e.currentTarget);
-              }}
-              onClick={(e) => keepCaretAfterCode(e.currentTarget)}
-              onKeyUp={(e) => keepCaretAfterCode(e.currentTarget)}
-              onSelect={(e) => keepCaretAfterCode(e.currentTarget)}
-              onChange={(e) => setPhone(applyPhoneInput(phone, e.target.value))}
-              inputMode="tel"
-              placeholder="+998 90 123-45-67"
-              className="mt-5 h-12 w-full rounded-xl bg-card border border-white/10 px-3 outline-none placeholder:text-muted-foreground"
+            <StepName title={t("Tavsif (BIO)", "Описание (BIO)")} mark={stepMark} tone={stepTone} />
+            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("O‘zingiz va mutaxassisligingiz haqida qisqacha yozing.", "Коротко напишите о себе и своей специальности.")}</p>
+            <textarea
+              value={bio}
+              onChange={(e) => setBio(e.target.value.slice(0, 200))}
+              rows={4}
+              maxLength={200}
+              placeholder="Masalan: 5 yillik tajribaga ega Barber. Soch, soqol ustasi."
+              className="mt-5 w-full rounded-xl bg-card border border-white/10 px-3 py-3 resize-none leading-snug"
             />
-            <div className="mt-5 flex items-center justify-between">
-              <span className="text-sm">{t("Mijozlarga ko‘rinsin", "Показывать клиентам")}</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={phoneVisible}
-                onClick={() => setPhoneVisible((v) => !v)}
-                className={`relative shrink-0 overflow-hidden rounded-full p-0 ${phoneVisible ? "bg-primary" : "bg-white/15"}`}
-                style={{ width: 48, height: 28 }}
-              >
-                <span className="absolute rounded-full bg-white" style={{ top: 2, width: 24, height: 24, left: phoneVisible ? 22 : 2 }} />
-              </button>
-            </div>
+            <p className={`mt-2 text-xs text-right tabular-nums ${bio.length >= 180 ? "text-primary" : "text-muted-foreground/40"}`}>{bio.length} / 200</p>
             <div className="mt-auto pt-6 flex gap-2">
               <button type="button" onClick={() => { stepLock.current = null; setStep(2); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
                 <ChevronLeft className="w-5 h-5" />
@@ -1004,32 +913,6 @@ export default function Onboarding() {
         )}
 
         {step === 4 && (
-          <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
-            <StepName title={t("Tavsif (BIO)", "Описание (BIO)")} mark={stepMark} tone={stepTone} />
-            <p className="mt-2 text-sm text-muted-foreground leading-snug">{t("O‘zingiz va mutaxassisligingiz haqida qisqacha yozing.", "Коротко напишите о себе и своей специальности.")}</p>
-            <textarea
-              value={bio}
-              onChange={(e) => setBio(e.target.value.slice(0, 200))}
-              rows={4}
-              maxLength={200}
-              placeholder="Masalan: 5 yillik tajribaga ega Barber. Soch, soqol ustasi."
-              className="mt-5 w-full rounded-xl bg-card border border-white/10 px-3 py-3 resize-none leading-snug"
-            />
-            <p className={`mt-2 text-xs text-right tabular-nums ${bio.length >= 180 ? "text-primary" : "text-muted-foreground/40"}`}>{bio.length} / 200</p>
-            <div className="mt-auto pt-6 flex gap-2">
-              <button type="button" onClick={() => { stepLock.current = null; setStep(3); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
-                <ChevronLeft className="w-5 h-5" />
-                {t("Orqaga", "Назад")}
-              </button>
-              <button type="button" onClick={goNext} className="h-12 flex-1 rounded-xl bg-primary text-black text-base font-medium flex items-center justify-center gap-2">
-                {t("Keyingi", "Далее")}
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          </section>
-        )}
-
-        {step === 5 && (
           <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
             <h1 className="font-display text-[26px] font-medium leading-tight">
               {t("Profil va ish joyi rasmlari", "Фото профиля и рабочего места")}
@@ -1079,7 +962,7 @@ export default function Onboarding() {
               {t("Tayyor salon shablonlaridan tanlash", "Выбрать готовый шаблон салона")}
             </button>
             <div className="mt-auto pt-6 flex gap-2">
-              <button type="button" onClick={() => { stepLock.current = null; setStep(4); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
+              <button type="button" onClick={() => { stepLock.current = null; setStep(3); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
                 <ChevronLeft className="w-5 h-5" />
                 {t("Orqaga", "Назад")}
               </button>
@@ -1091,7 +974,7 @@ export default function Onboarding() {
           </section>
         )}
 
-        {step === 6 && (
+        {step === 5 && (
           <section className="flex flex-col min-h-[calc(100dvh-6.5rem)]">
             <h1 className="font-display text-[26px] font-medium leading-tight">
               {t("Ijtimoiy tarmoqlar", "Соцсети")}
@@ -1101,12 +984,12 @@ export default function Onboarding() {
             <SocialField label={t("Instagram username ni kiriting", "Введите имя в Instagram")} value={instagram} onChange={setInstagram} placeholder="@ali_barber" ok={!!cleanHandle(instagram)} mark="ig" />
             <SocialField label={t("Telegram username ni kiriting", "Введите имя в Telegram")} value={telegram} onChange={setTelegram} placeholder="@ali_barber" ok={!!cleanHandle(telegram)} mark="tg" />
             <div className="mt-auto pt-6 flex gap-2">
-              <button type="button" onClick={() => { stepLock.current = null; setStep(5); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
+              <button type="button" onClick={() => { stepLock.current = null; setStep(4); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
                 <ChevronLeft className="w-5 h-5" />
                 {t("Orqaga", "Назад")}
               </button>
               <button type="button" onClick={goNext} className="h-12 flex-1 rounded-xl bg-primary text-black text-base font-medium flex items-center justify-center gap-2">
-                {t("Keyingi", "Далее")}
+                {t("Tugatish", "Готово")}
                 <ChevronRight className="w-5 h-5" />
               </button>
             </div>
