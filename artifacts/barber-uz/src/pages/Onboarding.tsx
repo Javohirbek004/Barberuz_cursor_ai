@@ -669,6 +669,10 @@ export default function Onboarding() {
   const names = weekdayNames(lang);
   const stepMark = optional ? t("Ixtiyoriy", "Необязательно") : t("Majburiy", "Обязательно");
   const stepTone = optional ? "skip" as const : "need" as const;
+  const pagesLeft = STEPS - step - 1;
+  const pagesLeftLabel = pagesLeft === 1
+    ? t("Yana 1 ta sahifa", "Ещё 1 страница")
+    : t(`Yana ${pagesLeft} ta sahifa`, pagesLeft < 5 ? `Ещё ${pagesLeft} страницы` : `Ещё ${pagesLeft} страниц`);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -698,12 +702,18 @@ export default function Onboarding() {
         </div>
       )}
       <div className="max-w-md mx-auto px-4 pb-8">
-        <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm pt-4">
-          <div className="flex gap-1.5 pb-3">
-            {Array.from({ length: STEPS }, (_, i) => (
-              <i key={i} className={`h-1 flex-1 rounded-full ${i <= step ? "bg-primary" : "bg-zinc-700"}`} />
-            ))}
+        <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm pt-4 pb-3">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+            <div
+              className="relative h-full overflow-hidden rounded-full bg-[#F5B82E] transition-[width] duration-300 ease-out"
+              style={{ width: `${((step + 1) / STEPS) * 100}%` }}
+            >
+              <span key={step} className="setup-glint" />
+            </div>
           </div>
+          {pagesLeft > 0 && (
+            <p className="mt-2.5 text-[13px] text-muted-foreground">{pagesLeftLabel}</p>
+          )}
         </header>
 
         {step === 0 && (

@@ -161,3 +161,22 @@ body.sheet-open #bottom-nav-root {
 .login-register-glow {
   animation: login-register-glow 1.2s ease forwards;
 }
+
+@keyframes setup-glint {
+  from { transform: translateX(-140%); }
+  to { transform: translateX(460%); }
+}
+
+.setup-glint {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 28%;
+  background: linear-gradient(105deg, transparent 0%, rgba(255, 252, 245, 0) 30%, rgba(255, 252, 245, 0.95) 50%, transparent 74%);
+  animation: setup-glint 0.75s ease-in-out 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-glint { animation: none; }
+}
