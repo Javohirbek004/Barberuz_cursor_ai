@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { Home, Calendar, Users, Settings, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { BookingFlowDialog } from "./BookingFlowDialog";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,17 +16,12 @@ export function BottomNav() {
   const [hint, setHint] = useState(() => {
     try { return localStorage.getItem(ONBOARDING_HINT_KEY) === "1"; } catch { return false; }
   });
-  const showHint = hint && location === "/dashboard";
+  const showHint = hint;
 
-  useEffect(() => {
-    if (!showHint) return;
-    const close = () => {
-      localStorage.removeItem(ONBOARDING_HINT_KEY);
-      setHint(false);
-    };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, [showHint]);
+  function closeHint() {
+    localStorage.removeItem(ONBOARDING_HINT_KEY);
+    setHint(false);
+  }
 
   function handleDialogOpen(open: boolean) {
     setIsAddOpen(open);
@@ -96,7 +91,7 @@ export function BottomNav() {
                 <motion.button
                   whileTap={{ scale: 0.92 }}
                   whileHover={{ scale: 1.06 }}
-                  onClick={() => setIsAddOpen(true)}
+                  onClick={() => { closeHint(); setIsAddOpen(true); }}
                   className={`flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-primary to-amber-600 text-black shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-shadow duration-300 ${showHint ? "plus-glow" : ""}`}
                 >
                   <Plus className="w-8 h-8" />

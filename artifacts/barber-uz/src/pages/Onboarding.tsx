@@ -683,8 +683,8 @@ export default function Onboarding() {
   const stepTone = optional ? "skip" as const : "need" as const;
   const pagesLeft = STEPS - step - 1;
   const pagesLeftLabel = pagesLeft === 1
-    ? t("Yana 1 ta sahifa", "Ещё 1 страница")
-    : t(`Yana ${pagesLeft} ta sahifa`, pagesLeft < 5 ? `Ещё ${pagesLeft} страницы` : `Ещё ${pagesLeft} страниц`);
+    ? t("Yana 1 ta sahifa qoldi", "Ещё 1 страница осталась")
+    : t(`Yana ${pagesLeft} ta sahifa qoldi`, pagesLeft < 5 ? `Ещё ${pagesLeft} страницы осталось` : `Ещё ${pagesLeft} страниц осталось`);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
