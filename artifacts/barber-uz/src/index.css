@@ -180,3 +180,16 @@ body.sheet-open #bottom-nav-root {
 @media (prefers-reduced-motion: reduce) {
   .setup-glint { animation: none; }
 }
+
+@keyframes plus-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 184, 46, 0.45); }
+  70% { box-shadow: 0 0 0 12px rgba(245, 184, 46, 0); }
+}
+
+.plus-glow {
+  animation: plus-glow 1.8s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plus-glow { animation: none; box-shadow: 0 0 0 8px rgba(245, 184, 46, 0.28); }
+}

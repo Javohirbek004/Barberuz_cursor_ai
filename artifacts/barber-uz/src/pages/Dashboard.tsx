@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { bookingDay, bookingStartMs, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
 import { BookingStatusBadge, BotUnlinkedBang, bookingLook, showsBotGap } from "@/components/BookingStatusBadge";
 import { Layout } from "@/components/Layout";
+import { ONBOARDING_GREET_KEY } from "@/lib/onboarding";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 import { Card } from "@/components/ui/card";
 import {
@@ -1091,6 +1092,34 @@ export default function Dashboard() {
   return <DashboardScreen />;
 }
 
+function WelcomeNote() {
+  const [phase, setPhase] = useState<"in" | "out" | "off">("off");
+
+  useEffect(() => {
+    if (localStorage.getItem(ONBOARDING_GREET_KEY) !== "1") return;
+    localStorage.removeItem(ONBOARDING_GREET_KEY);
+    setPhase("in");
+    const fade = window.setTimeout(() => setPhase("out"), 3000);
+    const gone = window.setTimeout(() => setPhase("off"), 3400);
+    return () => {
+      window.clearTimeout(fade);
+      window.clearTimeout(gone);
+    };
+  }, []);
+
+  if (phase === "off") return null;
+  return (
+    <>
+      <div className={`transition-[height] duration-300 ${phase === "in" ? "h-16" : "h-0"}`} />
+      <div
+        className={`fixed top-4 left-1/2 z-[60] w-[min(92vw,22rem)] -translate-x-1/2 rounded-2xl border border-[#F5B82E]/50 bg-zinc-900 px-4 py-3 text-center text-sm font-medium leading-snug text-foreground shadow-lg transition-opacity duration-300 ${phase === "in" ? "opacity-100" : "opacity-0"}`}
+      >
+        Xush kelibsiz, hisobingiz muvaffaqiyatli ochildi 🎉
+      </div>
+    </>
+  );
+}
+
 function DashboardScreen() {
   const { t, lang } = useTranslation();
   const { user, isLoading } = useAuth();
@@ -1109,6 +1138,7 @@ function DashboardScreen() {
 
   return (
     <Layout>
+      <WelcomeNote />
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}

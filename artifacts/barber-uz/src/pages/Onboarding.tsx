@@ -13,7 +13,7 @@ import {
   writeScheduleJson,
   type WeekSchedule,
 } from "@/lib/schedule";
-import { ONBOARDING_PENDING_KEY, ONBOARDING_READY_KEY, ONBOARDING_INTRO_KEY } from "@/lib/onboarding";
+import { ONBOARDING_COMPLETED_KEY, ONBOARDING_GREET_KEY, ONBOARDING_HINT_KEY, ONBOARDING_PENDING_KEY, ONBOARDING_INTRO_KEY } from "@/lib/onboarding";
 
 const DRAFT_KEY = "barber_onboarding_draft";
 const STEPS = 6;
@@ -538,8 +538,6 @@ export default function Onboarding() {
     setBusy(true);
     let moved = false;
     try {
-      void saveServices();
-      void saveHours();
       const putProfile = async (body: Record<string, unknown>) => {
         try { await api("/api/settings/profile", "PUT", body); }
         catch {
@@ -547,18 +545,32 @@ export default function Onboarding() {
         }
       };
       if (step === 5) {
+        await saveServices();
+        await saveHours();
         const ig = cleanHandle(instagram);
         const tg = cleanHandle(telegram);
-        if (ig || tg) {
-          await putProfile({
-            ...(ig ? { instagram: ig } : {}),
-            ...(tg ? { telegramUsername: tg } : {}),
-          });
-        }
+        const link = mapLink.trim();
+        const mapLinkValue = /^https?:\/\//i.test(link) || !link ? link : (link.includes(".") ? `https://${link}` : link);
+        const profile: Record<string, unknown> = {
+          ...(ig ? { instagram: ig } : {}),
+          ...(tg ? { telegramUsername: tg } : {}),
+          ...(bio.trim() ? { bio: bio.trim() } : {}),
+          ...(address.trim() || link || latitude ? {
+            address: address.trim(),
+            mapLink: mapLinkValue,
+            latitude: latitude || null,
+            longitude: longitude || null,
+          } : {}),
+          ...(avatarUrl ? { avatarUrl } : {}),
+          ...(gallery.length > 0 ? { galleryImages: JSON.stringify(gallery) } : {}),
+        };
+        if (Object.keys(profile).length > 0) await putProfile(profile);
+        localStorage.setItem(ONBOARDING_COMPLETED_KEY, "true");
+        localStorage.setItem(ONBOARDING_GREET_KEY, "1");
+        localStorage.setItem(ONBOARDING_HINT_KEY, "1");
         localStorage.removeItem(ONBOARDING_PENDING_KEY);
         sessionStorage.removeItem(DRAFT_KEY);
-        sessionStorage.setItem(ONBOARDING_READY_KEY, "1");
-        navigate("/settings/page");
+        navigate("/dashboard");
         return;
       }
       setStep((n) => n + 1);

@@ -1,10 +1,11 @@
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { Home, Calendar, Users, Settings, Plus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BookingFlowDialog } from "./BookingFlowDialog";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
+import { ONBOARDING_HINT_KEY } from "@/lib/onboarding";
 
 export function BottomNav() {
   const [location] = useLocation();
@@ -12,6 +13,20 @@ export function BottomNav() {
   const { user } = useAuth(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [guardNav, setGuardNav] = useState(false);
+  const [hint, setHint] = useState(() => {
+    try { return localStorage.getItem(ONBOARDING_HINT_KEY) === "1"; } catch { return false; }
+  });
+  const showHint = hint && location === "/dashboard";
+
+  useEffect(() => {
+    if (!showHint) return;
+    const close = () => {
+      localStorage.removeItem(ONBOARDING_HINT_KEY);
+      setHint(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [showHint]);
 
   function handleDialogOpen(open: boolean) {
     setIsAddOpen(open);
@@ -72,11 +87,17 @@ export function BottomNav() {
             {/* Center FAB column — flex-1 */}
             <div className="flex-1 flex flex-col items-center justify-start pt-0">
               <div className="relative" style={{ top: -22 }}>
+                {showHint && (
+                  <div className="absolute bottom-[68px] left-1/2 w-52 -translate-x-1/2 rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-center text-[13px] leading-snug text-foreground shadow-lg">
+                    Birinchi mijozingizni shu yerdan qo‘shing
+                    <span className="absolute left-1/2 -bottom-1.5 h-2.5 w-2.5 -translate-x-1/2 rotate-45 border-b border-r border-white/10 bg-zinc-900" />
+                  </div>
+                )}
                 <motion.button
                   whileTap={{ scale: 0.92 }}
                   whileHover={{ scale: 1.06 }}
                   onClick={() => setIsAddOpen(true)}
-                  className="flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-primary to-amber-600 text-black shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-shadow duration-300"
+                  className={`flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-primary to-amber-600 text-black shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-shadow duration-300 ${showHint ? "plus-glow" : ""}`}
                 >
                   <Plus className="w-8 h-8" />
                 </motion.button>
