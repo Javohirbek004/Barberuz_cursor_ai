@@ -691,7 +691,7 @@ export default function Onboarding() {
       {introOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-center justify-center px-5">
           <div className="w-full max-w-sm rounded-2xl bg-card border border-white/10 px-4 pt-5 pb-4">
-            <h2 className="font-display text-xl font-medium leading-snug">{t("Boshlashdan oldin qisqa eslatma 💡", "Перед началом короткое напоминание 💡")}</h2>
+            <h2 className={`font-display font-medium leading-tight whitespace-nowrap ${lang === "ru" ? "text-[14px]" : "text-[17px]"}`}>{t("Boshlashdan oldin qisqa eslatma 💡", "Перед началом короткое напоминание 💡")}</h2>
             <p className="mt-4 text-sm leading-snug">
               <span className="mr-1 inline-block align-middle rounded-full bg-primary/15 px-2 py-0.5 text-[13px] font-medium leading-5 text-primary">{t("Majburiy", "Обязательно")}</span>
               {t("belgili sahifalar — Bu ma’lumotlarni kiritish shart, chunki ular ilovani to‘liq ishga tushirish uchun zarur.", "страницы обязательны — эти данные нужны, чтобы приложение заработало полностью.")}
