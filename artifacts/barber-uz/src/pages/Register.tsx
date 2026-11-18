@@ -76,6 +76,7 @@ export default function Register() {
   const [nameState, setNameState] = useState<NameState>("idle");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const nameCheckSeq = useRef(0);
+  const pickedName = useRef<string | null>(null);
   const [waitPhase, setWaitPhase] = useState<null | "account" | "pages">(null);
   const waitTimer = useRef<number | null>(null);
 
@@ -118,11 +119,12 @@ export default function Register() {
     const handle = window.setTimeout(() => {
       const seq = ++nameCheckSeq.current;
       const trimmed = typed.trim();
-      if (!trimmed) {
+      if (!trimmed || trimmed === pickedName.current) {
         setNameState("idle");
         setSuggestions([]);
         return;
       }
+      pickedName.current = null;
       setNameState("checking");
       void fetchNameCheck(trimmed).then((result) => {
         if (seq !== nameCheckSeq.current) return;
@@ -207,19 +209,11 @@ export default function Register() {
   };
 
   function chooseName(value: string) {
+    pickedName.current = value.trim();
+    nameCheckSeq.current += 1;
     update("name", value);
-    const seq = ++nameCheckSeq.current;
-    setNameState("checking");
-    void fetchNameCheck(value.trim()).then((result) => {
-      if (seq !== nameCheckSeq.current) return;
-      if (!result || result.status === "empty") {
-        setNameState("idle");
-        setSuggestions([]);
-        return;
-      }
-      setNameState(result.status);
-      setSuggestions(result.suggestions || []);
-    });
+    setNameState("idle");
+    setSuggestions([]);
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -248,13 +242,10 @@ export default function Register() {
 
     const fresh = await fetchNameCheck(formData.name.trim());
     if (fresh?.status === "taken") {
+      pickedName.current = null;
       setNameState("taken");
       setSuggestions(fresh.suggestions || []);
       return;
-    }
-    if (fresh && fresh.status !== "empty") {
-      setNameState(fresh.status);
-      setSuggestions(fresh.suggestions || []);
     }
 
     setWaitPhase("account");

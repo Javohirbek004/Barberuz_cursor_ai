@@ -93,7 +93,29 @@ export async function lookupNameSlug(rawName: string): Promise<{
   if (await isSlugAvailable(base)) return { status: "free", suggestions: [] };
 
   const stem = typed.replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
-  const ideas = [`${stem}_uz`, `${stem}_barber`, `${stem}77`, `${stem}_shop`, `${stem}7`];
+  const named = [`${stem}_uz`, `${stem}_barber`];
+  const open = await freeSpellings(named, base);
+  if (open.length > 0) return { status: "taken", suggestions: open };
+
+  const numbers = prettyTwoDigits();
+  const numbered = numbers.map((n) => `${stem}_${n}`);
+  return { status: "taken", suggestions: await freeSpellings(numbered, base, 2) };
+}
+
+const PRETTY_NUMBERS = ["24", "27", "32", "36", "42", "48", "54", "58", "64", "72", "76", "84", "88"];
+
+function prettyTwoDigits(): string[] {
+  const bag = [...PRETTY_NUMBERS];
+  for (let i = bag.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const swap = bag[i];
+    bag[i] = bag[j];
+    bag[j] = swap;
+  }
+  return bag;
+}
+
+async function freeSpellings(ideas: string[], base: string, limit = ideas.length): Promise<string[]> {
   const suggestions: string[] = [];
   const seen = new Set<string>();
   for (const idea of ideas) {
@@ -102,9 +124,9 @@ export async function lookupNameSlug(rawName: string): Promise<{
     seen.add(slug);
     if (!(await isSlugAvailable(slug))) continue;
     suggestions.push(idea.length <= 24 ? idea : slug);
-    if (suggestions.length === 3) break;
+    if (suggestions.length >= limit) break;
   }
-  return { status: "taken", suggestions };
+  return suggestions;
 }
 
 export function identityBases(brandName?: string | null, name?: string | null): string[] {
