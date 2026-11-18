@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { and, desc, eq, gt, lte, ne } from "drizzle-orm";
 import { db, pendingRegistrationsTable, usersTable, type PendingRegistration } from "@workspace/db";
 import { allocatePublicSlug, isSlugAvailable } from "./public-slug";
+import { inspectSignupName, SIGNUP_RESERVED, signupSlug } from "./signup-name";
 
 const PENDING_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -21,10 +22,17 @@ export async function savePendingRegistration(input: {
 }): Promise<PendingRegistration> {
   const id = randomUUID();
   const now = new Date();
-  let username = await allocatePublicSlug({
-    brandName: input.brandName,
-    name: input.name,
-  });
+  const wanted = signupSlug(input.name);
+  const nameIsUsable = inspectSignupName(input.name) === "ok"
+    && wanted.length >= 3
+    && !SIGNUP_RESERVED.has(wanted)
+    && await isSlugAvailable(wanted);
+  const brand = input.brandName?.trim();
+  let username = brand
+    ? await allocatePublicSlug({ brandName: brand, name: input.name })
+    : nameIsUsable
+      ? wanted
+      : await allocatePublicSlug({ name: input.name });
   for (let attempt = 0; attempt < 6; attempt++) {
     await db.delete(pendingRegistrationsTable).where(and(
       eq(pendingRegistrationsTable.username, username),

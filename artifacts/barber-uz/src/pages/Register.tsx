@@ -11,6 +11,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { ONBOARDING_COMPLETED_KEY, ONBOARDING_PENDING_KEY, ONBOARDING_INTRO_KEY } from "@/lib/onboarding";
+import { inspectSignupName } from "@/lib/signup-name";
 
 function WaitSpinner() {
   return (
@@ -45,7 +46,7 @@ function generateUsername(name: string): string {
 }
 
 type FieldKey = "name" | "password" | "confirmPassword";
-type NameState = "idle" | "checking" | "free" | "taken" | "short";
+type NameState = "idle" | "checking" | "free" | "taken" | "short" | "long" | "digits" | "symbols";
 
 async function fetchNameCheck(name: string): Promise<{ status: NameState | "empty"; suggestions: string[] } | null> {
   try {
@@ -116,24 +117,41 @@ export default function Register() {
 
   useEffect(() => {
     const typed = formData.name;
+    const problem = inspectSignupName(typed);
+    if (problem === "empty") {
+      nameCheckSeq.current += 1;
+      pickedName.current = null;
+      setNameState("idle");
+      setSuggestions([]);
+      return;
+    }
+    if (problem === "ok" && typed === pickedName.current) {
+      nameCheckSeq.current += 1;
+      setNameState("free");
+      setSuggestions([]);
+      return;
+    }
+    if (problem !== "ok") {
+      nameCheckSeq.current += 1;
+      pickedName.current = null;
+      setNameState(problem);
+      setSuggestions([]);
+      return;
+    }
+    setNameState("idle");
+    setSuggestions([]);
     const handle = window.setTimeout(() => {
       const seq = ++nameCheckSeq.current;
-      const trimmed = typed.trim();
-      if (!trimmed || trimmed === pickedName.current) {
-        setNameState("idle");
-        setSuggestions([]);
-        return;
-      }
       pickedName.current = null;
       setNameState("checking");
-      void fetchNameCheck(trimmed).then((result) => {
+      void fetchNameCheck(typed).then((result) => {
         if (seq !== nameCheckSeq.current) return;
         if (!result || result.status === "empty") {
           setNameState("idle");
           setSuggestions([]);
           return;
         }
-        setNameState(result.status);
+        setNameState(result.status === "free" || result.status === "taken" ? result.status : "symbols");
         setSuggestions(result.suggestions || []);
       });
     }, 500);
@@ -209,10 +227,10 @@ export default function Register() {
   };
 
   function chooseName(value: string) {
-    pickedName.current = value.trim();
+    pickedName.current = value;
     nameCheckSeq.current += 1;
     update("name", value);
-    setNameState("idle");
+    setNameState("free");
     setSuggestions([]);
     const input = inputRefs.name.current;
     if (!input) return;
@@ -224,6 +242,11 @@ export default function Register() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (registerMutation.isPending || waitPhase) return;
+    const nameProblem = inspectSignupName(formData.name);
+    if (nameProblem !== "empty" && nameProblem !== "ok") {
+      setNameState(nameProblem);
+      return;
+    }
     if (nameState === "taken" || nameState === "checking") return;
 
     setAttempted(true);
@@ -245,7 +268,7 @@ export default function Register() {
       return;
     }
 
-    const fresh = await fetchNameCheck(formData.name.trim());
+    const fresh = await fetchNameCheck(formData.name);
     if (fresh?.status === "taken") {
       pickedName.current = null;
       setNameState("taken");
@@ -257,7 +280,7 @@ export default function Register() {
     waitTimer.current = window.setTimeout(() => setWaitPhase("pages"), 1500);
     registerMutation.mutate({
       data: {
-        name: formData.name.trim(),
+        name: formData.name,
         username: generateUsername(formData.name),
         brandName: formData.brandName.trim() || undefined,
         password: formData.password,
@@ -435,12 +458,25 @@ function NameStatus({
   onPick: (value: string) => void;
 }) {
   if (state === "idle") return null;
+  const formatError =
+    state === "short"
+      ? (lang === "ru" ? "Имя должно содержать не менее 3 символов." : "Ism kamida 3 ta belgidan iborat bo‘lishi kerak.")
+      : state === "long"
+        ? (lang === "ru" ? "Имя не должно превышать 25 символов." : "Ism 25 ta belgidan oshmasligi kerak.")
+        : state === "digits"
+          ? (lang === "ru" ? "Имя не может состоять только из цифр." : "Ism faqat raqamlardan iborat bo‘lishi mumkin emas.")
+          : state === "symbols"
+            ? (lang === "ru"
+              ? "Имя не должно начинаться или заканчиваться спецсимволами (например: ‘_’, ‘-’, ‘.’) и содержать лишние знаки."
+              : "Ism boshi yoki oxirida maxsus belgilar (masalan: ‘_’, ‘-’, ‘.’) hamda begona simvollar bo‘lishi mumkin emas.")
+            : "";
   return (
     <div>
+      {formatError && <p className="mt-2 text-sm leading-snug text-red-400">{formatError}</p>}
       {state === "checking" && (
         <p className="mt-2 flex items-center gap-2 text-sm text-white/45">
           <WaitSpinner />
-          {lang === "ru" ? "Проверяется..." : "Tekshirilmoqda..."}
+          {lang === "ru" ? "Проверка..." : "Tekshirilmoqda..."}
         </p>
       )}
       {state === "free" && (
@@ -450,7 +486,7 @@ function NameStatus({
         <>
           <p className="mt-2 text-sm leading-snug text-red-400">
             {lang === "ru"
-              ? "✕ Это имя занято. Напишите другое или выберите готовый вариант:"
+              ? "✕ Это имя занято. Введите другое или выберите из вариантов:"
               : "✕ Bu ism band. Boshqa nom yozing yoki tayyor variantlardan tanlang:"}
           </p>
           {suggestions.length > 0 && (

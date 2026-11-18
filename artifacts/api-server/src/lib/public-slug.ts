@@ -1,13 +1,13 @@
 import { db, pendingRegistrationsTable, usersTable, slugRedirectsTable } from "@workspace/db";
-import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { inspectSignupName, SIGNUP_RESERVED, signupSlug, suggestionStem } from "./signup-name";
 
 export const SLUG_LOCK_MS = 30 * 24 * 60 * 60 * 1000;
 export const SLUG_REGEX = /^[a-z0-9_-]{3,24}$/;
 
 const RESERVED = new Set([
-  "admin", "login", "settings", "services", "barber",
-  "register", "dashboard", "calendar", "clients", "client",
-  "api", "b", "verify-telegram", "barber-setup", "feedback", "onboarding",
+  ...SIGNUP_RESERVED,
+  "verify-telegram", "barber-setup",
 ]);
 
 export type SlugProblem = "ok" | "space" | "format" | "length" | "reserved";
@@ -51,7 +51,7 @@ async function slugHeldBySignup(slug: string): Promise<boolean> {
     .select({ id: pendingRegistrationsTable.id })
     .from(pendingRegistrationsTable)
     .where(and(
-      eq(pendingRegistrationsTable.username, slug),
+      sql`lower(${pendingRegistrationsTable.username}) = ${slug.toLowerCase()}`,
       gt(pendingRegistrationsTable.expiresAt, new Date()),
     ))
     .limit(1);
@@ -62,7 +62,7 @@ export async function isSlugAvailable(slug: string, forUserId?: string): Promise
   const [owner] = await db
     .select({ id: usersTable.id })
     .from(usersTable)
-    .where(eq(usersTable.username, slug))
+    .where(sql`lower(${usersTable.username}) = ${slug.toLowerCase()}`)
     .limit(1);
   if (owner && owner.id !== forUserId) return false;
   if (owner && owner.id === forUserId) return true;
@@ -71,7 +71,7 @@ export async function isSlugAvailable(slug: string, forUserId?: string): Promise
     .select({ userId: slugRedirectsTable.userId })
     .from(slugRedirectsTable)
     .where(and(
-      eq(slugRedirectsTable.oldSlug, slug),
+      sql`lower(${slugRedirectsTable.oldSlug}) = ${slug.toLowerCase()}`,
       or(isNull(slugRedirectsTable.expiresAt), gt(slugRedirectsTable.expiresAt, new Date())),
     ))
     .limit(1);
@@ -79,62 +79,71 @@ export async function isSlugAvailable(slug: string, forUserId?: string): Promise
   return !(await slugHeldBySignup(slug));
 }
 
-export type NameSlugStatus = "empty" | "short" | "free" | "taken";
+export type NameSlugStatus = "empty" | "short" | "long" | "digits" | "symbols" | "free" | "taken";
 
-/** The name typed at signup, and a few free spellings when that page address is taken. */
+const SUGGESTION_TAILS = ["_uz", "_barber", "77", "01", "99", "12", "24", "36", "48", "58"];
+
+/** The typed name stays as written. Only the page address is normalized, then checked once. */
 export async function lookupNameSlug(rawName: string): Promise<{
   status: NameSlugStatus;
   suggestions: string[];
 }> {
-  const typed = rawName.trim();
-  if (!typed) return { status: "empty", suggestions: [] };
-  const base = slugify(typed);
-  if (validateSlug(base) !== "ok") return { status: "short", suggestions: [] };
-  if (await isSlugAvailable(base)) return { status: "free", suggestions: [] };
+  const problem = inspectSignupName(rawName);
+  if (problem !== "ok") return { status: problem, suggestions: [] };
+  const base = signupSlug(rawName);
+  if (base.length < 3) return { status: "symbols", suggestions: [] };
 
-  const stem = typed.replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
-  const named = [`${stem}_uz`, `${stem}_barber`];
-  const open = await freeSpellings(named, base);
-  if (open.length > 0) return { status: "taken", suggestions: open };
-
-  const numbers = prettyTwoDigits();
-  const numbered = numbers.map((n) => `${stem}_${n}`);
-  return { status: "taken", suggestions: await freeSpellings(numbered, base, 2) };
+  const stem = suggestionStem(base);
+  const ideas: string[] = [];
+  for (const tail of SUGGESTION_TAILS) {
+    const slug = suggestionStem(`${stem}${tail}`);
+    if (!slug || slug === base || slug.length > 25 || ideas.includes(slug)) continue;
+    ideas.push(slug);
+  }
+  const blocked = await takenSlugs([base, ...ideas]);
+  if (!blocked.has(base)) return { status: "free", suggestions: [] };
+  return {
+    status: "taken",
+    suggestions: ideas.filter((slug) => !blocked.has(slug)).slice(0, 3),
+  };
 }
 
-const PRETTY_NUMBERS = ["24", "27", "32", "36", "42", "48", "54", "58", "64", "72", "76", "84", "88"];
-
-function prettyTwoDigits(): string[] {
-  const bag = [...PRETTY_NUMBERS];
-  for (let i = bag.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const swap = bag[i];
-    bag[i] = bag[j];
-    bag[j] = swap;
+async function takenSlugs(slugs: string[]): Promise<Set<string>> {
+  const unique = [...new Set(slugs.map((slug) => slug.toLowerCase()))];
+  const blocked = new Set(unique.filter((slug) => RESERVED.has(slug) || SIGNUP_RESERVED.has(slug)));
+  const open = unique.filter((slug) => !blocked.has(slug));
+  if (open.length === 0) return blocked;
+  const list = sql.join(open.map((slug) => sql`${slug}`), sql`, `);
+  const now = new Date();
+  const [users, redirects, pending] = await Promise.all([
+    db.select({ slug: sql<string>`lower(${usersTable.username})` })
+      .from(usersTable)
+      .where(sql`lower(${usersTable.username}) in (${list})`),
+    db.select({ slug: sql<string>`lower(${slugRedirectsTable.oldSlug})` })
+      .from(slugRedirectsTable)
+      .where(and(
+        sql`lower(${slugRedirectsTable.oldSlug}) in (${list})`,
+        or(isNull(slugRedirectsTable.expiresAt), gt(slugRedirectsTable.expiresAt, now)),
+      )),
+    db.select({ slug: sql<string>`lower(${pendingRegistrationsTable.username})` })
+      .from(pendingRegistrationsTable)
+      .where(and(
+        sql`lower(${pendingRegistrationsTable.username}) in (${list})`,
+        gt(pendingRegistrationsTable.expiresAt, now),
+      )),
+  ]);
+  for (const row of [...users, ...redirects, ...pending]) {
+    if (row.slug) blocked.add(String(row.slug));
   }
-  return bag;
-}
-
-async function freeSpellings(ideas: string[], base: string, limit = ideas.length): Promise<string[]> {
-  const suggestions: string[] = [];
-  const seen = new Set<string>();
-  for (const idea of ideas) {
-    const slug = slugify(idea);
-    if (seen.has(slug) || slug === base || validateSlug(slug) !== "ok") continue;
-    seen.add(slug);
-    if (!(await isSlugAvailable(slug))) continue;
-    suggestions.push(idea.length <= 24 ? idea : slug);
-    if (suggestions.length >= limit) break;
-  }
-  return suggestions;
+  return blocked;
 }
 
 export function identityBases(brandName?: string | null, name?: string | null): string[] {
   const seen = new Set<string>();
   const bases: string[] = [];
-  for (const raw of [brandName, name]) {
-    const base = slugify(raw);
-    if (base.length < 3 || seen.has(base) || validateSlug(base) !== "ok") continue;
+  for (const base of [slugify(brandName), signupSlug(name || "")]) {
+    if (base.length < 3 || base.length > 64 || seen.has(base)) continue;
+    if (!/^[a-z0-9_-]+$/.test(base) || RESERVED.has(base)) continue;
     seen.add(base);
     bases.push(base);
   }

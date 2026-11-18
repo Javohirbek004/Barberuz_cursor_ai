@@ -81,6 +81,10 @@ router.post("/register", async (req, res) => {
       res.status(409).json({ error: "name_taken", suggestions: nameCheck.suggestions });
       return;
     }
+    if (nameCheck.status !== "free") {
+      res.status(400).json({ error: "validation", message: "name" });
+      return;
+    }
     // The public address comes from the shop name, then the barber's name.
     // A name the client sends is ignored so the first link stays readable.
     // The account opens now. Telegram can be linked later from the profile.
