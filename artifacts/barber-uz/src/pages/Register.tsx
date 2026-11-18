@@ -214,6 +214,11 @@ export default function Register() {
     update("name", value);
     setNameState("idle");
     setSuggestions([]);
+    const input = inputRefs.name.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    const end = value.length;
+    try { input.setSelectionRange(end, end); } catch { /* some mobile keyboards ignore the caret */ }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -429,8 +434,9 @@ function NameStatus({
   suggestions: string[];
   onPick: (value: string) => void;
 }) {
+  if (state === "idle") return null;
   return (
-    <div className="min-h-[22px]">
+    <div>
       {state === "checking" && (
         <p className="mt-2 flex items-center gap-2 text-sm text-white/45">
           <WaitSpinner />
@@ -453,6 +459,7 @@ function NameStatus({
                 <button
                   key={item}
                   type="button"
+                  onPointerDown={(event) => event.preventDefault()}
                   onClick={() => onPick(item)}
                   className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[13px] text-white"
                 >
