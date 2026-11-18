@@ -10,7 +10,7 @@ import { motion } from "framer-motion";
 import { Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ONBOARDING_PENDING_KEY, ONBOARDING_INTRO_KEY } from "@/lib/onboarding";
+import { ONBOARDING_COMPLETED_KEY, ONBOARDING_PENDING_KEY, ONBOARDING_INTRO_KEY } from "@/lib/onboarding";
 
 function WaitSpinner() {
   return (
@@ -45,6 +45,17 @@ function generateUsername(name: string): string {
 }
 
 type FieldKey = "name" | "password" | "confirmPassword";
+type NameState = "idle" | "checking" | "free" | "taken" | "short";
+
+async function fetchNameCheck(name: string): Promise<{ status: NameState | "empty"; suggestions: string[] } | null> {
+  try {
+    const res = await fetch(`/api/auth/name-check?name=${encodeURIComponent(name)}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
 
 export default function Register() {
   const { t, lang } = useTranslation();
@@ -61,12 +72,71 @@ export default function Register() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [attempted, setAttempted] = useState(false);
+  const [gate, setGate] = useState<"wait" | "form" | "done">("wait");
+  const [nameState, setNameState] = useState<NameState>("idle");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const nameCheckSeq = useRef(0);
   const [waitPhase, setWaitPhase] = useState<null | "account" | "pages">(null);
   const waitTimer = useRef<number | null>(null);
 
   useEffect(() => () => {
     if (waitTimer.current != null) window.clearTimeout(waitTimer.current);
   }, []);
+
+  useEffect(() => {
+    let cancel = false;
+    const token = localStorage.getItem("barber_token");
+    const pending = localStorage.getItem(ONBOARDING_PENDING_KEY) === "1";
+    const done = localStorage.getItem(ONBOARDING_COMPLETED_KEY) === "true";
+    if (!token) {
+      setGate(done ? "done" : "form");
+      return;
+    }
+    fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        if (cancel) return;
+        if (!res.ok) {
+          localStorage.removeItem("barber_token");
+          localStorage.removeItem("barber_user");
+          setGate(done ? "done" : "form");
+          return;
+        }
+        if (pending && !done) {
+          navigate("/onboarding");
+          return;
+        }
+        setGate("done");
+      })
+      .catch(() => {
+        if (!cancel) setGate(done ? "done" : "form");
+      });
+    return () => { cancel = true; };
+  }, [navigate]);
+
+  useEffect(() => {
+    const typed = formData.name;
+    const handle = window.setTimeout(() => {
+      const seq = ++nameCheckSeq.current;
+      const trimmed = typed.trim();
+      if (!trimmed) {
+        setNameState("idle");
+        setSuggestions([]);
+        return;
+      }
+      setNameState("checking");
+      void fetchNameCheck(trimmed).then((result) => {
+        if (seq !== nameCheckSeq.current) return;
+        if (!result || result.status === "empty") {
+          setNameState("idle");
+          setSuggestions([]);
+          return;
+        }
+        setNameState(result.status);
+        setSuggestions(result.suggestions || []);
+      });
+    }, 500);
+    return () => window.clearTimeout(handle);
+  }, [formData.name]);
 
   function stopWait() {
     if (waitTimer.current != null) window.clearTimeout(waitTimer.current);
@@ -95,12 +165,20 @@ export default function Register() {
         localStorage.removeItem("telegram_auth_code_ts");
         localStorage.setItem("barber_token", data.token);
         localStorage.setItem("barber_user", JSON.stringify(data.user));
+        localStorage.setItem("zumio_device_account_id", data.user.id);
         localStorage.setItem(ONBOARDING_PENDING_KEY, "1");
+        localStorage.removeItem(ONBOARDING_COMPLETED_KEY);
         sessionStorage.setItem(ONBOARDING_INTRO_KEY, "1");
         navigate("/onboarding");
       },
-      onError: () => {
+      onError: (err) => {
         stopWait();
+        const data = err && typeof err === "object" && "data" in err ? (err as { data?: { error?: string; suggestions?: string[] } }).data : undefined;
+        if (data?.error === "name_taken") {
+          setNameState("taken");
+          setSuggestions(data.suggestions || []);
+          return;
+        }
         toast({
           title: t("error"),
           description: t("register.error.register_failed"),
@@ -128,9 +206,26 @@ export default function Register() {
         : "",
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  function chooseName(value: string) {
+    update("name", value);
+    const seq = ++nameCheckSeq.current;
+    setNameState("checking");
+    void fetchNameCheck(value.trim()).then((result) => {
+      if (seq !== nameCheckSeq.current) return;
+      if (!result || result.status === "empty") {
+        setNameState("idle");
+        setSuggestions([]);
+        return;
+      }
+      setNameState(result.status);
+      setSuggestions(result.suggestions || []);
+    });
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (registerMutation.isPending || waitPhase) return;
+    if (nameState === "taken" || nameState === "checking") return;
 
     setAttempted(true);
     const firstInvalid = (Object.keys(errors) as FieldKey[]).find((key) => errors[key]);
@@ -149,6 +244,17 @@ export default function Register() {
       });
       inputRefs.confirmPassword.current?.focus({ preventScroll: true });
       return;
+    }
+
+    const fresh = await fetchNameCheck(formData.name.trim());
+    if (fresh?.status === "taken") {
+      setNameState("taken");
+      setSuggestions(fresh.suggestions || []);
+      return;
+    }
+    if (fresh && fresh.status !== "empty") {
+      setNameState(fresh.status);
+      setSuggestions(fresh.suggestions || []);
     }
 
     setWaitPhase("account");
@@ -185,6 +291,23 @@ export default function Register() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md relative z-10"
       >
+        {gate === "done" ? (
+          <div className="rounded-3xl border border-white/12 bg-[#16181c]/70 p-7 text-center shadow-2xl shadow-black/40 backdrop-blur-xl">
+            <p className="text-lg font-semibold leading-snug">
+              {lang === "ru"
+                ? "Вы уже зарегистрированы, нажмите «Войти», чтобы открыть свой аккаунт"
+                : "Siz allaqachon ro‘yxatdan o‘tgansiz, iltimos Kirish tugmasini bosib hisobingizga kiring"}
+            </p>
+            <Button
+              type="button"
+              onClick={() => navigate("/login")}
+              className="mt-6 h-14 w-full rounded-xl border-0 bg-gradient-to-r from-primary to-amber-600 text-lg font-bold text-black"
+            >
+              {t("register.login_link")}
+            </Button>
+          </div>
+        ) : gate === "form" ? (
+        <>
         <div className="text-center mb-8">
           <h1 className="text-3xl font-display font-bold text-foreground mb-2">
             {t("register.title")}
@@ -206,6 +329,7 @@ export default function Register() {
               error={attempted ? errors.name : ""}
               autoComplete="name"
               onChange={(value) => update("name", value)}
+              below={<NameStatus lang={lang} state={nameState} suggestions={suggestions} onPick={chooseName} />}
             />
 
             <Field
@@ -296,7 +420,58 @@ export default function Register() {
             </Link>
           </p>
         </form>
+        </>
+        ) : null}
       </motion.div>
+    </div>
+  );
+}
+
+function NameStatus({
+  lang,
+  state,
+  suggestions,
+  onPick,
+}: {
+  lang: string;
+  state: NameState;
+  suggestions: string[];
+  onPick: (value: string) => void;
+}) {
+  return (
+    <div className="min-h-[22px]">
+      {state === "checking" && (
+        <p className="mt-2 flex items-center gap-2 text-sm text-white/45">
+          <WaitSpinner />
+          {lang === "ru" ? "Проверяется..." : "Tekshirilmoqda..."}
+        </p>
+      )}
+      {state === "free" && (
+        <p className="mt-2 text-sm text-green-400">{lang === "ru" ? "✓ Это имя свободно" : "✓ Bu ism bo‘sh"}</p>
+      )}
+      {state === "taken" && (
+        <>
+          <p className="mt-2 text-sm leading-snug text-red-400">
+            {lang === "ru"
+              ? "✕ Это имя занято. Напишите другое или выберите готовый вариант:"
+              : "✕ Bu ism band. Boshqa nom yozing yoki tayyor variantlardan tanlang:"}
+          </p>
+          {suggestions.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {suggestions.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => onPick(item)}
+                  className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[13px] text-white"
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -316,6 +491,7 @@ function Field({
   autoComplete,
   onChange,
   trailing,
+  below,
 }: {
   blockRef: React.RefObject<HTMLDivElement | null>;
   inputRef: React.RefObject<HTMLInputElement | null>;
@@ -331,6 +507,7 @@ function Field({
   autoComplete?: string;
   onChange: (value: string) => void;
   trailing?: React.ReactNode;
+  below?: React.ReactNode;
 }) {
   return (
     <div ref={blockRef} className="space-y-2 scroll-mt-24">
@@ -370,6 +547,7 @@ function Field({
       </div>
       {hint ? <p className="text-white/40 text-xs">{hint}</p> : null}
       {error ? <p className="text-red-400 text-sm">{error}</p> : null}
+      {below}
     </div>
   );
 }

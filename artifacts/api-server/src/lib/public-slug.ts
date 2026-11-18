@@ -1,4 +1,4 @@
-import { db, usersTable, slugRedirectsTable } from "@workspace/db";
+import { db, pendingRegistrationsTable, usersTable, slugRedirectsTable } from "@workspace/db";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 
 export const SLUG_LOCK_MS = 30 * 24 * 60 * 60 * 1000;
@@ -45,6 +45,19 @@ export function validateSlug(raw: string): SlugProblem {
   return "ok";
 }
 
+/** A live signup can hold a page address before the account row exists. */
+async function slugHeldBySignup(slug: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: pendingRegistrationsTable.id })
+    .from(pendingRegistrationsTable)
+    .where(and(
+      eq(pendingRegistrationsTable.username, slug),
+      gt(pendingRegistrationsTable.expiresAt, new Date()),
+    ))
+    .limit(1);
+  return !!row;
+}
+
 export async function isSlugAvailable(slug: string, forUserId?: string): Promise<boolean> {
   const [owner] = await db
     .select({ id: usersTable.id })
@@ -62,8 +75,36 @@ export async function isSlugAvailable(slug: string, forUserId?: string): Promise
       or(isNull(slugRedirectsTable.expiresAt), gt(slugRedirectsTable.expiresAt, new Date())),
     ))
     .limit(1);
-  if (!held) return true;
-  return !!forUserId && held.userId === forUserId;
+  if (held && !(forUserId && held.userId === forUserId)) return false;
+  return !(await slugHeldBySignup(slug));
+}
+
+export type NameSlugStatus = "empty" | "short" | "free" | "taken";
+
+/** The name typed at signup, and a few free spellings when that page address is taken. */
+export async function lookupNameSlug(rawName: string): Promise<{
+  status: NameSlugStatus;
+  suggestions: string[];
+}> {
+  const typed = rawName.trim();
+  if (!typed) return { status: "empty", suggestions: [] };
+  const base = slugify(typed);
+  if (validateSlug(base) !== "ok") return { status: "short", suggestions: [] };
+  if (await isSlugAvailable(base)) return { status: "free", suggestions: [] };
+
+  const stem = typed.replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  const ideas = [`${stem}_uz`, `${stem}_barber`, `${stem}77`, `${stem}_shop`, `${stem}7`];
+  const suggestions: string[] = [];
+  const seen = new Set<string>();
+  for (const idea of ideas) {
+    const slug = slugify(idea);
+    if (seen.has(slug) || slug === base || validateSlug(slug) !== "ok") continue;
+    seen.add(slug);
+    if (!(await isSlugAvailable(slug))) continue;
+    suggestions.push(idea.length <= 24 ? idea : slug);
+    if (suggestions.length === 3) break;
+  }
+  return { status: "taken", suggestions };
 }
 
 export function identityBases(brandName?: string | null, name?: string | null): string[] {

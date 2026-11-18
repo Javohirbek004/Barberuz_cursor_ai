@@ -6,6 +6,7 @@ import { makePasswordHash, verifyPassword, generateToken, authenticate, getUser,
 import { clearRateLimit, clientIp, consumeRateLimit } from "../lib/rate-limit";
 import { getTelegramLoginResult, storeLoginToken } from "../lib/telegram-bot";
 import { getLivePendingRegistration, openAccountFromPending, savePendingRegistration } from "../lib/pending-registration";
+import { lookupNameSlug } from "../lib/public-slug";
 import { getTelegramBotUsername } from "../lib/telegram-token";
 
 const router = Router();
@@ -45,6 +46,21 @@ async function findUserForLogin(identifier: string) {
   return user ?? null;
 }
 
+router.get("/name-check", async (req, res) => {
+  try {
+    if (!consumeRateLimit(`name-check:${clientIp(req)}`, 40, 60 * 1000)) {
+      res.status(429).json({ error: "too_many" });
+      return;
+    }
+    const name = String(req.query.name || "");
+    const result = await lookupNameSlug(name);
+    res.json(result);
+  } catch (err) {
+    console.error("[Auth] name-check error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
 router.post("/register", async (req, res) => {
   try {
     if (!consumeRateLimit(`register:${clientIp(req)}`, 8, 60 * 60 * 1000)) {
@@ -58,6 +74,11 @@ router.post("/register", async (req, res) => {
     }
     if (password.length < 6) {
       res.status(400).json({ error: "validation", message: "Password must be at least 6 characters" });
+      return;
+    }
+    const nameCheck = await lookupNameSlug(name);
+    if (nameCheck.status === "taken") {
+      res.status(409).json({ error: "name_taken", suggestions: nameCheck.suggestions });
       return;
     }
     // The public address comes from the shop name, then the barber's name.
