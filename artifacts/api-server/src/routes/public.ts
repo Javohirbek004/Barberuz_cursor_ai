@@ -24,6 +24,11 @@ import { clientIp, consumeRateLimit } from "../lib/rate-limit";
 const router = Router();
 
 const HOUR_MS = 60 * 60 * 1000;
+
+/** A public page stays closed until the barber finishes setup. */
+function livePublicBarber(...extra: Parameters<typeof and>) {
+  return and(isNull(usersTable.deletedAt), eq(usersTable.onboardingCompleted, true), ...extra);
+}
 const TOO_MANY = { error: "too_many", message: "Ko'p urinish. Biroz kuting." };
 
 /** Drizzle writes every bookings column. A missing one makes the save fail. */
@@ -170,7 +175,7 @@ router.post("/sessions", async (req, res) => {
     const [barberRow] = await db
       .select()
       .from(usersTable)
-      .where(and(eq(usersTable.id, barberId), isNull(usersTable.deletedAt)))
+      .where(livePublicBarber(eq(usersTable.id, barberId)))
       .limit(1);
     if (!barberRow) {
       res.status(404).json({ error: "not_found", message: "Sartarosh topilmadi" });
@@ -566,7 +571,7 @@ router.get("/barber/:slug/returning", async (req, res) => {
     const [barber] = await db
       .select({ id: usersTable.id })
       .from(usersTable)
-      .where(and(eq(usersTable.username, slug), isNull(usersTable.deletedAt)))
+      .where(livePublicBarber(eq(usersTable.username, slug)))
       .limit(1);
     if (!barber) {
       res.json({ name: null, phone: null });
@@ -618,7 +623,7 @@ router.get("/barber/:slug/slots", async (req, res) => {
     const [barber] = await db
       .select({ id: usersTable.id })
       .from(usersTable)
-      .where(and(eq(usersTable.username, slug), isNull(usersTable.deletedAt)))
+      .where(livePublicBarber(eq(usersTable.username, slug)))
       .limit(1);
 
     if (!barber) {
@@ -660,7 +665,7 @@ router.get("/barber/id/:barberId", async (req, res) => {
     const [barber] = await db
       .select()
       .from(usersTable)
-      .where(and(eq(usersTable.id, barberId), isNull(usersTable.deletedAt)))
+      .where(livePublicBarber(eq(usersTable.id, barberId)))
       .limit(1);
 
     if (!barber) {
@@ -697,7 +702,7 @@ router.post("/qr-scan", async (req, res) => {
     const [barber] = await db
       .select({ id: usersTable.id })
       .from(usersTable)
-      .where(and(eq(usersTable.username, slug), isNull(usersTable.deletedAt)))
+      .where(livePublicBarber(eq(usersTable.username, slug)))
       .limit(1);
     if (!barber) {
       res.status(404).json({ error: "not_found" });
@@ -719,7 +724,7 @@ router.get("/barber/:slug", async (req, res) => {
     let [barber] = await db
       .select()
       .from(usersTable)
-      .where(and(eq(usersTable.username, slug), isNull(usersTable.deletedAt)))
+      .where(livePublicBarber(eq(usersTable.username, slug)))
       .limit(1);
 
     let redirectTo: string | null = null;
@@ -740,7 +745,7 @@ router.get("/barber/:slug", async (req, res) => {
         const [found] = await db
           .select()
           .from(usersTable)
-          .where(and(eq(usersTable.id, redirect.userId), isNull(usersTable.deletedAt)))
+          .where(livePublicBarber(eq(usersTable.id, redirect.userId)))
           .limit(1);
 
         if (found) {

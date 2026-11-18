@@ -538,12 +538,6 @@ export default function Onboarding() {
     setBusy(true);
     let moved = false;
     try {
-      const putProfile = async (body: Record<string, unknown>) => {
-        try { await api("/api/settings/profile", "PUT", body); }
-        catch {
-          try { await api("/api/settings/profile", "PUT", body); } catch { /* kept for the next try */ }
-        }
-      };
       if (step === 5) {
         await saveServices();
         await saveHours();
@@ -552,6 +546,7 @@ export default function Onboarding() {
         const link = mapLink.trim();
         const mapLinkValue = /^https?:\/\//i.test(link) || !link ? link : (link.includes(".") ? `https://${link}` : link);
         const profile: Record<string, unknown> = {
+          onboardingCompleted: true,
           ...(ig ? { instagram: ig } : {}),
           ...(tg ? { telegramUsername: tg } : {}),
           ...(bio.trim() ? { bio: bio.trim() } : {}),
@@ -564,7 +559,20 @@ export default function Onboarding() {
           ...(avatarUrl ? { avatarUrl } : {}),
           ...(gallery.length > 0 ? { galleryImages: JSON.stringify(gallery) } : {}),
         };
-        if (Object.keys(profile).length > 0) await putProfile(profile);
+        let saved = false;
+        try {
+          await api("/api/settings/profile", "PUT", profile);
+          saved = true;
+        } catch {
+          try {
+            await api("/api/settings/profile", "PUT", profile);
+            saved = true;
+          } catch { /* the page stays hidden until this save succeeds */ }
+        }
+        if (!saved) {
+          warn(t("Sahifa ochilmadi. Yana bir bor bosing", "Страница не открылась. Нажмите ещё раз"));
+          return;
+        }
         localStorage.setItem(ONBOARDING_COMPLETED_KEY, "true");
         localStorage.setItem(ONBOARDING_GREET_KEY, "1");
         localStorage.setItem(ONBOARDING_HINT_KEY, "1");

@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS users (
   bot_entry_button boolean NOT NULL DEFAULT false,
   morning_digest_on text,
   morning_sample_sent boolean NOT NULL DEFAULT false,
+  onboarding_completed boolean NOT NULL DEFAULT false,
   slug_changed_at timestamptz,
   slug_change_count integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -78,6 +79,9 @@ CREATE INDEX IF NOT EXISTS login_devices_user_id_idx ON login_devices (user_id);
 
 CREATE INDEX IF NOT EXISTS users_phone_idx ON users (phone);
 CREATE INDEX IF NOT EXISTS users_telegram_id_idx ON users (telegram_id);
+CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx ON users (phone) WHERE deleted_at IS NULL AND phone IS NOT NULL AND btrim(phone) <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS users_telegram_id_unique_idx ON users (telegram_id) WHERE deleted_at IS NULL AND telegram_id IS NOT NULL AND btrim(telegram_id) <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (lower(username));
 
 CREATE TABLE IF NOT EXISTS clients (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

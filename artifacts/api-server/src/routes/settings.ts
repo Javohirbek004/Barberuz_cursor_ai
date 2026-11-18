@@ -92,6 +92,7 @@ router.put("/profile", authenticate, async (req, res) => {
       address, mapLink: rawMapLink, latitude, longitude,
       instagram: rawInstagram, galleryImages,
       telegramUsername: rawTelegram,
+      onboardingCompleted: rawOnboarding,
     } = req.body;
     // Only the supported gap sizes are accepted; anything else is ignored.
     const bufferTime = typeof rawBufferTime === "number" && ALLOWED_BUFFER_MINUTES.includes(rawBufferTime)
@@ -106,13 +107,15 @@ router.put("/profile", authenticate, async (req, res) => {
     const telegramUsername = typeof rawTelegram === "string"
       ? rawTelegram.trim().replace(/^https?:\/\//i, "").replace(/^(www\.)?(t\.me|telegram\.me)\//i, "").replace(/^@+/, "").split(/[/?#\s]/)[0]
       : undefined;
+    const phoneValue = typeof phone === "string" && phone.trim() === "" ? null : phone;
     const [updated] = await db.update(usersTable)
       .set({
         ...(name !== undefined && { name }),
         ...(brandName !== undefined && { brandName }),
         ...(mode !== undefined && { mode }),
         ...(lang !== undefined && { lang }),
-        ...(phone !== undefined && { phone }),
+        ...(phone !== undefined && { phone: phoneValue }),
+        ...(rawOnboarding === true && { onboardingCompleted: true }),
         ...(phoneVisible !== undefined && { phoneVisible }),
         ...(workingHoursStart !== undefined && { workingHoursStart }),
         ...(workingHoursEnd !== undefined && { workingHoursEnd }),
@@ -137,6 +140,13 @@ router.put("/profile", authenticate, async (req, res) => {
       .returning();
     res.json(formatProfile(updated));
   } catch (err) {
+    const wrapped = err as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } };
+    const code = wrapped?.code || wrapped?.cause?.code;
+    const constraint = String(wrapped?.constraint || wrapped?.cause?.constraint || "");
+    if (code === "23505" && constraint.includes("phone")) {
+      res.status(409).json({ error: "phone_taken" });
+      return;
+    }
     res.status(500).json({ error: "server_error" });
   }
 });

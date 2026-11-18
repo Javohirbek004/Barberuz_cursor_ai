@@ -3,6 +3,7 @@ import app from "./app";
 import { registerWebhook, refreshBotIdentity, isBotConfigured, startDevPolling } from "./lib/telegram-bot";
 import { productionHost, shouldPollTelegram, shouldRegisterTelegramWebhook } from "./lib/telegram-token";
 import { startReminderJob } from "./lib/reminders";
+import { startAbandonedAccountCleanup } from "./lib/abandoned-accounts";
 import { normalizeStoredClientPhones } from "./lib/phone-migration";
 import { moveSlugToProfileName } from "./lib/public-slug";
 import { assertAuthSecrets } from "./lib/auth";
@@ -24,6 +25,7 @@ if (Number.isNaN(port) || port <= 0) {
 app.listen(port, async () => {
   console.log(`Server listening on port ${port}`);
   startReminderJob();
+  startAbandonedAccountCleanup();
 
   normalizeStoredClientPhones()
     .then(({ renamed, merged }) => {

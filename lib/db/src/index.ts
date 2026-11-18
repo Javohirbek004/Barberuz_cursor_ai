@@ -133,6 +133,46 @@ const ENSURE_SCHEMA_SQL = [
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "bot_entry_button" boolean DEFAULT false NOT NULL`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "morning_digest_on" text`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "morning_sample_sent" boolean DEFAULT false NOT NULL`,
+  // Accounts that already exist keep their public page. New ones stay hidden until setup finishes.
+  `DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'onboarding_completed'
+  ) THEN
+    ALTER TABLE "users" ADD COLUMN "onboarding_completed" boolean;
+    UPDATE "users" SET "onboarding_completed" = true WHERE "onboarding_completed" IS NULL;
+    ALTER TABLE "users" ALTER COLUMN "onboarding_completed" SET DEFAULT false;
+    ALTER TABLE "users" ALTER COLUMN "onboarding_completed" SET NOT NULL;
+  END IF;
+END $$`,
+  `UPDATE "users" SET "phone" = NULL WHERE "phone" IS NOT NULL AND btrim("phone") = ''`,
+  `UPDATE "users" SET "telegram_id" = NULL WHERE "telegram_id" IS NOT NULL AND btrim("telegram_id") = ''`,
+  `UPDATE "users" AS u SET "phone" = NULL WHERE u."id" IN (
+    SELECT id FROM (
+      SELECT "id", row_number() OVER (
+        PARTITION BY "phone"
+        ORDER BY ("telegram_verified" IS TRUE) DESC, "created_at" ASC, "id" ASC
+      ) AS n
+      FROM "users"
+      WHERE "deleted_at" IS NULL AND "phone" IS NOT NULL AND btrim("phone") <> ''
+    ) ranked
+    WHERE ranked.n > 1
+  )`,
+  `UPDATE "users" AS u SET "telegram_id" = NULL WHERE u."id" IN (
+    SELECT id FROM (
+      SELECT "id", row_number() OVER (
+        PARTITION BY "telegram_id"
+        ORDER BY ("telegram_verified" IS TRUE) DESC, "created_at" ASC, "id" ASC
+      ) AS n
+      FROM "users"
+      WHERE "deleted_at" IS NULL AND "telegram_id" IS NOT NULL AND btrim("telegram_id") <> ''
+    ) ranked
+    WHERE ranked.n > 1
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "users_phone_unique_idx" ON "users" ("phone") WHERE "deleted_at" IS NULL AND "phone" IS NOT NULL AND btrim("phone") <> ''`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "users_telegram_id_unique_idx" ON "users" ("telegram_id") WHERE "deleted_at" IS NULL AND "telegram_id" IS NOT NULL AND btrim("telegram_id") <> ''`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "users_username_lower_idx" ON "users" (lower("username"))`,
   `CREATE TABLE IF NOT EXISTS "login_devices" (
     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,

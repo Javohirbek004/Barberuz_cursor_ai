@@ -5,6 +5,13 @@ import { allocatePublicSlug, isSlugAvailable } from "./public-slug";
 
 const PENDING_TTL_MS = 24 * 60 * 60 * 1000;
 
+function isIdentityClash(err: unknown): boolean {
+  const wrapped = err as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } };
+  const code = wrapped?.code || wrapped?.cause?.code;
+  const constraint = String(wrapped?.constraint || wrapped?.cause?.constraint || "");
+  return code === "23505" && (constraint.includes("phone") || constraint.includes("telegram"));
+}
+
 export async function savePendingRegistration(input: {
   name: string;
   brandName?: string | null;
@@ -121,11 +128,13 @@ export async function createUserFromPending(
     telegramVerified: true,
     telegramId: contact.telegramId,
     telegramUsername: contact.telegramUsername,
+    onboardingCompleted: false,
   };
   let user;
   try {
     [user] = await db.insert(usersTable).values(values).returning();
   } catch (err) {
+    if (isIdentityClash(err)) throw err;
     values.username = await allocatePublicSlug({
       brandName: pending.brandName,
       name: pending.name,
@@ -165,6 +174,7 @@ export async function openAccountFromPending(pending: PendingRegistration) {
     mode: pending.mode,
     lang: pending.lang,
     telegramVerified: false,
+    onboardingCompleted: false,
   };
 
   let user;

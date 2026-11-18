@@ -63,6 +63,8 @@ export const usersTable = pgTable(
     morningSampleSent: boolean("morning_sample_sent").notNull().default(false),
     slugChangedAt: timestamp("slug_changed_at", { withTimezone: true }),
     slugChangeCount: integer("slug_change_count").notNull().default(0),
+    /** Public page stays hidden until the barber finishes the setup pages. */
+    onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
