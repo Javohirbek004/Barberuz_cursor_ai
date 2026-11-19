@@ -14,6 +14,8 @@ export const usersTable = pgTable(
     mode: text("mode", { enum: ["solo", "team"] }).notNull().default("solo"),
     lang: text("lang", { enum: ["uz", "ru"] }).notNull().default("uz"),
     phone: text("phone"),
+    /** Number shared with the bot. Customers see `phone`, not this. */
+    botPhone: text("bot_phone"),
     phoneVisible: boolean("phone_visible").notNull().default(true),
     telegramVerified: boolean("telegram_verified").notNull().default(false),
     telegramId: text("telegram_id"),

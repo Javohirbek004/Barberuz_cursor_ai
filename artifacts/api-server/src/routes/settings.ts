@@ -5,6 +5,7 @@ import { and, eq, gte, isNull, lt, ne, notInArray, sql } from "drizzle-orm";
 import { authenticate, getUser, makePasswordHash, verifyPassword, generateToken } from "../lib/auth";
 import { consumeRateLimit } from "../lib/rate-limit";
 import { bumpSessionEpoch } from "../lib/session-epoch";
+import { normalizePhone } from "../lib/phone";
 import { SLUG_LOCK_MS, isSlugAvailable, repairAccidentalSlug, suggestSlug, validateSlug } from "../lib/public-slug";
 
 const router = Router();
@@ -107,14 +108,32 @@ router.put("/profile", authenticate, async (req, res) => {
     const telegramUsername = typeof rawTelegram === "string"
       ? rawTelegram.trim().replace(/^https?:\/\//i, "").replace(/^(www\.)?(t\.me|telegram\.me)\//i, "").replace(/^@+/, "").split(/[/?#\s]/)[0]
       : undefined;
-    const phoneValue = typeof phone === "string" && phone.trim() === "" ? null : phone;
+    let phoneValue: string | null | undefined = undefined;
+    if (phone !== undefined) {
+      if (phone === null || (typeof phone === "string" && phone.trim() === "")) {
+        phoneValue = null;
+      } else if (typeof phone !== "string") {
+        res.status(400).json({ error: "phone_invalid" });
+        return;
+      } else {
+        const normalized = normalizePhone(phone);
+        if (normalized) {
+          phoneValue = normalized;
+        } else if (phone.trim() === (user.phone || "").trim()) {
+          phoneValue = user.phone;
+        } else {
+          res.status(400).json({ error: "phone_invalid" });
+          return;
+        }
+      }
+    }
     const [updated] = await db.update(usersTable)
       .set({
         ...(name !== undefined && { name }),
         ...(brandName !== undefined && { brandName }),
         ...(mode !== undefined && { mode }),
         ...(lang !== undefined && { lang }),
-        ...(phone !== undefined && { phone: phoneValue }),
+        ...(phoneValue !== undefined && { phone: phoneValue }),
         ...(rawOnboarding === true && { onboardingCompleted: true }),
         ...(phoneVisible !== undefined && { phoneVisible }),
         ...(workingHoursStart !== undefined && { workingHoursStart }),

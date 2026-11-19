@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { and, desc, eq, gt, lte, ne } from "drizzle-orm";
 import { db, pendingRegistrationsTable, usersTable, type PendingRegistration } from "@workspace/db";
+import { planSharedBarberPhone } from "./barber-contact-phone";
 import { allocatePublicSlug, isSlugAvailable } from "./public-slug";
 import { inspectSignupName, SIGNUP_RESERVED, signupSlug } from "./signup-name";
 
@@ -124,6 +125,7 @@ export async function createUserFromPending(
     });
   }
 
+  const phones = await planSharedBarberPhone(null, contact.phone);
   const values = {
     id: pending.id,
     name: pending.name,
@@ -132,7 +134,8 @@ export async function createUserFromPending(
     passwordHash: pending.passwordHash,
     mode: pending.mode,
     lang: pending.lang,
-    phone: contact.phone,
+    phone: phones.publicPhone ?? null,
+    botPhone: phones.botPhone,
     telegramVerified: true,
     telegramId: contact.telegramId,
     telegramUsername: contact.telegramUsername,
@@ -142,12 +145,20 @@ export async function createUserFromPending(
   try {
     [user] = await db.insert(usersTable).values(values).returning();
   } catch (err) {
-    if (isIdentityClash(err)) throw err;
-    values.username = await allocatePublicSlug({
-      brandName: pending.brandName,
-      name: pending.name,
-      phone: contact.phone,
-    });
+    const wrapped = err as { constraint?: string; cause?: { constraint?: string } };
+    const constraint = String(wrapped?.constraint || wrapped?.cause?.constraint || "");
+    if (constraint.includes("bot_phone")) throw err;
+    if (constraint.includes("phone") && values.phone) {
+      values.phone = null;
+    } else if (isIdentityClash(err)) {
+      throw err;
+    } else {
+      values.username = await allocatePublicSlug({
+        brandName: pending.brandName,
+        name: pending.name,
+        phone: contact.phone,
+      });
+    }
     [user] = await db.insert(usersTable).values(values).returning();
     if (!user) throw err;
   }

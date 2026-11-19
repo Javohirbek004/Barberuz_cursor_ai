@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   mode text NOT NULL DEFAULT 'solo',
   lang text NOT NULL DEFAULT 'uz',
   phone text,
+  bot_phone text,
   phone_visible boolean NOT NULL DEFAULT true,
   telegram_verified boolean NOT NULL DEFAULT false,
   telegram_id text,
@@ -63,6 +64,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_notice_count integer NOT NULL DEF
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_entry_button boolean NOT NULL DEFAULT false;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS morning_digest_on text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS morning_sample_sent boolean NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_phone text;
 
 CREATE TABLE IF NOT EXISTS login_devices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -80,6 +82,7 @@ CREATE INDEX IF NOT EXISTS login_devices_user_id_idx ON login_devices (user_id);
 CREATE INDEX IF NOT EXISTS users_phone_idx ON users (phone);
 CREATE INDEX IF NOT EXISTS users_telegram_id_idx ON users (telegram_id);
 CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx ON users (phone) WHERE deleted_at IS NULL AND phone IS NOT NULL AND btrim(phone) <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS users_bot_phone_unique_idx ON users (bot_phone) WHERE deleted_at IS NULL AND bot_phone IS NOT NULL AND btrim(bot_phone) <> '';
 CREATE UNIQUE INDEX IF NOT EXISTS users_telegram_id_unique_idx ON users (telegram_id) WHERE deleted_at IS NULL AND telegram_id IS NOT NULL AND btrim(telegram_id) <> '';
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (lower(username));
 

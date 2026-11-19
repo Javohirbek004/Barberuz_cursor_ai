@@ -27,6 +27,7 @@ import { db, usersTable, bookingSessionsTable, bookingsTable, clientsTable, phon
 import { eq, and, isNull, desc, sql, gte, inArray } from "drizzle-orm";
 import { syncClientMetrics } from "./client-metrics";
 import { findClientByPhone } from "./client-lookup";
+import { BotPhoneTakenError, findBarberBySharedContact, planSharedBarberPhone } from "./barber-contact-phone";
 import { normalizePhone, phoneKey } from "./phone";
 import { generateToken, makePasswordHash, signAppEntry } from "./auth";
 import { barberEntryMarkup } from "./barber-entry-keyboard";
@@ -214,34 +215,14 @@ function getPasswordReset(chatId: number): PasswordResetState | null {
 }
 
 async function findUserByPhone(phone: string) {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length >= 9) {
-    const nine = (digits.startsWith("998") ? digits.slice(3) : digits).slice(-9);
-    const [byDigits] = await db
-      .select()
-      .from(usersTable)
-      .where(
-        and(
-          isNull(usersTable.deletedAt),
-          sql`length(regexp_replace(coalesce(${usersTable.phone}, ''), '[^0-9]', '', 'g')) >= 9
-            and right(regexp_replace(coalesce(${usersTable.phone}, ''), '[^0-9]', '', 'g'), 9) = ${nine}`,
-        ),
-      )
-      .limit(1);
-    if (byDigits) return byDigits;
-  }
-  const trimmed = phone.replace(/\s+/g, "");
-  const noPlus = trimmed.replace(/^\+/, "");
-  const variants = Array.from(new Set([trimmed, noPlus, `+${noPlus}`]));
-  for (const candidate of variants) {
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(and(isNull(usersTable.deletedAt), eq(usersTable.phone, candidate)))
-      .limit(1);
-    if (user) return user;
-  }
-  return null;
+  return findBarberBySharedContact(phone);
+}
+
+function phoneFields(plan: { botPhone: string | null; publicPhone?: string }) {
+  return {
+    ...(plan.botPhone ? { botPhone: plan.botPhone } : {}),
+    ...(plan.publicPhone ? { phone: plan.publicPhone } : {}),
+  };
 }
 
 function formatPhoneForUser(phone: string): string {
@@ -1317,12 +1298,25 @@ async function handleBarberContact(
   const { userId, name, shopName } = pending;
   console.log(`[TelegramBot] Barber contact: chatId=${chatId} userId=${userId} phone=${phone}`);
 
+  let phones: { botPhone: string | null; publicPhone?: string } = { botPhone: null };
   if (phone) {
-    const existing = await findUserByPhone(phone);
-    if (existing && existing.id !== userId) {
-      pendingBarberVerifications.delete(chatId);
-      await sendPhoneAlreadyRegistered(chatId, existing, phone);
-      return;
+    try {
+      phones = await planSharedBarberPhone(userId, phone);
+    } catch (err) {
+      if (err instanceof BotPhoneTakenError) {
+        pendingBarberVerifications.delete(chatId);
+        const existing = await findUserByPhone(phone);
+        if (existing && existing.id !== userId) {
+          await sendPhoneAlreadyRegistered(chatId, existing, phone);
+          return;
+        }
+        await callTelegram("sendMessage", {
+          chat_id: chatId,
+          text: "Xatolik yuz berdi. Iltimos, qayta harakat qiling.",
+        });
+        return;
+      }
+      throw err;
     }
   }
 
@@ -1331,7 +1325,7 @@ async function handleBarberContact(
       telegramVerified: true,
       telegramId: tgUserId,
       telegramUsername: tgUsername,
-      phone: phone || undefined,
+      ...phoneFields(phones),
       updatedAt: new Date(),
     }).where(eq(usersTable.id, userId));
     console.log(`[TelegramBot] Barber invite verified: userId=${userId} ✅`);
@@ -1771,11 +1765,24 @@ async function handleRegContact(
 
   console.log(`[TelegramBot] Reg contact: chatId=${chatId} userId=${userId} phone=${phone}`);
 
+  let phones: { botPhone: string | null; publicPhone?: string } = { botPhone: null };
   if (phone) {
-    const existing = await findUserByPhone(phone);
-    if (existing && existing.id !== userId) {
-      await sendPhoneAlreadyRegistered(chatId, existing, phone);
-      return;
+    try {
+      phones = await planSharedBarberPhone(userId, phone);
+    } catch (err) {
+      if (err instanceof BotPhoneTakenError) {
+        const existing = await findUserByPhone(phone);
+        if (existing && existing.id !== userId) {
+          await sendPhoneAlreadyRegistered(chatId, existing, phone);
+          return;
+        }
+        await callTelegram("sendMessage", {
+          chat_id: chatId,
+          text: "Xatolik yuz berdi. Iltimos, qayta harakat qiling.",
+        });
+        return;
+      }
+      throw err;
     }
   }
 
@@ -1786,7 +1793,7 @@ async function handleRegContact(
         telegramVerified: true,
         telegramId: tgUserId,
         telegramUsername: tgUsername,
-        phone: phone || undefined,
+        ...phoneFields(phones),
         updatedAt: new Date(),
       }).where(eq(usersTable.id, userId));
     } else {
@@ -1807,6 +1814,13 @@ async function handleRegContact(
     console.log(`[TelegramBot] Reg verified: userId=${userId} ✅`);
     await sendVerificationSuccess(chatId, userId, contactMessageId ? [contactMessageId] : []);
   } catch (err) {
+    if (err instanceof BotPhoneTakenError) {
+      const existing = await findUserByPhone(phone || "");
+      if (existing) {
+        await sendPhoneAlreadyRegistered(chatId, existing, phone || "");
+        return;
+      }
+    }
     console.error("[TelegramBot] DB update failed:", err);
     await callTelegram("sendMessage", {
       chat_id: chatId,
@@ -1826,38 +1840,36 @@ async function handleNoPayloadContact(
 
   if (!phone) return;
 
-  const normPhone = phone.replace(/\s+/g, "").replace(/^\+/, "");
-
-  const [userByPhone] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.phone, phone))
-    .limit(1)
-    .catch(() => [] as (typeof usersTable.$inferSelect)[]);
-
-  const [userByNorm] = !userByPhone
-    ? await db
-        .select()
-        .from(usersTable)
-        .where(eq(usersTable.phone, `+${normPhone}`))
-        .limit(1)
-        .catch(() => [] as (typeof usersTable.$inferSelect)[])
-    : ([] as (typeof usersTable.$inferSelect)[]);
-
-  const existingUser = userByPhone || userByNorm;
+  const existingUser = await findUserByPhone(phone);
 
   if (existingUser) {
-    // Phone found — re-verify and send "Raqamingiz tasdiqlandi!" (registration flow)
-    await db
-      .update(usersTable)
-      .set({
-        telegramVerified: true,
-        telegramId: tgUserId,
-        telegramUsername: tgUsername,
-        phone,
-        updatedAt: new Date(),
-      })
-      .where(eq(usersTable.id, existingUser.id));
+    try {
+      const phones = await planSharedBarberPhone(existingUser.id, phone);
+      await db
+        .update(usersTable)
+        .set({
+          telegramVerified: true,
+          telegramId: tgUserId,
+          telegramUsername: tgUsername,
+          ...phoneFields(phones),
+          updatedAt: new Date(),
+        })
+        .where(eq(usersTable.id, existingUser.id));
+    } catch (err) {
+      if (err instanceof BotPhoneTakenError) {
+        const owner = await findUserByPhone(phone);
+        if (owner) {
+          await sendPhoneAlreadyRegistered(chatId, owner, phone);
+          return;
+        }
+      }
+      console.error("[TelegramBot] NoPayload re-verify failed:", err);
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "Xatolik yuz berdi. Iltimos, qayta harakat qiling.",
+      });
+      return;
+    }
 
     console.log(`[TelegramBot] NoPayload re-verified: userId=${existingUser.id} ✅`);
     await sendVerificationSuccess(chatId, existingUser.id, contactMessageId ? [contactMessageId] : []);
@@ -1877,6 +1889,13 @@ async function handleNoPayloadContact(
       console.log(`[TelegramBot] NoPayload pending verified: userId=${created.id} ✅`);
       await sendVerificationSuccess(chatId, created.id, contactMessageId ? [contactMessageId] : []);
     } catch (err) {
+      if (err instanceof BotPhoneTakenError) {
+        const owner = await findUserByPhone(phone);
+        if (owner) {
+          await sendPhoneAlreadyRegistered(chatId, owner, phone);
+          return;
+        }
+      }
       console.error("[TelegramBot] Pending signup save failed:", err);
       await callTelegram("sendMessage", {
         chat_id: chatId,

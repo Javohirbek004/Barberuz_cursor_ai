@@ -56,7 +56,7 @@ export interface ProfileData {
   brandName: string;
   bio: string;
   speciality: string[];
-  phone: string;        // read-only (from registration)
+  phone: string;
   phoneVisible: boolean;
   address: string;
   mapLink: string;
@@ -227,7 +227,11 @@ async function apiPut(path: string, body: unknown) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`PUT ${path} failed: ${res.status}`);
+  if (!res.ok) {
+    let code = "";
+    try { code = String((await res.json())?.error || ""); } catch { /* empty body */ }
+    throw new Error(code || `PUT ${path} failed: ${res.status}`);
+  }
   return res.json();
 }
 async function apiPost(path: string, body: unknown) {
@@ -314,6 +318,7 @@ function profileToApi(p: ProfileData) {
     mapLink: safeUrl(p.mapLink) ?? "",
     latitude: p.latitude || null,
     longitude: p.longitude || null,
+    phone: p.phone.trim() ? p.phone.trim() : null,
     phoneVisible: p.phoneVisible,
     instagram: p.instagram.replace(/^@+/, ""),
     avatarUrl: p.avatarUrl,
@@ -940,14 +945,15 @@ function AsosiyTab({
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{pick(lang, "Telefon raqam", "Номер телефона")}</label>
         <div className="flex items-center gap-3 bg-white/3 border border-white/6 rounded-2xl px-4 py-3">
           <Phone className="w-4 h-4 text-primary/60 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className={`text-sm font-medium ${profile.phone ? "text-foreground" : "text-muted-foreground/60"}`}>
-              {profile.phone || pick(lang, "Kiritilmagan", "Не указан")}
-            </p>
-            {profile.phone && (
-              <p className="text-[11px] text-muted-foreground/60 mt-0.5">{pick(lang, "Telegram orqali tasdiqlangan", "Подтверждено через Telegram")}</p>
-            )}
-          </div>
+          <input
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            value={profile.phone}
+            onChange={(e) => set("phone", e.target.value)}
+            placeholder="+998 90 123 45 67"
+            className="flex-1 min-w-0 bg-transparent text-sm font-medium text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+          />
         </div>
         <div className="flex items-center justify-between px-1">
           <span className="text-xs text-muted-foreground">{pick(lang, "Mijozlarga ko'rsatish", "Показывать клиентам")}</span>
@@ -2322,7 +2328,15 @@ export default function PersonalPage() {
       setProfile(apiToProfile(updated));
       setSaveMsg({ type: "ok", text: pick(lang, "Muvaffaqiyatli saqlandi ✓", "Успешно сохранено ✓") });
       setTimeout(() => setSaveMsg(null), 3000);
-    } catch { setSaveMsg({ type: "err", text: pick(lang, "Saqlashda xatolik. Qayta urinib ko'ring.", "Не сохранилось. Попробуйте ещё раз.") }); }
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "";
+      const text = code === "phone_invalid"
+        ? pick(lang, "Telefon raqam noto‘g‘ri.", "Номер телефона указан неверно.")
+        : code === "phone_taken"
+          ? pick(lang, "Bu raqam boshqa hisobda yozilgan.", "Этот номер уже записан в другом аккаунте.")
+          : pick(lang, "Saqlashda xatolik. Qayta urinib ko'ring.", "Не сохранилось. Попробуйте ещё раз.");
+      setSaveMsg({ type: "err", text });
+    }
     finally { setSaving(false); }
   }
 

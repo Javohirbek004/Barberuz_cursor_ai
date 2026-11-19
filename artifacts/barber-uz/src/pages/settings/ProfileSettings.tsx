@@ -70,14 +70,19 @@ const DEFAULT_SCHEDULE: WeekSchedule = {
 
 const SPECIALIZATION_OPTIONS = ["Fade", "Soch olish", "Soqol", "Soqol tekislash", "Bolalar", "Kompleks"];
 
-async function saveProfile(patch: Partial<ProfileData> & Record<string, unknown>): Promise<boolean> {
+async function saveProfile(patch: Partial<ProfileData> & Record<string, unknown>): Promise<boolean | "phone_invalid" | "phone_taken"> {
   const token = localStorage.getItem("barber_token") ?? "";
   const res = await fetch("/api/settings/profile", {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(patch),
   });
-  return res.ok;
+  if (res.ok) return true;
+  try {
+    const code = String((await res.json())?.error || "");
+    if (code === "phone_invalid" || code === "phone_taken") return code;
+  } catch { /* empty body */ }
+  return false;
 }
 
 /**
@@ -295,14 +300,14 @@ function InfoForm({
       avatarUrl: form.avatarUrl || null,
     });
     setSaving(false);
-    if (ok) {
+    if (ok === true) {
       setDirty(false);
-      onSaved(form);
+      onSaved({ ...form, phone: form.phone.trim() });
       show(t("profile.saved"));
     } else {
-      show(t("profile.error"), false);
+      show(ok === "phone_invalid" ? t("profile.phone.invalid") : ok === "phone_taken" ? t("profile.phone.taken") : t("profile.error"), false);
     }
-    return ok;
+    return ok === true;
   }
 
   const avatarLetter = (form.name || "B").charAt(0).toUpperCase();
@@ -410,14 +415,14 @@ function SpecializationsForm({
     const serialized = JSON.stringify(selected.map((tag) => formatSpecialtyTag(tag)));
     const ok = await saveProfile({ specializations: serialized });
     setSaving(false);
-    if (ok) {
+    if (ok === true) {
       setDirty(false);
       onSaved({ specializations: serialized });
       show(t("profile.saved"));
     } else {
       show(t("profile.error"), false);
     }
-    return ok;
+    return ok === true;
   }
 
   return (
@@ -488,14 +493,14 @@ function BioForm({
     setSaving(true);
     const ok = await saveProfile({ bio: bio || null });
     setSaving(false);
-    if (ok) {
+    if (ok === true) {
       setDirty(false);
       onSaved({ bio });
       show(t("profile.saved"));
     } else {
       show(t("profile.error"), false);
     }
-    return ok;
+    return ok === true;
   }
 
   return (
@@ -603,14 +608,14 @@ function ScheduleForm({
     };
     const ok = await saveProfile(patch);
     setSaving(false);
-    if (ok) {
+    if (ok === true) {
       setDirty(false);
       onSaved(patch);
       show(t("profile.saved"));
     } else {
       show(t("profile.error"), false);
     }
-    return ok;
+    return ok === true;
   }
 
   return (
