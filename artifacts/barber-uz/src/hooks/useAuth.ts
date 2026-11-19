@@ -60,28 +60,31 @@ export function useAuth(requireAuth = true) {
     }
   }, [apiUser, apiLoading, error, requireAuth, navigate, isBarberMember]);
 
-  const logoutMutation = useLogoutUser({
-    mutation: {
-      onSuccess: () => {
-        localStorage.removeItem('barber_token');
-        localStorage.removeItem('barber_user');
-        navigate('/login');
-      },
-    },
-  });
+  const logoutMutation = useLogoutUser();
+
+  function endSession() {
+    let slug = typeof user?.username === "string" ? user.username : "";
+    if (!slug) {
+      try {
+        const saved = JSON.parse(localStorage.getItem("barber_user") || "null") as { username?: string } | null;
+        slug = typeof saved?.username === "string" ? saved.username : "";
+      } catch {
+        slug = "";
+      }
+    }
+    if (slug) localStorage.setItem("zumio_last_slug", slug);
+    localStorage.removeItem("barber_token");
+    localStorage.removeItem("barber_user");
+    navigate("/login");
+  }
 
   return {
     user,
     isLoading,
     isAuthenticated: !!user,
     logout: () => {
-      if (isBarberMember) {
-        localStorage.removeItem('barber_token');
-        localStorage.removeItem('barber_user');
-        navigate('/login');
-      } else {
-        logoutMutation.mutate();
-      }
+      endSession();
+      if (!isBarberMember) logoutMutation.mutate();
     },
   };
 }

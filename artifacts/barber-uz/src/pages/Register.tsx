@@ -73,7 +73,6 @@ export default function Register() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [attempted, setAttempted] = useState(false);
-  const [gate, setGate] = useState<"wait" | "form" | "done">("wait");
   const [nameState, setNameState] = useState<NameState>("idle");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const nameCheckSeq = useRef(0);
@@ -84,36 +83,6 @@ export default function Register() {
   useEffect(() => () => {
     if (waitTimer.current != null) window.clearTimeout(waitTimer.current);
   }, []);
-
-  useEffect(() => {
-    let cancel = false;
-    const token = localStorage.getItem("barber_token");
-    const pending = localStorage.getItem(ONBOARDING_PENDING_KEY) === "1";
-    const done = localStorage.getItem(ONBOARDING_COMPLETED_KEY) === "true";
-    if (!token) {
-      setGate(done ? "done" : "form");
-      return;
-    }
-    fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => {
-        if (cancel) return;
-        if (!res.ok) {
-          localStorage.removeItem("barber_token");
-          localStorage.removeItem("barber_user");
-          setGate(done ? "done" : "form");
-          return;
-        }
-        if (pending && !done) {
-          navigate("/onboarding");
-          return;
-        }
-        setGate("done");
-      })
-      .catch(() => {
-        if (!cancel) setGate(done ? "done" : "form");
-      });
-    return () => { cancel = true; };
-  }, [navigate]);
 
   useEffect(() => {
     const typed = formData.name;
@@ -186,6 +155,7 @@ export default function Register() {
         localStorage.setItem("barber_token", data.token);
         localStorage.setItem("barber_user", JSON.stringify(data.user));
         localStorage.setItem("zumio_device_account_id", data.user.id);
+        if (data.user.username) localStorage.setItem("zumio_last_slug", data.user.username);
         localStorage.setItem(ONBOARDING_PENDING_KEY, "1");
         localStorage.removeItem(ONBOARDING_COMPLETED_KEY);
         sessionStorage.setItem(ONBOARDING_INTRO_KEY, "1");
@@ -310,23 +280,6 @@ export default function Register() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md relative z-10"
       >
-        {gate === "done" ? (
-          <div className="rounded-3xl border border-white/12 bg-[#16181c]/70 p-7 text-center shadow-2xl shadow-black/40 backdrop-blur-xl">
-            <p className="text-lg font-semibold leading-snug">
-              {lang === "ru"
-                ? "Вы уже зарегистрированы, нажмите «Войти», чтобы открыть свой аккаунт"
-                : "Siz allaqachon ro‘yxatdan o‘tgansiz, iltimos Kirish tugmasini bosib hisobingizga kiring"}
-            </p>
-            <Button
-              type="button"
-              onClick={() => navigate("/login")}
-              className="mt-6 h-14 w-full rounded-xl border-0 bg-gradient-to-r from-primary to-amber-600 text-lg font-bold text-black"
-            >
-              {t("register.login_link")}
-            </Button>
-          </div>
-        ) : gate === "form" ? (
-        <>
         <div className="text-center mb-8">
           <h1 className="text-3xl font-display font-bold text-foreground mb-2">
             {t("register.title")}
@@ -439,8 +392,6 @@ export default function Register() {
             </Link>
           </p>
         </form>
-        </>
-        ) : null}
       </motion.div>
     </div>
   );

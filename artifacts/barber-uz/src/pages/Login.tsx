@@ -18,60 +18,27 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useBotUsername } from "@/lib/bot-link";
 import { pathAfterAuth } from "@/lib/onboarding";
+import { signupSlug } from "@/lib/signup-name";
 
-type LoginErrorType = "USER_NOT_FOUND" | "INVALID_PASSWORD";
+const LAST_SLUG_KEY = "zumio_last_slug";
 
-function readLoginError(err: unknown): LoginErrorType | null {
-  if (!err || typeof err !== "object" || !("data" in err)) return null;
+function readLoginError(err: unknown): boolean {
+  if (!err || typeof err !== "object" || !("data" in err)) return false;
   const data = (err as { data?: unknown }).data;
-  if (!data || typeof data !== "object" || !("error" in data)) return null;
+  if (!data || typeof data !== "object" || !("error" in data)) return false;
   const code = (data as { error?: unknown }).error;
-  if (code === "USER_NOT_FOUND" || code === "INVALID_PASSWORD") return code;
-  return null;
-}
-
-function looksLikeLegacyUsername(value: string): boolean {
-  return /[a-zA-Z_]/.test(value);
-}
-
-function formatUzPhoneMask(raw: string): string {
-  let digits = raw.replace(/\D/g, "");
-  if (digits.startsWith("998")) digits = digits.slice(3);
-  digits = digits.slice(0, 9);
-  if (!digits.length) return "";
-  let out = "+998";
-  if (!digits.length) return out;
-  out += ` ${digits.slice(0, 2)}`;
-  if (digits.length > 2) out += ` ${digits.slice(2, 5)}`;
-  if (digits.length > 5) out += `-${digits.slice(5, 7)}`;
-  if (digits.length > 7) out += `-${digits.slice(7, 9)}`;
-  return out;
-}
-
-function toLoginIdentifier(display: string): string {
-  if (looksLikeLegacyUsername(display)) return display.trim();
-  const digits = display.replace(/\D/g, "");
-  if (digits.length >= 12 && digits.startsWith("998")) return `+${digits}`;
-  if (digits.length === 9) return `+998${digits}`;
-  return display.trim();
-}
-
-function phoneFromQuery(): string {
-  const phone = new URLSearchParams(window.location.search).get("phone");
-  if (!phone) return "";
-  return formatUzPhoneMask(phone);
+  return code === "USER_NOT_FOUND" || code === "INVALID_PASSWORD";
 }
 
 export default function Login() {
   const { t } = useTranslation();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [username, setUsername] = useState(phoneFromQuery);
+  const [username, setUsername] = useState(() => localStorage.getItem(LAST_SLUG_KEY) || "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
-  const [errorType, setErrorType] = useState<LoginErrorType | null>(null);
-  const [glowKey, setGlowKey] = useState(0);
+  const [formError, setFormError] = useState<"empty" | "invalid" | null>(null);
   const botUsername = useBotUsername();
   const resetSuccess = new URLSearchParams(window.location.search).get("reset") === "success";
   const entryCode = new URLSearchParams(window.location.search).get("entry");
@@ -95,25 +62,21 @@ export default function Login() {
   const loginMutation = useLoginUser({
     mutation: {
       onSuccess: (data) => {
+        const slug = data.user.username || signupSlug(username);
+        if (slug) localStorage.setItem(LAST_SLUG_KEY, slug);
         localStorage.setItem("barber_token", data.token);
         localStorage.setItem("barber_user", JSON.stringify(data.user));
         toast({ title: t("success") });
         navigate(pathAfterAuth());
       },
       onError: (err) => {
-        const code = readLoginError(err);
-        if (code === "USER_NOT_FOUND") {
-          setErrorType(code);
-          setGlowKey((n) => n + 1);
-          return;
-        }
-        if (code === "INVALID_PASSWORD") {
-          setErrorType(code);
+        if (readLoginError(err)) {
+          setFormError("invalid");
           return;
         }
         toast({
           title: t("error"),
-          description: t("login.error.invalid_credentials"),
+          description: t("login.error.bad"),
           variant: "destructive",
         });
       },
@@ -122,8 +85,17 @@ export default function Login() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password) return;
-    loginMutation.mutate({ data: { username: toLoginIdentifier(username), password } });
+    if (loginMutation.isPending) return;
+    const slug = signupSlug(username);
+    if (!username.trim() || !password) {
+      setFormError("empty");
+      return;
+    }
+    if (!slug) {
+      setFormError("invalid");
+      return;
+    }
+    loginMutation.mutate({ data: { username: slug, password } });
   };
 
   if (entryCode) {
@@ -191,19 +163,13 @@ export default function Login() {
               <Input
                 value={username}
                 onChange={(e) => {
-                  setErrorType(null);
-                  const next = e.target.value;
-                  setUsername(looksLikeLegacyUsername(next) ? next : formatUzPhoneMask(next));
+                  setFormError(null);
+                  setUsername(e.target.value);
                 }}
                 placeholder={t("login.phone_placeholder")}
-                inputMode="tel"
-                autoComplete="tel"
-                aria-invalid={errorType === "USER_NOT_FOUND" || undefined}
-                className={`h-12 rounded-xl bg-[#10141c]/60 text-white placeholder:text-white/40 focus-visible:ring-primary ${errorType === "USER_NOT_FOUND" ? "border-red-500 focus-visible:ring-red-500" : "border-white/10"}`}
+                autoComplete="username"
+                className="h-12 rounded-xl border-white/10 bg-[#10141c]/60 text-white placeholder:text-white/40 focus-visible:ring-primary"
               />
-              {errorType === "USER_NOT_FOUND" && (
-                <p className="text-sm text-red-400 leading-relaxed">{t("login.error.user_not_found")}</p>
-              )}
             </div>
 
             <div className="space-y-2">
@@ -213,12 +179,11 @@ export default function Login() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => {
-                    setErrorType(null);
+                    setFormError(null);
                     setPassword(e.target.value);
                   }}
                   placeholder="••••••••"
-                  aria-invalid={errorType === "INVALID_PASSWORD" || undefined}
-                  className={`h-12 rounded-xl bg-[#10141c]/60 pr-12 text-white placeholder:text-white/40 focus-visible:ring-primary ${errorType === "INVALID_PASSWORD" ? "border-red-500 focus-visible:ring-red-500" : "border-white/10"}`}
+                  className="h-12 rounded-xl border-white/10 bg-[#10141c]/60 pr-12 text-white placeholder:text-white/40 focus-visible:ring-primary"
                 />
                 <button
                   type="button"
@@ -234,9 +199,6 @@ export default function Login() {
                   )}
                 </button>
               </div>
-              {errorType === "INVALID_PASSWORD" && (
-                <p className="text-sm text-red-400 leading-relaxed">{t("login.error.invalid_password")}</p>
-              )}
             </div>
 
             <button
@@ -247,15 +209,21 @@ export default function Login() {
               {t("login.forgot")}
             </button>
 
+            {formError && (
+              <p className="text-sm leading-snug text-red-400">
+                {formError === "empty" ? t("login.error.missing") : t("login.error.bad")}
+              </p>
+            )}
+
             <Button
               type="submit"
-              disabled={loginMutation.isPending || !username || !password}
+              disabled={loginMutation.isPending}
               className="w-full h-12 text-lg font-bold rounded-xl bg-gradient-to-r from-primary to-amber-600 hover:shadow-lg hover:shadow-primary/30 text-black border-0 mt-2"
             >
               {loginMutation.isPending ? (
                 <Loader2 className="w-5 h-5 animate-spin mr-2" />
               ) : null}
-              {t("login.submit")}
+              {loginMutation.isPending ? t("login.loading") : t("login.submit")}
             </Button>
           </form>
 
@@ -263,9 +231,8 @@ export default function Login() {
             <p className="text-sm text-zinc-400">
               {t("login.no_account")}{" "}
               <Link
-                key={glowKey}
                 href="/register"
-                className={`font-semibold text-amber-400 underline underline-offset-4 ${errorType === "USER_NOT_FOUND" ? "login-register-glow" : ""}`}
+                className="font-semibold text-amber-400 underline underline-offset-4"
               >
                 {t("register.title")}
               </Link>

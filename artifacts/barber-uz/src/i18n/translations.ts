@@ -41,8 +41,11 @@ export const translations = {
     'login.error.invalid_password': "Parol notoʻgʻri, qayta urinib koʻring.",
 
     // Login
-    'login.phone_label': "Telefon raqamingizni kiriting:",
-    'login.phone_placeholder': "+998 90 123-45-67",
+    'login.phone_label': "Ismingizni kiriting",
+    'login.phone_placeholder': "Masalan: Ali yoki Ali_barber",
+    'login.loading': "Kirilmoqda...",
+    'login.error.missing': "Ism va parolni kiriting.",
+    'login.error.bad': "Ism yoki parol noto‘g‘ri. Qayta urinib ko‘ring.",
     'login.reset_success': "🟢 Parol oʻzgardi. Telefon raqamingiz va yangi parolingizni kiritib profilingizga kiring.",
     'login.forgot': "Parolni unutdingizmi?",
     'login.forgot_title': "🔒 Parolni tiklash",
@@ -352,8 +355,11 @@ export const translations = {
     'login.error.invalid_password': "Неверный пароль, попробуйте снова.",
 
     // Login
-    'login.phone_label': "Введите номер телефона:",
-    'login.phone_placeholder': "Например: +998 90 123-45-67",
+    'login.phone_label': "Введите ваше имя",
+    'login.phone_placeholder': "Например: Али или Али барбер",
+    'login.loading': "Вход...",
+    'login.error.missing': "Введите имя и пароль.",
+    'login.error.bad': "Неверное имя или пароль. Попробуйте снова.",
     'login.reset_success': "🟢 Пароль обновлён. Введите номер телефона и новый пароль, чтобы войти в профиль.",
     'login.forgot': "Забыли пароль?",
     'login.forgot_title': "🔒 Восстановление пароля",

@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { randomBytes } from "crypto";
 import { db, usersTable } from "@workspace/db";
-import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { makePasswordHash, verifyPassword, generateToken, authenticate, getUser, secretsEqual, readAppEntry } from "../lib/auth";
 import { clearRateLimit, clientIp, consumeRateLimit } from "../lib/rate-limit";
 import { getTelegramLoginResult, storeLoginToken } from "../lib/telegram-bot";
 import { getLivePendingRegistration, openAccountFromPending, savePendingRegistration } from "../lib/pending-registration";
 import { lookupNameSlug } from "../lib/public-slug";
+import { signupSlug } from "../lib/signup-name";
 import { getTelegramBotUsername } from "../lib/telegram-token";
 
 const router = Router();
@@ -26,22 +27,14 @@ function formatUser(user: typeof usersTable.$inferSelect) {
 }
 
 async function findUserForLogin(identifier: string) {
-  const trimmed = identifier.trim();
-  const digits = trimmed.replace(/\D/g, "");
-  if (digits.length >= 9) {
-    const nine = (digits.startsWith("998") ? digits.slice(3) : digits).slice(-9);
-    const [byPhone] = await db
-      .select()
-      .from(usersTable)
-      .where(
-        sql`length(regexp_replace(coalesce(${usersTable.phone}, ''), '[^0-9]', '', 'g')) >= 9
-          and right(regexp_replace(coalesce(${usersTable.phone}, ''), '[^0-9]', '', 'g'), 9) = ${nine}`,
-      )
-      .limit(1);
-    if (byPhone) return byPhone;
-  }
+  const slug = signupSlug(identifier);
+  if (!slug) return null;
+  const hyphen = slug.replace(/_/g, "-");
   const [user] = await db.select().from(usersTable)
-    .where(or(eq(usersTable.username, trimmed), ilike(usersTable.name, trimmed)))
+    .where(or(
+      sql`lower(${usersTable.username}) = ${slug}`,
+      sql`lower(${usersTable.username}) = ${hyphen}`,
+    ))
     .limit(1);
   return user ?? null;
 }
@@ -117,7 +110,7 @@ router.post("/login", async (req, res) => {
       return;
     }
     const ip = clientIp(req);
-    const ident = String(username).trim().toLowerCase().slice(0, 80);
+    const ident = signupSlug(String(username)).slice(0, 80) || String(username).trim().toLowerCase().slice(0, 80);
     if (!consumeRateLimit(`login:ip:${ip}`, 25, 15 * 60 * 1000)
       || !consumeRateLimit(`login:id:${ip}:${ident}`, 5, 15 * 60 * 1000)) {
       res.status(429).json({ error: "too_many", message: "Ko'p urinish. Biroz kuting." });
