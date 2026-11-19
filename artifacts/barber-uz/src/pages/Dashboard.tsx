@@ -20,7 +20,7 @@ import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 import { Card } from "@/components/ui/card";
 import {
   CalendarDays, Wallet, Timer, Clock, Calendar, CheckCircle2, XCircle,
-  HardHat, Armchair, ChevronRight,
+  HardHat, Armchair, ChevronRight, TriangleAlert,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BookingDetailModal } from "@/components/BookingDetailModal";
@@ -1120,6 +1120,29 @@ function WelcomeNote() {
   );
 }
 
+function BotMissingCard() {
+  const { t } = useTranslation();
+  const [, navigate] = useLocation();
+  return (
+    <div className="mb-6 rounded-2xl border border-white/10 bg-card px-4 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <TriangleAlert className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+          <p className="text-[15px] font-semibold text-foreground">{t("dash.bot.title")}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate("/verify-telegram")}
+          className="h-9 shrink-0 rounded-xl bg-primary px-4 text-[15px] font-semibold text-black"
+        >
+          {t("dash.bot.action")}
+        </button>
+      </div>
+      <p className="mt-2 text-sm text-muted-foreground">{t("dash.bot.body")}</p>
+    </div>
+  );
+}
+
 function DashboardScreen() {
   const { t, lang } = useTranslation();
   const { user, isLoading } = useAuth();
@@ -1142,7 +1165,7 @@ function DashboardScreen() {
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-6"
+        className="mb-4"
       >
         <h1 className="text-2xl font-display font-bold text-foreground">
           {isTeam ? t("nav.calendar.team") : t("nav.dashboard")}
@@ -1154,6 +1177,8 @@ function DashboardScreen() {
           </p>
         )}
       </motion.div>
+
+      {user.telegramVerified !== true && <BotMissingCard />}
 
       {isTeam ? <TeamDashboard /> : <IndividualDashboard />}
     </Layout>
