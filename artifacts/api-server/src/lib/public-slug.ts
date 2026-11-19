@@ -1,5 +1,5 @@
 import { db, pendingRegistrationsTable, usersTable, slugRedirectsTable } from "@workspace/db";
-import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, ne, or, sql } from "drizzle-orm";
 import { inspectSignupName, SIGNUP_RESERVED, signupSlug, suggestionStem } from "./signup-name";
 
 export const SLUG_LOCK_MS = 30 * 24 * 60 * 60 * 1000;
@@ -46,14 +46,16 @@ export function validateSlug(raw: string): SlugProblem {
 }
 
 /** A live signup can hold a page address before the account row exists. */
-async function slugHeldBySignup(slug: string): Promise<boolean> {
+async function slugHeldBySignup(slug: string, exceptId?: string): Promise<boolean> {
+  const filters = [
+    sql`lower(${pendingRegistrationsTable.username}) = ${slug.toLowerCase()}`,
+    gt(pendingRegistrationsTable.expiresAt, new Date()),
+  ];
+  if (exceptId) filters.push(ne(pendingRegistrationsTable.id, exceptId));
   const [row] = await db
     .select({ id: pendingRegistrationsTable.id })
     .from(pendingRegistrationsTable)
-    .where(and(
-      sql`lower(${pendingRegistrationsTable.username}) = ${slug.toLowerCase()}`,
-      gt(pendingRegistrationsTable.expiresAt, new Date()),
-    ))
+    .where(and(...filters))
     .limit(1);
   return !!row;
 }
@@ -76,7 +78,7 @@ export async function isSlugAvailable(slug: string, forUserId?: string): Promise
     ))
     .limit(1);
   if (held && !(forUserId && held.userId === forUserId)) return false;
-  return !(await slugHeldBySignup(slug));
+  return !(await slugHeldBySignup(slug, forUserId));
 }
 
 export type NameSlugStatus = "empty" | "short" | "long" | "digits" | "symbols" | "free" | "taken";

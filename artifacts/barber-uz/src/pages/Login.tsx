@@ -62,7 +62,7 @@ export default function Login() {
   const loginMutation = useLoginUser({
     mutation: {
       onSuccess: (data) => {
-        const slug = data.user.username || signupSlug(username);
+        const slug = signupSlug(data.user.name) || signupSlug(username);
         if (slug) localStorage.setItem(LAST_SLUG_KEY, slug);
         localStorage.setItem("barber_token", data.token);
         localStorage.setItem("barber_user", JSON.stringify(data.user));

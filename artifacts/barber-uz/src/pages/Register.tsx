@@ -11,7 +11,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { ONBOARDING_COMPLETED_KEY, ONBOARDING_PENDING_KEY, ONBOARDING_INTRO_KEY } from "@/lib/onboarding";
-import { inspectSignupName } from "@/lib/signup-name";
+import { inspectSignupName, signupSlug } from "@/lib/signup-name";
 
 function WaitSpinner() {
   return (
@@ -155,7 +155,8 @@ export default function Register() {
         localStorage.setItem("barber_token", data.token);
         localStorage.setItem("barber_user", JSON.stringify(data.user));
         localStorage.setItem("zumio_device_account_id", data.user.id);
-        if (data.user.username) localStorage.setItem("zumio_last_slug", data.user.username);
+        const remembered = signupSlug(formData.name) || data.user.username;
+        if (remembered) localStorage.setItem("zumio_last_slug", remembered);
         localStorage.setItem(ONBOARDING_PENDING_KEY, "1");
         localStorage.removeItem(ONBOARDING_COMPLETED_KEY);
         sessionStorage.setItem(ONBOARDING_INTRO_KEY, "1");

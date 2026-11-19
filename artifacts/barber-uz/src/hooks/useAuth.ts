@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useGetCurrentUser, useLogoutUser } from '@workspace/api-client-react';
+import { signupSlug } from '@/lib/signup-name';
 
 function getBarberMemberFromStorage() {
   try {
@@ -63,15 +64,17 @@ export function useAuth(requireAuth = true) {
   const logoutMutation = useLogoutUser();
 
   function endSession() {
-    let slug = typeof user?.username === "string" ? user.username : "";
-    if (!slug) {
+    let person: { name?: string; username?: string } | null = user
+      ? { name: user.name, username: user.username }
+      : null;
+    if (!person) {
       try {
-        const saved = JSON.parse(localStorage.getItem("barber_user") || "null") as { username?: string } | null;
-        slug = typeof saved?.username === "string" ? saved.username : "";
+        person = JSON.parse(localStorage.getItem("barber_user") || "null");
       } catch {
-        slug = "";
+        person = null;
       }
     }
+    const slug = signupSlug(person?.name || "") || (person?.username || "").trim();
     if (slug) localStorage.setItem("zumio_last_slug", slug);
     localStorage.removeItem("barber_token");
     localStorage.removeItem("barber_user");

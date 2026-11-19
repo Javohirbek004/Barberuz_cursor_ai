@@ -26,17 +26,20 @@ function formatUser(user: typeof usersTable.$inferSelect) {
   };
 }
 
-async function findUserForLogin(identifier: string) {
+async function findLoginCandidates(identifier: string) {
+  const raw = identifier.trim().toLowerCase();
   const slug = signupSlug(identifier);
-  if (!slug) return null;
   const hyphen = slug.replace(/_/g, "-");
-  const [user] = await db.select().from(usersTable)
-    .where(or(
-      sql`lower(${usersTable.username}) = ${slug}`,
-      sql`lower(${usersTable.username}) = ${hyphen}`,
-    ))
-    .limit(1);
-  return user ?? null;
+  const keys = [...new Set([raw, slug, hyphen].filter((value) => value.length > 0))];
+  const filters = keys.map((key) => sql`lower(${usersTable.username}) = ${key}`);
+  if (raw) filters.push(sql`lower(${usersTable.name}) = ${raw}`);
+  if (slug) filters.push(sql`split_part(lower(${usersTable.username}), '-', 1) = ${slug}`);
+  if (!filters.length) return [];
+
+  const rows = await db.select().from(usersTable).where(or(...filters)).limit(20);
+  const exact = rows.filter((user) => keys.includes(user.username.toLowerCase()));
+  const byName = rows.filter((user) => !exact.includes(user) && signupSlug(user.name) === slug);
+  return [...exact, ...byName];
 }
 
 router.get("/name-check", async (req, res) => {
@@ -116,14 +119,21 @@ router.post("/login", async (req, res) => {
       res.status(429).json({ error: "too_many", message: "Ko'p urinish. Biroz kuting." });
       return;
     }
-    const user = await findUserForLogin(String(username));
-    if (!user) {
-      res.status(401).json({ error: "USER_NOT_FOUND", message: "User not found" });
-      return;
+    const candidates = await findLoginCandidates(String(username));
+    let user: (typeof candidates)[number] | undefined;
+    let check: { ok: boolean; needsUpgrade: boolean } | undefined;
+    for (const candidate of candidates) {
+      const result = await verifyPassword(password, candidate.passwordHash);
+      if (!result.ok) continue;
+      user = candidate;
+      check = result;
+      break;
     }
-    const check = await verifyPassword(password, user.passwordHash);
-    if (!check.ok) {
-      res.status(401).json({ error: "INVALID_PASSWORD", message: "Invalid password" });
+    if (!user || !check) {
+      res.status(401).json({
+        error: candidates.length ? "INVALID_PASSWORD" : "USER_NOT_FOUND",
+        message: candidates.length ? "Invalid password" : "User not found",
+      });
       return;
     }
     clearRateLimit(`login:id:${ip}:${ident}`);

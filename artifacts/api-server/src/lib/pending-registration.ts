@@ -116,7 +116,7 @@ export async function createUserFromPending(
   contact: { phone: string | null; telegramId: string; telegramUsername: string | null },
 ) {
   let username = pending.username;
-  if (!(await isSlugAvailable(username))) {
+  if (!(await isSlugAvailable(username, pending.id))) {
     username = await allocatePublicSlug({
       brandName: pending.brandName,
       name: pending.name,
