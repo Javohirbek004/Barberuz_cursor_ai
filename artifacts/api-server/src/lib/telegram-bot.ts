@@ -568,17 +568,28 @@ async function sendBotConnectAsk(chatId: number, name: string | null | undefined
 
 async function sendBotConnectDone(chatId: number) {
   const text = "Telegram bot muvaffaqiyatli ulandi. \u2705\n\nEndi yangi bronlar, bekor qilingan navbatlar va eslatmalar sizga darhol shu yerdan yuboriladi.";
+  const button = {
+    inline_keyboard: [[{ text: "Ilovaga qaytish", url: `${getAppUrl()}/dashboard?bot=ulandi` }]],
+  };
+  const sent = await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text,
+    reply_markup: { remove_keyboard: true },
+  }) as { result?: { message_id?: number } } | null;
+  const messageId = sent?.result?.message_id;
+  if (!messageId) return;
+  const edited = await callTelegram("editMessageText", {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    reply_markup: button,
+  }) as { ok?: boolean } | null;
+  if (edited?.ok) return;
+  await callTelegram("deleteMessage", { chat_id: chatId, message_id: messageId });
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text,
-    reply_markup: {
-      inline_keyboard: [[{ text: "Ilovaga qaytish", url: `${getAppUrl()}/dashboard?bot=ulandi` }]],
-    },
-  });
-  await callTelegram("sendMessage", {
-    chat_id: chatId,
-    text: "\u2060",
-    reply_markup: { remove_keyboard: true },
+    reply_markup: button,
   });
 }
 
