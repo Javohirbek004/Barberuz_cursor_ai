@@ -567,19 +567,18 @@ async function sendBotConnectAsk(chatId: number, name: string | null | undefined
 }
 
 async function sendBotConnectDone(chatId: number) {
-  const sent = await callTelegram("sendMessage", {
+  const text = "Telegram bot muvaffaqiyatli ulandi. \u2705\n\nEndi yangi bronlar, bekor qilingan navbatlar va eslatmalar sizga darhol shu yerdan yuboriladi.";
+  await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Telegram bot muvaffaqiyatli ulandi. \u2705\n\nEndi yangi bronlar, bekor qilingan navbatlar va eslatmalar sizga darhol shu yerdan yuboriladi.",
-    reply_markup: { remove_keyboard: true },
-  }) as { result?: { message_id?: number } } | null;
-  const messageId = sent?.result?.message_id;
-  if (!messageId) return;
-  await callTelegram("editMessageReplyMarkup", {
-    chat_id: chatId,
-    message_id: messageId,
+    text,
     reply_markup: {
       inline_keyboard: [[{ text: "Ilovaga qaytish", url: `${getAppUrl()}/dashboard?bot=ulandi` }]],
     },
+  });
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: "\u2060",
+    reply_markup: { remove_keyboard: true },
   });
 }
 
