@@ -134,6 +134,7 @@ const ENSURE_SCHEMA_SQL = [
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "morning_digest_on" text`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "morning_sample_sent" boolean DEFAULT false NOT NULL`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "bot_phone" text`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "page_name" text`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "users_bot_phone_unique_idx" ON "users" ("bot_phone") WHERE "deleted_at" IS NULL AND "bot_phone" IS NOT NULL AND btrim("bot_phone") <> ''`,
   // Accounts that already exist keep their public page. New ones stay hidden until setup finishes.
   `DO $$

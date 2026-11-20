@@ -785,6 +785,7 @@ router.get("/barber/:slug", async (req, res) => {
     res.json({
       id: barber.id,
       name: barber.name,
+      pageName: barber.pageName,
       brandName: barber.brandName,
       bio: barber.bio,
       avatarUrl: barber.avatarUrl,

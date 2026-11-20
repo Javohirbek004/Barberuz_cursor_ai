@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, type ReactNode, type Ref } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { Layout } from "@/components/Layout";
@@ -15,6 +15,7 @@ import {
 } from "@/lib/schedule";
 import { formatSpecialtyTag, parseSpecializations, stripLeadingEmoji } from "@/lib/specializations";
 import { openBarberBot } from "@/lib/bot-link";
+import { inspectSignupName } from "@/lib/signup-name";
 
 type Section = "info" | "specializations" | "bio" | "schedule";
 
@@ -71,7 +72,22 @@ const DEFAULT_SCHEDULE: WeekSchedule = {
 
 const SPECIALIZATION_OPTIONS = ["Fade", "Soch olish", "Soqol", "Soqol tekislash", "Bolalar", "Kompleks"];
 
-async function saveProfile(patch: Partial<ProfileData> & Record<string, unknown>): Promise<boolean | "phone_invalid" | "phone_taken"> {
+type NameState = "idle" | "checking" | "free" | "taken" | "short" | "long" | "digits" | "symbols";
+
+async function fetchOwnNameCheck(name: string): Promise<{ status: NameState | "empty"; suggestions: string[] } | null> {
+  try {
+    const token = localStorage.getItem("barber_token") ?? "";
+    const res = await fetch(`/api/settings/name-check?name=${encodeURIComponent(name)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function saveProfile(patch: Partial<ProfileData> & Record<string, unknown>): Promise<boolean | "phone_invalid" | "phone_taken" | "name_invalid" | "name_taken"> {
   const token = localStorage.getItem("barber_token") ?? "";
   const res = await fetch("/api/settings/profile", {
     method: "PUT",
@@ -81,7 +97,7 @@ async function saveProfile(patch: Partial<ProfileData> & Record<string, unknown>
   if (res.ok) return true;
   try {
     const code = String((await res.json())?.error || "");
-    if (code === "phone_invalid" || code === "phone_taken") return code;
+    if (code === "phone_invalid" || code === "phone_taken" || code === "name_invalid" || code === "name_taken") return code;
   } catch { /* empty body */ }
   return false;
 }
@@ -235,13 +251,15 @@ function InlineToast({ msg }: { msg: { text: string; ok: boolean } | null }) {
 }
 
 function Field({
-  label, value, onChange, placeholder, type = "text"
+  label, value, onChange, placeholder, type = "text", inputRef, below,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
+  inputRef?: Ref<HTMLInputElement>;
+  below?: ReactNode;
 }) {
   return (
     <div>
@@ -249,12 +267,14 @@ function Field({
         {label}
       </label>
       <input
+        ref={inputRef}
         type={type}
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         className="w-full h-12 px-4 rounded-2xl bg-card border border-white/8 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/15 text-sm transition-all"
       />
+      {below}
     </div>
   );
 }
@@ -270,7 +290,7 @@ function InfoForm({
   onBack: () => void;
   onSaved: (patch: Partial<ProfileData>) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [form, setForm] = useState({
     name:      profile.name      ?? "",
     brandName: profile.brandName ?? "",
@@ -280,7 +300,62 @@ function InfoForm({
   const [dirty, setDirty] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [nameState, setNameState] = useState<NameState>("idle");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const nameCheckSeq = useRef(0);
+  const pickedName = useRef<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const { msg, show } = useInlineToast();
+
+  useEffect(() => {
+    const typed = form.name;
+    if (typed === (profile.name ?? "")) {
+      nameCheckSeq.current += 1;
+      pickedName.current = null;
+      setNameState("idle");
+      setSuggestions([]);
+      return;
+    }
+    const problem = inspectSignupName(typed);
+    if (problem === "empty") {
+      nameCheckSeq.current += 1;
+      pickedName.current = null;
+      setNameState("idle");
+      setSuggestions([]);
+      return;
+    }
+    if (problem === "ok" && typed === pickedName.current) {
+      nameCheckSeq.current += 1;
+      setNameState("free");
+      setSuggestions([]);
+      return;
+    }
+    if (problem !== "ok") {
+      nameCheckSeq.current += 1;
+      pickedName.current = null;
+      setNameState(problem);
+      setSuggestions([]);
+      return;
+    }
+    setNameState("idle");
+    setSuggestions([]);
+    const handle = window.setTimeout(() => {
+      const seq = ++nameCheckSeq.current;
+      pickedName.current = null;
+      setNameState("checking");
+      void fetchOwnNameCheck(typed).then((result) => {
+        if (seq !== nameCheckSeq.current) return;
+        if (!result || result.status === "empty") {
+          setNameState("idle");
+          setSuggestions([]);
+          return;
+        }
+        setNameState(result.status === "free" || result.status === "taken" ? result.status : "symbols");
+        setSuggestions(result.suggestions || []);
+      });
+    }, 500);
+    return () => window.clearTimeout(handle);
+  }, [form.name, profile.name]);
 
   function update(field: keyof typeof form, val: string) {
     setForm(f => ({ ...f, [field]: val }));
@@ -292,7 +367,33 @@ function InfoForm({
     else onBack();
   }
 
+  function chooseName(value: string) {
+    pickedName.current = value;
+    nameCheckSeq.current += 1;
+    update("name", value);
+    setNameState("free");
+    setSuggestions([]);
+    const input = nameInputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    try { input.setSelectionRange(value.length, value.length); } catch { /* some phones ignore the caret */ }
+  }
+
   async function handleSave(): Promise<boolean> {
+    const problem = inspectSignupName(form.name);
+    if (problem !== "ok") {
+      setNameState(problem === "empty" ? "short" : problem);
+      return false;
+    }
+    if (form.name !== (profile.name ?? "")) {
+      const fresh = await fetchOwnNameCheck(form.name);
+      if (fresh?.status !== "free") {
+        setNameState(fresh?.status === "taken" || fresh?.status === "free" ? fresh.status : "symbols");
+        setSuggestions(fresh?.suggestions || []);
+        return false;
+      }
+      setNameState("free");
+    }
     setSaving(true);
     const ok = await saveProfile({
       name:      form.name,
@@ -306,6 +407,7 @@ function InfoForm({
       onSaved({ ...form, phone: form.phone.trim() });
       show(t("profile.saved"));
     } else {
+      if (ok === "name_taken") setNameState("taken");
       show(ok === "phone_invalid" ? t("profile.phone.invalid") : ok === "phone_taken" ? t("profile.phone.taken") : t("profile.error"), false);
     }
     return ok === true;
@@ -342,7 +444,14 @@ function InfoForm({
       </div>
 
       <div className="space-y-4">
-        <Field label={t("profile.info.name")} value={form.name} onChange={v => update("name", v)} placeholder="Javohirbek" />
+        <Field
+          label={t("profile.info.name")}
+          value={form.name}
+          onChange={v => update("name", v)}
+          placeholder="Javohirbek"
+          inputRef={nameInputRef}
+          below={<NameStatus lang={lang} state={nameState} suggestions={suggestions} onPick={chooseName} />}
+        />
         <Field
           label={isTeam ? t("profile.info.brand") : t("profile.info.brand_optional")}
           value={form.brandName}
@@ -984,5 +1093,66 @@ export default function ProfileSettings() {
       </div>
 
     </Layout>
+  );
+}
+
+function NameStatus({
+  lang,
+  state,
+  suggestions,
+  onPick,
+}: {
+  lang: string;
+  state: NameState;
+  suggestions: string[];
+  onPick: (value: string) => void;
+}) {
+  if (state === "idle") return null;
+  const formatError =
+    state === "short"
+      ? (lang === "ru" ? "Имя должно содержать не менее 3 символов." : "Ism kamida 3 ta belgidan iborat bo‘lishi kerak.")
+      : state === "long"
+        ? (lang === "ru" ? "Имя не должно превышать 25 символов." : "Ism 25 ta belgidan oshmasligi kerak.")
+        : state === "digits"
+          ? (lang === "ru" ? "Имя не может состоять только из цифр." : "Ism faqat raqamlardan iborat bo‘lishi mumkin emas.")
+          : state === "symbols"
+            ? (lang === "ru"
+              ? "Имя не должно начинаться или заканчиваться спецсимволами (например: ‘_’, ‘-’, ‘.’) и содержать лишние знаки."
+              : "Ism boshi yoki oxirida maxsus belgilar (masalan: ‘_’, ‘-’, ‘.’) hamda begona simvollar bo‘lishi mumkin emas.")
+            : "";
+  return (
+    <div>
+      {formatError && <p className="mt-2 text-sm leading-snug text-red-400">{formatError}</p>}
+      {state === "checking" && (
+        <p className="mt-2 text-sm text-white/45">{lang === "ru" ? "Проверка..." : "Tekshirilmoqda..."}</p>
+      )}
+      {state === "free" && (
+        <p className="mt-2 text-sm text-green-400">{lang === "ru" ? "✓ Это имя свободно" : "✓ Bu ism bo‘sh"}</p>
+      )}
+      {state === "taken" && (
+        <>
+          <p className="mt-2 text-sm leading-snug text-red-400">
+            {lang === "ru"
+              ? "✕ Это имя занято. Введите другое или выберите из вариантов:"
+              : "✕ Bu ism band. Boshqa nom yozing yoki tayyor variantlardan tanlang:"}
+          </p>
+          {suggestions.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {suggestions.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => onPick(item)}
+                  className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[13px] text-white"
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }

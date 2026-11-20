@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
+  page_name text,
   username text NOT NULL UNIQUE,
   brand_name text,
   password_hash text NOT NULL,
@@ -65,6 +66,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_entry_button boolean NOT NULL DEF
 ALTER TABLE users ADD COLUMN IF NOT EXISTS morning_digest_on text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS morning_sample_sent boolean NOT NULL DEFAULT false;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_phone text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS page_name text;
 
 CREATE TABLE IF NOT EXISTS login_devices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -7,6 +7,8 @@ export const usersTable = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
+    /** Name shown on the public page. The account name stays in `name`. */
+    pageName: text("page_name"),
     username: text("username").notNull().unique(),
     brandName: text("brand_name"),
     passwordHash: text("password_hash").notNull(),

@@ -86,7 +86,7 @@ export type NameSlugStatus = "empty" | "short" | "long" | "digits" | "symbols" |
 const SUGGESTION_TAILS = ["_uz", "_barber", "77", "01", "99", "12", "24", "36", "48", "58"];
 
 /** The typed name stays as written. Only the page address is normalized, then checked once. */
-export async function lookupNameSlug(rawName: string): Promise<{
+export async function lookupNameSlug(rawName: string, exceptUserId?: string): Promise<{
   status: NameSlugStatus;
   suggestions: string[];
 }> {
@@ -102,7 +102,7 @@ export async function lookupNameSlug(rawName: string): Promise<{
     if (!slug || slug === base || slug.length > 25 || ideas.includes(slug)) continue;
     ideas.push(slug);
   }
-  const blocked = await takenSlugs([base, ...ideas]);
+  const blocked = await takenSlugs([base, ...ideas], exceptUserId);
   if (!blocked.has(base)) return { status: "free", suggestions: [] };
   return {
     status: "taken",
@@ -110,7 +110,7 @@ export async function lookupNameSlug(rawName: string): Promise<{
   };
 }
 
-async function takenSlugs(slugs: string[]): Promise<Set<string>> {
+async function takenSlugs(slugs: string[], exceptUserId?: string): Promise<Set<string>> {
   const unique = [...new Set(slugs.map((slug) => slug.toLowerCase()))];
   const blocked = new Set(unique.filter((slug) => RESERVED.has(slug) || SIGNUP_RESERVED.has(slug)));
   const open = unique.filter((slug) => !blocked.has(slug));
@@ -120,7 +120,10 @@ async function takenSlugs(slugs: string[]): Promise<Set<string>> {
   const [users, redirects, pending] = await Promise.all([
     db.select({ slug: sql<string>`lower(${usersTable.username})` })
       .from(usersTable)
-      .where(sql`lower(${usersTable.username}) in (${list})`),
+      .where(and(
+        sql`lower(${usersTable.username}) in (${list})`,
+        exceptUserId ? ne(usersTable.id, exceptUserId) : undefined,
+      )),
     db.select({ slug: sql<string>`lower(${slugRedirectsTable.oldSlug})` })
       .from(slugRedirectsTable)
       .where(and(

@@ -53,6 +53,7 @@ type Tab = "asosiy" | "xizmatlar" | "qr";
 
 export interface ProfileData {
   name: string;
+  pageName: string;
   brandName: string;
   bio: string;
   speciality: string[];
@@ -141,7 +142,7 @@ const SOLO_BUSY = [
 ];
 
 const EMPTY_PROFILE: ProfileData = {
-  name: "", brandName: "", bio: "", speciality: [],
+  name: "", pageName: "", brandName: "", bio: "", speciality: [],
   phone: "", phoneVisible: true, address: "", mapLink: "", latitude: "", longitude: "",
   workDays: [], workStart: "09:00", workEnd: "20:00",
   lunchEnabled: false, lunchStart: "13:00", lunchEnd: "14:00",
@@ -261,6 +262,7 @@ function apiToProfile(api: Record<string, unknown>): ProfileData {
   const workEnd = (api.workingHoursEnd as string) || "20:00";
   return {
     name: (api.name as string) || "",
+    pageName: typeof api.pageName === "string" ? api.pageName : ((api.name as string) || ""),
     brandName: (api.brandName as string) || "",
     bio: (api.bio as string) || "",
     speciality,
@@ -296,7 +298,7 @@ function safeUrl(url: string): string | null {
 
 function profileToApi(p: ProfileData) {
   return {
-    name: p.name,
+    pageName: p.pageName,
     brandName: p.brandName || null,
     bio: p.bio,
     specializations: JSON.stringify(p.speciality.map((tag) => formatSpecialtyTag(tag))),
@@ -805,14 +807,13 @@ function AsosiyTab({
 
       {/* Name */}
       <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{pick(lang, "Ism / Nom *", "Имя *")}</label>
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{pick(lang, "Ism / Nom", "Имя")}</label>
         <input
-          value={profile.name}
-          onChange={e => set("name", e.target.value)}
+          value={profile.pageName}
+          onChange={e => set("pageName", e.target.value)}
           placeholder={pick(lang, "Sardor Barber", "Имя барбера")}
           className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors"
         />
-        {!profile.name && warn(pick(lang, "To'ldirilmagan", "Не заполнено"))}
       </div>
 
       {/* Brand name */}
@@ -1939,7 +1940,7 @@ export function CustomerView({ profile, services, isTeam, barberId, previewMode 
 
       {/* Name + bio */}
       <div className="px-4 pt-3 pb-3">
-        <h1 className="text-2xl font-display font-bold text-foreground mb-0.5">{profile.brandName || profile.name}</h1>
+        <h1 className="text-2xl font-display font-bold text-foreground mb-0.5">{profile.pageName.trim() || profile.brandName || profile.name}</h1>
         {profile.bio && <p className="text-sm text-muted-foreground leading-relaxed">{profile.bio}</p>}
       </div>
 
@@ -2444,7 +2445,7 @@ export default function PersonalPage() {
               <motion.div key="qr" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
                 <PageLinkPanel
                   userSlug={userSlug}
-                  displayName={profile.brandName || profile.name || "Barber"}
+                  displayName={profile.pageName.trim() || profile.brandName || profile.name || "Barber"}
                   onSlugChange={setUserSlug}
                 />
               </motion.div>

@@ -6,7 +6,7 @@ import { authenticate, getUser, makePasswordHash, verifyPassword, generateToken 
 import { consumeRateLimit } from "../lib/rate-limit";
 import { bumpSessionEpoch } from "../lib/session-epoch";
 import { normalizePhone } from "../lib/phone";
-import { SLUG_LOCK_MS, isSlugAvailable, repairAccidentalSlug, suggestSlug, validateSlug } from "../lib/public-slug";
+import { SLUG_LOCK_MS, isSlugAvailable, lookupNameSlug, repairAccidentalSlug, suggestSlug, validateSlug } from "../lib/public-slug";
 
 const router = Router();
 const ALLOWED_BUFFER_MINUTES = [0, 5, 10, 15, 20];
@@ -15,6 +15,7 @@ function formatProfile(user: typeof usersTable.$inferSelect) {
   return {
     id: user.id,
     name: user.name,
+    pageName: user.pageName,
     username: user.username,
     brandName: user.brandName,
     mode: user.mode,
@@ -81,11 +82,22 @@ router.get("/profile", authenticate, async (req, res) => {
   }
 });
 
+router.get("/name-check", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const result = await lookupNameSlug(String(req.query.name || ""), user.id);
+    res.json(result);
+  } catch (err) {
+    console.error("[settings] GET /name-check error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
 router.put("/profile", authenticate, async (req, res) => {
   try {
     const user = getUser(req);
     const {
-      name, brandName, mode, lang, phone, phoneVisible,
+      name, pageName, brandName, mode, lang, phone, phoneVisible,
       workingHoursStart, workingHoursEnd, bio, avatarUrl,
       specializations, scheduleJson,
       lunchBreakEnabled, lunchBreakStart, lunchBreakEnd,
@@ -108,6 +120,17 @@ router.put("/profile", authenticate, async (req, res) => {
     const telegramUsername = typeof rawTelegram === "string"
       ? rawTelegram.trim().replace(/^https?:\/\//i, "").replace(/^(www\.)?(t\.me|telegram\.me)\//i, "").replace(/^@+/, "").split(/[/?#\s]/)[0]
       : undefined;
+    if (name !== undefined && typeof name === "string" && name !== user.name) {
+      const nameCheck = await lookupNameSlug(name, user.id);
+      if (nameCheck.status !== "free") {
+        res.status(nameCheck.status === "taken" ? 409 : 400).json({
+          error: nameCheck.status === "taken" ? "name_taken" : "name_invalid",
+          status: nameCheck.status,
+          suggestions: nameCheck.suggestions,
+        });
+        return;
+      }
+    }
     let phoneValue: string | null | undefined = undefined;
     if (phone !== undefined) {
       if (phone === null || (typeof phone === "string" && phone.trim() === "")) {
@@ -130,6 +153,7 @@ router.put("/profile", authenticate, async (req, res) => {
     const [updated] = await db.update(usersTable)
       .set({
         ...(name !== undefined && { name }),
+        ...(pageName !== undefined && { pageName: typeof pageName === "string" && pageName.trim() ? pageName : null }),
         ...(brandName !== undefined && { brandName }),
         ...(mode !== undefined && { mode }),
         ...(lang !== undefined && { lang }),

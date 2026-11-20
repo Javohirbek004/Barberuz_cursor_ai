@@ -38,6 +38,7 @@ import {
 interface BarberData {
   id: string;
   name: string;
+  pageName?: string | null;
   brandName: string | null;
   bio: string | null;
   avatarUrl: string | null;
@@ -510,7 +511,7 @@ function PublicBookingModal({
 
   const [otherDateOpen, setOtherDateOpen] = useState(false);
   const returnNameRef = useRef<HTMLInputElement>(null);
-  const displayName = barber.brandName || barber.name;
+  const displayName = barber.pageName?.trim() || barber.brandName || barber.name;
   const dateLabel   = dateFullLabel(dateOpt, todayISO, tomorrowISO);
   // Hours, lunch and buffer come from the barber's saved settings for THIS weekday.
   const daySchedule = resolveDaySchedule(barber, dateOpt);
@@ -1354,7 +1355,7 @@ function PublicView({ barber }: { barber: BarberData }) {
     setBookingOpen(true);
   }, [barber]);
 
-  const displayName = barber.brandName || barber.name;
+  const displayName = barber.pageName?.trim() || barber.brandName || barber.name;
   const specs = parseSpecializations(barber.specializations);
   const telegramHandle = barber.telegramUsername?.replace("@", "") || null;
   const instagramHandle = barber.instagram?.replace("@", "") || null;
