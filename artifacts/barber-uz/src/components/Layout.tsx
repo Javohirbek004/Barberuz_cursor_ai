@@ -6,6 +6,8 @@ import { touchThisDevice } from "@/lib/device";
 import { pathAfterAuth } from "@/lib/onboarding";
 import { BOT_LINK_PENDING_KEY } from "@/lib/bot-link";
 
+const BOT_TOAST_SEEN_KEY = "zumio_bot_toast_seen";
+
 /** Bottom menu only on the four main tabs. Any nested page, including /settings/..., hides it. */
 const ROOT_TAB_PATHS = new Set(["/", "/dashboard", "/calendar", "/clients", "/settings"]);
 
@@ -34,7 +36,7 @@ function BotConnectedToast() {
         const res = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
         if (!res.ok) return;
         const me = await res.json();
-        if (stop || shown || me?.telegramVerified !== true) return;
+        if (stop || shown || me?.telegramVerified !== true || !me?.id) return;
         shown = true;
         window.clearInterval(tick);
         localStorage.removeItem(BOT_LINK_PENDING_KEY);
@@ -45,6 +47,8 @@ function BotConnectedToast() {
           url.searchParams.delete("bot");
           window.history.replaceState(null, "", url.pathname + url.search + url.hash);
         }
+        if (localStorage.getItem(BOT_TOAST_SEEN_KEY) === me.id) return;
+        localStorage.setItem(BOT_TOAST_SEEN_KEY, me.id);
         setShow(true);
       } catch { /* the barber may still be in the bot */ }
     }
