@@ -89,6 +89,7 @@ async function sendDueMorningDigests(todayStr: string, nowMinutes: number): Prom
     .select({
       id: usersTable.id,
       telegramId: usersTable.telegramId,
+      telegramVerified: usersTable.telegramVerified,
       morningDigestOn: usersTable.morningDigestOn,
       workingHoursStart: usersTable.workingHoursStart,
       scheduleJson: usersTable.scheduleJson,
@@ -100,7 +101,7 @@ async function sendDueMorningDigests(todayStr: string, nowMinutes: number): Prom
     ));
 
   const due = allBarbers.filter((barberUser) => {
-    if (!barberUser.telegramId) return false;
+    if (!barberUser.telegramId || barberUser.telegramVerified !== true) return false;
     const summaryKey = `morning_${todayStr}_${barberUser.id}`;
     if (sentReminders.has(summaryKey) || barberUser.morningDigestOn === todayStr) return false;
     const start = dayWorkStartMinutes(todayStr, barberUser.workingHoursStart, barberUser.scheduleJson);
@@ -155,46 +156,6 @@ async function sendDueMorningDigests(todayStr: string, nowMinutes: number): Prom
   }
 }
 
-/** One preview so the barber can see the layout. Not counted as today's real schedule. */
-async function sendMorningPreviewOnce(): Promise<void> {
-  if (!getToken()) return;
-  const todayStr = nowInTashkent().dateStr;
-  const text = [
-    "<i>Namuna. Haqiqiy xabar ish vaqtingizdan 1 soat oldin shu ko‘rinishda keladi.</i>",
-    "",
-    buildBarberMorningSummary(uzDateLabel(todayStr), [
-      { time: "10:00", clientName: "Ali", serviceName: "Soch olish" },
-      { time: "12:30", clientName: "Vali", serviceName: "Soqol" },
-    ]),
-  ].join("\n");
-
-  const barbers = await db
-    .select({ id: usersTable.id, telegramId: usersTable.telegramId, morningSampleSent: usersTable.morningSampleSent })
-    .from(usersTable)
-    .where(and(eq(usersTable.role, "barber"), isNull(usersTable.deletedAt)));
-
-  for (const barberUser of barbers) {
-    if (!barberUser.telegramId || barberUser.morningSampleSent) continue;
-    const claimed = await db
-      .update(usersTable)
-      .set({ morningSampleSent: true })
-      .where(and(
-        eq(usersTable.id, barberUser.id),
-        eq(usersTable.morningSampleSent, false),
-      ))
-      .returning({ id: usersTable.id });
-    if (!claimed.length) continue;
-    const sent = await sendTelegramMessage(barberUser.telegramId, text);
-    if (!sent) {
-      await db.update(usersTable)
-        .set({ morningSampleSent: false })
-        .where(eq(usersTable.id, barberUser.id));
-      continue;
-    }
-    console.log(`[Reminders] morning_sample sent: barberId=${barberUser.id}`);
-  }
-}
-
 let reminderInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startReminderJob(): void {
@@ -206,9 +167,6 @@ export function startReminderJob(): void {
     );
   }, 60 * 1000);
   checkAndSendReminders().catch(() => {});
-  sendMorningPreviewOnce().catch(err =>
-    console.error("[Reminders] morning sample failed:", err),
-  );
 }
 
 export function stopReminderJob(): void {

@@ -104,8 +104,15 @@ export function isHourBeforeWork(nowMinutes: number, workStartMinutes: number): 
 }
 
 export function buildBarberMorningSummary(dateLabel: string, bookings: MorningBooking[]): string {
+  const title = `☀️ Xayrli tong! Bugungi (${esc(dateLabel)}) bronlar jadvali:`;
   if (bookings.length === 0) {
-    return "☀️ Xayrli tong!\n\n🌿 Bugun uchun hech qanday bron yo‘q. Yaxshilab dam oling!";
+    return [
+      title,
+      DIVIDER,
+      "Hozircha bronlar yo‘q.",
+      DIVIDER,
+      "Kun davomida mijozlar bron qilishi mumkin — tayyor turing. Omad tilaymiz!",
+    ].join("\n");
   }
 
   const lines = [...bookings]
@@ -119,12 +126,12 @@ export function buildBarberMorningSummary(dateLabel: string, bookings: MorningBo
     .join("\n");
 
   return [
-    `☀️ Xayrli tong! Bugungi (${esc(dateLabel)}) bronlar jadvali:`,
+    title,
     "",
     DIVIDER,
     lines,
     DIVIDER,
     "",
-    `<b>Bugun jami ${bookings.length} ta bron mavjud. Omad tilaymiz! 💈</b>`,
+    `Bugun jami ${bookings.length} ta bron mavjud. Omad tilaymiz! 💈`,
   ].join("\n");
 }
