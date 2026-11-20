@@ -101,6 +101,8 @@ function publicSiteUrl(): string {
 
 /** Registration: chatId → userId (waiting for contact share) */
 const pendingVerifications = new Map<number, string>();
+/** Chat that opened the app's Ulash link and still needs to share its number. */
+const pendingBotConnect = new Map<number, string>();
 
 /** Barber member invite: chatId → userId (waiting for contact share) */
 const pendingBarberVerifications = new Map<number, { userId: string; name: string; shopName: string }>();
@@ -543,6 +545,120 @@ function log(
 // Message senders — Registration flow
 // ──────────────────────────────────────────────────────────────
 
+function botConnectText(name: string | null | undefined): string {
+  const clean = (name || "").replace(/\s+/g, " ").trim();
+  const hello = clean ? `Salom, ${clean}!` : "Salom!";
+  return (
+    `${hello} Zumio\u2019ga xush kelibsiz.\n\n` +
+    `Barber profilingizga Telegram botni ulash uchun pastdagi \u00ABRaqamni yuborish\u00BB tugmasini bosing va raqamingizni yuboring.\n\n` +
+    `Shu orqali yangi bronlar, bekor qilingan navbatlar va eslatmalar sizga darhol shu yerda yuboriladi.`
+  );
+}
+
+async function sendBotConnectAsk(chatId: number, name: string | null | undefined) {
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: botConnectText(name),
+    reply_markup: {
+      keyboard: [[{ text: "Raqamni yuborish", request_contact: true }]],
+      resize_keyboard: true,
+      one_time_keyboard: true,
+    },
+  });
+}
+
+async function sendBotConnectDone(chatId: number) {
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: "Telegram bot muvaffaqiyatli ulandi. \u2705",
+    reply_markup: {
+      remove_keyboard: true,
+      inline_keyboard: [[{ text: "Ilovaga qaytish", url: `${getAppUrl()}/settings?bot=ulandi` }]],
+    },
+  });
+}
+
+async function handleBotConnectStart(
+  chatId: number,
+  userId: string,
+  from?: Record<string, unknown>,
+) {
+  const [user] = await db.select().from(usersTable).where(and(eq(usersTable.id, userId), isNull(usersTable.deletedAt))).limit(1);
+  if (!user) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Hisob topilmadi. Ilovadan qayta ochib, yana Ulash tugmasini bosing.",
+    });
+    return;
+  }
+
+  pendingAuthLogins.delete(chatId);
+  pendingNoPayloadLogins.delete(chatId);
+  pendingPasswordResets.delete(chatId);
+  pendingVerifications.delete(chatId);
+  pendingBotConnect.set(chatId, user.id);
+
+  const telegramUsername = typeof from?.username === "string" ? from.username : null;
+  try {
+    await db.update(usersTable).set({
+      telegramId: String(chatId),
+      ...(telegramUsername ? { telegramUsername } : {}),
+      updatedAt: new Date(),
+    }).where(eq(usersTable.id, user.id));
+  } catch (err) {
+    console.error("[TelegramBot] Could not save the connect chat:", err);
+    pendingBotConnect.delete(chatId);
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Bu Telegram boshqa hisobga ulangan. O\u2018sha hisobdan kiring.",
+    });
+    return;
+  }
+
+  await sendBotConnectAsk(chatId, user.name);
+}
+
+async function finishBotConnect(
+  chatId: number,
+  userId: string,
+  phone: string | null,
+  tgUserId: string,
+  tgUsername: string | null,
+) {
+  let phones: { botPhone: string | null; publicPhone?: string } = { botPhone: null };
+  if (phone) {
+    try {
+      phones = await planSharedBarberPhone(userId, phone);
+    } catch (err) {
+      if (!(err instanceof BotPhoneTakenError)) throw err;
+    }
+  }
+  await db.update(usersTable).set({
+    telegramVerified: true,
+    telegramId: tgUserId || String(chatId),
+    telegramUsername: tgUsername,
+    ...phoneFields(phones),
+    updatedAt: new Date(),
+  }).where(eq(usersTable.id, userId));
+  pendingBotConnect.delete(chatId);
+  await sendBotConnectDone(chatId);
+}
+
+async function waitingBotConnectId(chatId: number): Promise<string | null> {
+  const remembered = pendingBotConnect.get(chatId);
+  if (remembered) return remembered;
+  const [row] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(
+      eq(usersTable.telegramId, String(chatId)),
+      eq(usersTable.telegramVerified, false),
+      isNull(usersTable.deletedAt),
+    ))
+    .limit(1);
+  return row?.id ?? null;
+}
+
 async function sendContactRequest(chatId: number, userName: string) {
   const sent = await callTelegram("sendMessage", {
     chat_id: chatId,
@@ -741,6 +857,11 @@ function parseBarberPayload(payload: string): { userId: string } | null {
   return { userId: match[1]!.toLowerCase() };
 }
 
+function parseConnectPayload(payload: string): string | null {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload)) return null;
+  return payload.toLowerCase();
+}
+
 function parseLoginPayload(payload: string): { token: string } | null {
   const match = payload.match(/^login_([a-zA-Z0-9_-]{8,128})$/);
   if (!match) return null;
@@ -828,6 +949,12 @@ export async function handleTelegramUpdate(update: unknown) {
       return;
     }
 
+    const connectId = parseConnectPayload(payload);
+    if (connectId) {
+      await handleBotConnectStart(chatId, connectId, from);
+      return;
+    }
+
     // No-payload /start: check if barber is already linked by Telegram ID
     await handleNoPayloadStart(chatId, from);
     return;
@@ -895,6 +1022,20 @@ export async function handleTelegramUpdate(update: unknown) {
         chat_id: chatId,
         text: "Iltimos, yangi parolni yozib yuboring.",
       });
+      return;
+    }
+
+    const connectUserId = await waitingBotConnectId(chatId);
+    if (connectUserId) {
+      try {
+        await finishBotConnect(chatId, connectUserId, phone, tgUserId, tgUsername);
+      } catch (err) {
+        console.error("[TelegramBot] Bot connect failed:", err);
+        await callTelegram("sendMessage", {
+          chat_id: chatId,
+          text: "Xatolik yuz berdi. Iltimos, qayta harakat qiling.",
+        });
+      }
       return;
     }
 
@@ -982,6 +1123,12 @@ export async function handleTelegramUpdate(update: unknown) {
     const authPendingText = pendingAuthLogins.get(chatId);
     if (authPendingText && authPendingText.step === "phone") {
       await sendAuthPhoneRequest(chatId, authPendingText.lang);
+      return;
+    }
+    if (pendingBotConnect.has(chatId)) {
+      const userId = pendingBotConnect.get(chatId)!;
+      const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      await sendBotConnectAsk(chatId, user?.name);
       return;
     }
     if (pendingVerifications.has(chatId)) {

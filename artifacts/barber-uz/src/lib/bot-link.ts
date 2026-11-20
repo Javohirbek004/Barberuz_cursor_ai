@@ -2,6 +2,16 @@ import { useEffect, useState } from "react";
 
 const FALLBACK_BOT_USERNAME = "BARBERUZ_YORDAMCHI_BOT";
 
+/** The bot the barber opens from Ulash. */
+export const BARBER_CONNECT_BOT = "ZumioAppBot";
+export const BOT_LINK_PENDING_KEY = "zumio_bot_link_pending";
+
+export function openBarberBot(barberId: string) {
+  if (!barberId) return;
+  try { localStorage.setItem(BOT_LINK_PENDING_KEY, "1"); } catch { /* storage can be blocked */ }
+  window.location.href = `https://t.me/${BARBER_CONNECT_BOT}?start=${barberId}`;
+}
+
 let pending: Promise<string> | null = null;
 
 function cleanUsername(value: unknown): string {

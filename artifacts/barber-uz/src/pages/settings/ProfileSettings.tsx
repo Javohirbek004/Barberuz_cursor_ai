@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { Layout } from "@/components/Layout";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BufferTimeField } from "@/components/BufferTimeField";
@@ -14,6 +14,7 @@ import {
   writeScheduleJson,
 } from "@/lib/schedule";
 import { formatSpecialtyTag, parseSpecializations, stripLeadingEmoji } from "@/lib/specializations";
+import { openBarberBot } from "@/lib/bot-link";
 
 type Section = "info" | "specializations" | "bio" | "schedule";
 
@@ -744,10 +745,11 @@ function isTelegramConnected(): boolean {
 
 function TelegramBanner() {
   const { t } = useTranslation();
-  const [, navigate] = useLocation();
+  const { user } = useAuth();
   const [dismissed, setDismissed] = useState(false);
+  const connected = user?.telegramVerified === true || isTelegramConnected();
 
-  if (isTelegramConnected() || dismissed) return null;
+  if (connected || dismissed) return null;
 
   return (
     <motion.div
@@ -762,7 +764,7 @@ function TelegramBanner() {
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <button
-          onClick={() => navigate("/verify-telegram")}
+          onClick={() => openBarberBot(user?.id || "")}
           className="h-8 px-3 rounded-xl bg-[#2AABEE] text-white text-xs font-bold hover:bg-[#229ED9] transition-colors"
         >
           {t("profile.telegram.connect_btn")}
@@ -806,6 +808,17 @@ export default function ProfileSettings() {
         setIsLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    if (user?.telegramVerified !== true) return;
+    const token = localStorage.getItem("barber_token") ?? "";
+    let cancelled = false;
+    fetch("/api/settings/profile", { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.ok ? res.json() : null)
+      .then((data: ProfileData | null) => { if (!cancelled && data) setProfile(data); })
+      .catch(() => { /* the first load already reported a failure */ });
+    return () => { cancelled = true; };
+  }, [user?.telegramVerified]);
 
   function handleSaved(patch: Partial<ProfileData>) {
     setProfile(prev => prev ? { ...prev, ...patch } : prev);

@@ -1,8 +1,10 @@
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { BottomNav } from "./BottomNav";
 import { useLocation } from "wouter";
 import { touchThisDevice } from "@/lib/device";
 import { pathAfterAuth } from "@/lib/onboarding";
+import { BOT_LINK_PENDING_KEY } from "@/lib/bot-link";
 
 /** Bottom menu only on the four main tabs. Any nested page, including /settings/..., hides it. */
 const ROOT_TAB_PATHS = new Set(["/", "/dashboard", "/calendar", "/clients", "/settings"]);
@@ -11,6 +13,66 @@ function isRootTab(pathname: string): boolean {
   const bare = pathname.split("?")[0].split("#")[0];
   const path = bare.length > 1 ? bare.replace(/\/+$/, "") : bare || "/";
   return ROOT_TAB_PATHS.has(path);
+}
+
+function BotConnectedToast() {
+  const queryClient = useQueryClient();
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    let stop = false;
+    let shown = false;
+    let tick = 0;
+    const fromBot = new URLSearchParams(window.location.search).get("bot") === "ulandi";
+    async function look() {
+      if (shown) return;
+      try {
+        const waiting = localStorage.getItem(BOT_LINK_PENDING_KEY) === "1" || fromBot;
+        if (!waiting) return;
+        const token = localStorage.getItem("barber_token");
+        if (!token) return;
+        const res = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const me = await res.json();
+        if (stop || shown || me?.telegramVerified !== true) return;
+        shown = true;
+        window.clearInterval(tick);
+        localStorage.removeItem(BOT_LINK_PENDING_KEY);
+        localStorage.setItem("barber_user", JSON.stringify(me));
+        queryClient.setQueryData(["/api/auth/me"], me);
+        if (fromBot) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("bot");
+          window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+        }
+        setShow(true);
+      } catch { /* the barber may still be in the bot */ }
+    }
+    look();
+    tick = window.setInterval(look, 3000);
+    const stopTick = window.setTimeout(() => window.clearInterval(tick), 120000);
+    const onVisible = () => { if (document.visibilityState === "visible") look(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stop = true;
+      window.clearInterval(tick);
+      window.clearTimeout(stopTick);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [queryClient]);
+
+  useEffect(() => {
+    if (!show) return;
+    const hide = window.setTimeout(() => setShow(false), 3200);
+    return () => window.clearTimeout(hide);
+  }, [show]);
+
+  if (!show) return null;
+  return (
+    <div className="fixed top-24 left-1/2 z-[60] w-[min(92vw,22rem)] -translate-x-1/2 rounded-2xl border border-[#F5B82E]/50 bg-zinc-900 px-4 py-3 text-center text-sm font-medium leading-snug text-foreground shadow-lg">
+      Telegram muvaffaqiyatli bot ulandi ✅
+    </div>
+  );
 }
 
 export function Layout({ children, hideBottomNav }: { children: ReactNode; hideBottomNav?: boolean }) {
@@ -25,6 +87,7 @@ export function Layout({ children, hideBottomNav }: { children: ReactNode; hideB
 
   return (
     <div className={`min-h-screen bg-background relative ${showBottomNav ? "pb-28" : "pb-4"}`}>
+      <BotConnectedToast />
       <main className="max-w-md mx-auto p-4 sm:p-6 w-full relative z-10">
         {children}
       </main>

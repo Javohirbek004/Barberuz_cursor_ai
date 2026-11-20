@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { bookingDay, bookingStartMs, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
 import { BookingStatusBadge, BotUnlinkedBang, bookingLook, showsBotGap } from "@/components/BookingStatusBadge";
 import { Layout } from "@/components/Layout";
+import { openBarberBot } from "@/lib/bot-link";
 import { ONBOARDING_GREET_KEY } from "@/lib/onboarding";
 import { NoShowConfirmModal } from "@/components/NoShowConfirmModal";
 import { Card } from "@/components/ui/card";
@@ -1120,9 +1121,8 @@ function WelcomeNote() {
   );
 }
 
-function BotMissingCard() {
+function BotMissingCard({ userId }: { userId: string }) {
   const { t } = useTranslation();
-  const [, navigate] = useLocation();
   return (
     <div className="mb-6 rounded-2xl border border-white/10 bg-card px-4 py-4">
       <div className="flex items-center justify-between gap-3">
@@ -1132,7 +1132,7 @@ function BotMissingCard() {
         </div>
         <button
           type="button"
-          onClick={() => navigate("/verify-telegram")}
+          onClick={() => openBarberBot(userId)}
           className="h-9 shrink-0 rounded-xl bg-primary px-4 text-[15px] font-semibold text-black"
         >
           {t("dash.bot.action")}
@@ -1178,7 +1178,7 @@ function DashboardScreen() {
         )}
       </motion.div>
 
-      {user.telegramVerified !== true && <BotMissingCard />}
+      {user.telegramVerified !== true && <BotMissingCard userId={user.id} />}
 
       {isTeam ? <TeamDashboard /> : <IndividualDashboard />}
     </Layout>
