@@ -547,11 +547,10 @@ function log(
 
 function botConnectText(name: string | null | undefined): string {
   const clean = (name || "").replace(/\s+/g, " ").trim();
-  const hello = clean ? `Salom, ${clean}!` : "Salom!";
+  const hello = clean ? `\uD83D\uDC4B Salom, ${clean}!` : "\uD83D\uDC4B Salom!";
   return (
     `${hello} Zumio\u2019ga xush kelibsiz.\n\n` +
-    `Barber profilingizga Telegram botni ulash uchun pastdagi \u00ABRaqamni yuborish\u00BB tugmasini bosing va raqamingizni yuboring.\n\n` +
-    `Shu orqali yangi bronlar, bekor qilingan navbatlar va eslatmalar sizga darhol shu yerda yuboriladi.`
+    `Barber profilingizga Telegram botni ulash uchun pastdagi \u00ABRaqamni yuborish\u00BB tugmasini bosing va raqamingizni yuboring. \uD83D\uDC47`
   );
 }
 
@@ -570,7 +569,7 @@ async function sendBotConnectAsk(chatId: number, name: string | null | undefined
 async function sendBotConnectDone(chatId: number) {
   const sent = await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: "Telegram bot muvaffaqiyatli ulandi. \u2705",
+    text: "Telegram bot muvaffaqiyatli ulandi. \u2705\n\nEndi yangi bronlar, bekor qilingan navbatlar va eslatmalar sizga darhol shu yerdan yuboriladi.",
     reply_markup: { remove_keyboard: true },
   }) as { result?: { message_id?: number } } | null;
   const messageId = sent?.result?.message_id;
