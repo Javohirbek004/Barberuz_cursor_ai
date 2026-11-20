@@ -412,6 +412,14 @@ async function handlePasswordResetText(
   pendingPasswordResets.delete(chatId);
   log("password_reset_done", { chatId, userId: pending.userId });
   const shownPhone = formatPhoneForUser(pending.phone);
+  const [account] = await db
+    .select({ name: usersTable.name, username: usersTable.username })
+    .from(usersTable)
+    .where(eq(usersTable.id, pending.userId))
+    .limit(1);
+  const loginName = (account?.name || account?.username || "").trim();
+  const loginParams = new URLSearchParams({ reset: "success" });
+  if (loginName) loginParams.set("name", loginName);
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text:
@@ -421,7 +429,7 @@ async function handlePasswordResetText(
       inline_keyboard: [[
         {
           text: "\uD83D\uDD11 Kirish sahifasiga o\u02BBtish",
-          url: `${getAppUrl()}/login?reset=success`,
+          url: `${getAppUrl()}/login?${loginParams.toString()}`,
         },
       ]],
     },

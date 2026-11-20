@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Redirect, useLocation } from "wouter";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { useLoginUser } from "@workspace/api-client-react";
@@ -34,14 +34,30 @@ export default function Login() {
   const { t } = useTranslation();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [username, setUsername] = useState("");
+  const resetParams = new URLSearchParams(window.location.search);
+  const resetSuccess = resetParams.get("reset") === "success";
+  const [username, setUsername] = useState(resetSuccess ? (resetParams.get("name") || "") : "");
   const [password, setPassword] = useState("");
+  const passwordRef = useRef<HTMLInputElement>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [formError, setFormError] = useState<"empty" | "invalid" | null>(null);
   const botUsername = useBotUsername();
-  const resetSuccess = new URLSearchParams(window.location.search).get("reset") === "success";
-  const entryCode = new URLSearchParams(window.location.search).get("entry");
+  const entryCode = resetParams.get("entry");
+
+  useEffect(() => {
+    if (!resetSuccess) return;
+    const input = passwordRef.current;
+    if (!input) return;
+    const openKeyboard = () => {
+      input.focus();
+      const end = input.value.length;
+      try { input.setSelectionRange(end, end); } catch { /* some phones ignore the caret */ }
+    };
+    openKeyboard();
+    const again = window.setTimeout(openKeyboard, 350);
+    return () => window.clearTimeout(again);
+  }, [resetSuccess]);
 
   useEffect(() => {
     if (entryCode) return;
@@ -176,8 +192,11 @@ export default function Login() {
               <Label className="text-white/80">{t("register.password")}</Label>
               <div className="relative">
                 <Input
+                  ref={passwordRef}
                   type={showPassword ? "text" : "password"}
                   value={password}
+                  autoFocus={resetSuccess}
+                  enterKeyHint="go"
                   onChange={(e) => {
                     setFormError(null);
                     setPassword(e.target.value);
