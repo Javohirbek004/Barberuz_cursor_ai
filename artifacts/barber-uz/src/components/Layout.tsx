@@ -70,7 +70,7 @@ function BotConnectedToast() {
   if (!show) return null;
   return (
     <div className="fixed top-24 left-1/2 z-[60] w-[min(92vw,22rem)] -translate-x-1/2 rounded-2xl border border-[#F5B82E]/50 bg-zinc-900 px-4 py-3 text-center text-sm font-medium leading-snug text-foreground shadow-lg">
-      Telegram muvaffaqiyatli bot ulandi ✅
+      Telegram bot muvaffaqiyatli ulandi ✅
     </div>
   );
 }
