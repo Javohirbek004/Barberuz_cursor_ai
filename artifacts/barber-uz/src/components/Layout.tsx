@@ -6,7 +6,7 @@ import { touchThisDevice } from "@/lib/device";
 import { pathAfterAuth } from "@/lib/onboarding";
 import { BOT_LINK_PENDING_KEY } from "@/lib/bot-link";
 
-const BOT_TOAST_SEEN_KEY = "zumio_bot_toast_seen";
+const BOT_TOAST_SEEN_KEY = "zumio_return_toast_once";
 
 /** Bottom menu only on the four main tabs. Any nested page, including /settings/..., hides it. */
 const ROOT_TAB_PATHS = new Set(["/", "/dashboard", "/calendar", "/clients", "/settings"]);
@@ -17,7 +17,7 @@ function isRootTab(pathname: string): boolean {
   return ROOT_TAB_PATHS.has(path);
 }
 
-function BotConnectedToast() {
+export function BotConnectedToast() {
   const queryClient = useQueryClient();
   const [show, setShow] = useState(false);
 
@@ -26,11 +26,22 @@ function BotConnectedToast() {
     let shown = false;
     let tick = 0;
     const fromBot = new URLSearchParams(window.location.search).get("bot") === "ulandi";
+    if (fromBot) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("bot");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      if (localStorage.getItem(BOT_TOAST_SEEN_KEY) !== "1") {
+        localStorage.setItem(BOT_TOAST_SEEN_KEY, "1");
+        localStorage.removeItem(BOT_LINK_PENDING_KEY);
+        setShow(true);
+      }
+      return;
+    }
     async function look() {
       if (shown) return;
       try {
-        const waiting = localStorage.getItem(BOT_LINK_PENDING_KEY) === "1" || fromBot;
-        if (!waiting) return;
+        if (localStorage.getItem(BOT_LINK_PENDING_KEY) !== "1") return;
+        if (localStorage.getItem(BOT_TOAST_SEEN_KEY) === "1") return;
         const token = localStorage.getItem("barber_token");
         if (!token) return;
         const res = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
@@ -40,15 +51,9 @@ function BotConnectedToast() {
         shown = true;
         window.clearInterval(tick);
         localStorage.removeItem(BOT_LINK_PENDING_KEY);
+        localStorage.setItem(BOT_TOAST_SEEN_KEY, "1");
         localStorage.setItem("barber_user", JSON.stringify(me));
         queryClient.setQueryData(["/api/auth/me"], me);
-        if (fromBot) {
-          const url = new URL(window.location.href);
-          url.searchParams.delete("bot");
-          window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-        }
-        if (localStorage.getItem(BOT_TOAST_SEEN_KEY) === me.id) return;
-        localStorage.setItem(BOT_TOAST_SEEN_KEY, me.id);
         setShow(true);
       } catch { /* the barber may still be in the bot */ }
     }
@@ -91,7 +96,6 @@ export function Layout({ children, hideBottomNav }: { children: ReactNode; hideB
 
   return (
     <div className={`min-h-screen bg-background relative ${showBottomNav ? "pb-28" : "pb-4"}`}>
-      <BotConnectedToast />
       <main className="max-w-md mx-auto p-4 sm:p-6 w-full relative z-10">
         {children}
       </main>
