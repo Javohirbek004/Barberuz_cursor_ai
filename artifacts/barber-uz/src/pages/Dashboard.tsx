@@ -1143,6 +1143,35 @@ function BotMissingCard({ userId }: { userId: string }) {
   );
 }
 
+function BotReturnNote() {
+  const [show, setShow] = useState(() => {
+    try {
+      if (localStorage.getItem("zumio_dash_hello_seen") === "1") return false;
+      if (sessionStorage.getItem("zumio_show_bot_toast") === "1") return true;
+      return new URLSearchParams(window.location.search).get("bot") === "ulandi";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (!show) return;
+    try {
+      localStorage.setItem("zumio_dash_hello_seen", "1");
+      sessionStorage.removeItem("zumio_show_bot_toast");
+    } catch { /* storage can be blocked */ }
+    const hide = window.setTimeout(() => setShow(false), 5000);
+    return () => window.clearTimeout(hide);
+  }, [show]);
+
+  if (!show) return null;
+  return (
+    <div className="mb-4 rounded-2xl border border-[#F5B82E]/50 bg-zinc-900 px-4 py-3 text-center text-sm font-medium leading-snug text-white shadow-lg">
+      Telegram bot muvaffaqiyatli ulandi ✅
+    </div>
+  );
+}
+
 function DashboardScreen() {
   const { t, lang } = useTranslation();
   const { user, isLoading } = useAuth();
@@ -1162,6 +1191,7 @@ function DashboardScreen() {
   return (
     <Layout>
       <WelcomeNote />
+      <BotReturnNote />
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}

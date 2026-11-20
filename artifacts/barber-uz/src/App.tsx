@@ -29,7 +29,6 @@ import BarberPublicPage from "@/pages/BarberPublicPage";
 import BarberByIdPage from "@/pages/BarberByIdPage";
 import Onboarding from "@/pages/Onboarding";
 import { pathAfterAuth } from "@/lib/onboarding";
-import { BotConnectedToast } from "@/components/Layout";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -94,7 +93,6 @@ function App() {
         <TooltipProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
             <AppRoutes />
-            <BotConnectedToast />
           </WouterRouter>
           <Toaster />
         </TooltipProvider>
