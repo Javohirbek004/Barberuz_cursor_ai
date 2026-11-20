@@ -568,22 +568,20 @@ async function sendBotConnectAsk(chatId: number, name: string | null | undefined
 }
 
 async function sendBotConnectDone(chatId: number) {
-  await callTelegram("sendMessage", {
+  const sent = await callTelegram("sendMessage", {
     chat_id: chatId,
     text: "Telegram bot muvaffaqiyatli ulandi. \u2705",
+    reply_markup: { remove_keyboard: true },
+  }) as { result?: { message_id?: number } } | null;
+  const messageId = sent?.result?.message_id;
+  if (!messageId) return;
+  await callTelegram("editMessageReplyMarkup", {
+    chat_id: chatId,
+    message_id: messageId,
     reply_markup: {
       inline_keyboard: [[{ text: "Ilovaga qaytish", url: `${getAppUrl()}/dashboard?bot=ulandi` }]],
     },
   });
-  const removed = await callTelegram("sendMessage", {
-    chat_id: chatId,
-    text: "\u200b",
-    reply_markup: { remove_keyboard: true },
-  }) as { result?: { message_id?: number } } | null;
-  const messageId = removed?.result?.message_id;
-  if (messageId) {
-    await callTelegram("deleteMessage", { chat_id: chatId, message_id: messageId });
-  }
 }
 
 async function handleBotConnectStart(
