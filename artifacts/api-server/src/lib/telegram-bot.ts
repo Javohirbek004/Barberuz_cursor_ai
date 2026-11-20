@@ -573,7 +573,7 @@ async function sendBotConnectDone(chatId: number) {
     text: "Telegram bot muvaffaqiyatli ulandi. \u2705",
     reply_markup: {
       remove_keyboard: true,
-      inline_keyboard: [[{ text: "Ilovaga qaytish", url: `${getAppUrl()}/settings?bot=ulandi` }]],
+      inline_keyboard: [[{ text: "Ilovaga qaytish", url: `${getAppUrl()}/dashboard?bot=ulandi` }]],
     },
   });
 }
