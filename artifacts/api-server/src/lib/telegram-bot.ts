@@ -571,8 +571,12 @@ async function sendBotConnectDone(chatId: number) {
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text: "Telegram bot muvaffaqiyatli ulandi. \u2705",
+    reply_markup: { remove_keyboard: true },
+  });
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: "\uD83D\uDC47",
     reply_markup: {
-      remove_keyboard: true,
       inline_keyboard: [[{ text: "Ilovaga qaytish", url: `${getAppUrl()}/dashboard?bot=ulandi` }]],
     },
   });
