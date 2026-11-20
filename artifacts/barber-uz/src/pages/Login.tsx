@@ -34,7 +34,7 @@ export default function Login() {
   const { t } = useTranslation();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [username, setUsername] = useState(() => localStorage.getItem(LAST_SLUG_KEY) || "");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
