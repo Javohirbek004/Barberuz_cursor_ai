@@ -6,7 +6,8 @@ import { touchThisDevice } from "@/lib/device";
 import { pathAfterAuth } from "@/lib/onboarding";
 import { BOT_LINK_PENDING_KEY } from "@/lib/bot-link";
 
-const BOT_TOAST_SEEN_KEY = "zumio_return_toast_once";
+const BOT_TOAST_SEEN_KEY = "zumio_bot_hello_seen";
+const BOT_TOAST_SHOW_KEY = "zumio_show_bot_toast";
 
 /** Bottom menu only on the four main tabs. Any nested page, including /settings/..., hides it. */
 const ROOT_TAB_PATHS = new Set(["/", "/dashboard", "/calendar", "/clients", "/settings"]);
@@ -25,23 +26,26 @@ export function BotConnectedToast() {
     let stop = false;
     let shown = false;
     let tick = 0;
-    const fromBot = new URLSearchParams(window.location.search).get("bot") === "ulandi";
-    if (fromBot) {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("bot");
-      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-      if (localStorage.getItem(BOT_TOAST_SEEN_KEY) !== "1") {
-        localStorage.setItem(BOT_TOAST_SEEN_KEY, "1");
-        localStorage.removeItem(BOT_LINK_PENDING_KEY);
-        setShow(true);
+    function alreadySeen() {
+      try { return localStorage.getItem(BOT_TOAST_SEEN_KEY) === "1"; } catch { return false; }
+    }
+    function cameFromBot() {
+      try {
+        if (sessionStorage.getItem(BOT_TOAST_SHOW_KEY) === "1") return true;
+        return new URLSearchParams(window.location.search).get("bot") === "ulandi";
+      } catch { return false; }
+    }
+    if (cameFromBot()) {
+      if (!alreadySeen()) setShow(true);
+      else {
+        try { sessionStorage.removeItem(BOT_TOAST_SHOW_KEY); } catch { /* storage can be blocked */ }
       }
       return;
     }
     async function look() {
-      if (shown) return;
+      if (shown || alreadySeen()) return;
       try {
         if (localStorage.getItem(BOT_LINK_PENDING_KEY) !== "1") return;
-        if (localStorage.getItem(BOT_TOAST_SEEN_KEY) === "1") return;
         const token = localStorage.getItem("barber_token");
         if (!token) return;
         const res = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
@@ -51,7 +55,6 @@ export function BotConnectedToast() {
         shown = true;
         window.clearInterval(tick);
         localStorage.removeItem(BOT_LINK_PENDING_KEY);
-        localStorage.setItem(BOT_TOAST_SEEN_KEY, "1");
         localStorage.setItem("barber_user", JSON.stringify(me));
         queryClient.setQueryData(["/api/auth/me"], me);
         setShow(true);
@@ -72,13 +75,18 @@ export function BotConnectedToast() {
 
   useEffect(() => {
     if (!show) return;
+    try {
+      localStorage.setItem(BOT_TOAST_SEEN_KEY, "1");
+      localStorage.removeItem(BOT_LINK_PENDING_KEY);
+      sessionStorage.removeItem(BOT_TOAST_SHOW_KEY);
+    } catch { /* storage can be blocked */ }
     const hide = window.setTimeout(() => setShow(false), 3200);
     return () => window.clearTimeout(hide);
   }, [show]);
 
   if (!show) return null;
   return (
-    <div className="fixed top-24 left-1/2 z-[60] w-[min(92vw,22rem)] -translate-x-1/2 rounded-2xl border border-[#F5B82E]/50 bg-zinc-900 px-4 py-3 text-center text-sm font-medium leading-snug text-foreground shadow-lg">
+    <div className="fixed top-6 left-1/2 z-[200] w-[min(92vw,22rem)] -translate-x-1/2 rounded-2xl border border-[#F5B82E]/50 bg-zinc-900 px-4 py-3 text-center text-sm font-medium leading-snug text-foreground shadow-lg">
       Telegram bot muvaffaqiyatli ulandi ✅
     </div>
   );
