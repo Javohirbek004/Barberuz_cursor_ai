@@ -22,12 +22,12 @@ import { signupSlug } from "@/lib/signup-name";
 
 const LAST_SLUG_KEY = "zumio_last_slug";
 
-function readLoginError(err: unknown): boolean {
-  if (!err || typeof err !== "object" || !("data" in err)) return false;
+function loginErrorCode(err: unknown): "USER_NOT_FOUND" | "INVALID_PASSWORD" | null {
+  if (!err || typeof err !== "object" || !("data" in err)) return null;
   const data = (err as { data?: unknown }).data;
-  if (!data || typeof data !== "object" || !("error" in data)) return false;
+  if (!data || typeof data !== "object" || !("error" in data)) return null;
   const code = (data as { error?: unknown }).error;
-  return code === "USER_NOT_FOUND" || code === "INVALID_PASSWORD";
+  return code === "USER_NOT_FOUND" || code === "INVALID_PASSWORD" ? code : null;
 }
 
 export default function Login() {
@@ -41,7 +41,8 @@ export default function Login() {
   const passwordRef = useRef<HTMLInputElement>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
-  const [formError, setFormError] = useState<"empty" | "invalid" | null>(null);
+  const [formError, setFormError] = useState<"empty" | "invalid" | "missing_profile" | null>(null);
+  const [registerGlow, setRegisterGlow] = useState(false);
   const botUsername = useBotUsername();
   const entryCode = resetParams.get("entry");
 
@@ -58,6 +59,12 @@ export default function Login() {
     const again = window.setTimeout(openKeyboard, 350);
     return () => window.clearTimeout(again);
   }, [resetSuccess]);
+
+  useEffect(() => {
+    if (!registerGlow) return;
+    const hide = window.setTimeout(() => setRegisterGlow(false), 3000);
+    return () => window.clearTimeout(hide);
+  }, [registerGlow]);
 
   useEffect(() => {
     if (entryCode) return;
@@ -86,7 +93,14 @@ export default function Login() {
         navigate(pathAfterAuth());
       },
       onError: (err) => {
-        if (readLoginError(err)) {
+        const code = loginErrorCode(err);
+        if (code === "USER_NOT_FOUND") {
+          setFormError("missing_profile");
+          setRegisterGlow(true);
+          return;
+        }
+        if (code === "INVALID_PASSWORD") {
+          setRegisterGlow(false);
           setFormError("invalid");
           return;
         }
@@ -230,7 +244,11 @@ export default function Login() {
 
             {formError && (
               <p className="text-sm leading-snug text-red-400">
-                {formError === "empty" ? t("login.error.missing") : t("login.error.bad")}
+                {formError === "empty"
+                  ? t("login.error.missing")
+                  : formError === "missing_profile"
+                    ? t("login.error.not_found")
+                    : t("login.error.bad")}
               </p>
             )}
 
@@ -250,8 +268,8 @@ export default function Login() {
             <p className="text-sm text-zinc-400">
               {t("login.no_account")}{" "}
               <Link
-                href="/register"
-                className="font-semibold text-amber-400 underline underline-offset-4"
+                href={username.trim() ? `/register?name=${encodeURIComponent(username.trim())}` : "/register"}
+                className={`font-semibold text-primary underline underline-offset-4 transition-all duration-500 ${registerGlow ? "rounded bg-primary/20 px-1.5 py-0.5 text-amber-100 shadow-[0_0_16px_rgba(245,184,46,0.85)]" : ""}`}
               >
                 {t("register.title")}
               </Link>

@@ -64,7 +64,7 @@ export default function Register() {
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
-    name: "",
+    name: new URLSearchParams(window.location.search).get("name") || "",
     brandName: "",
     password: "",
     confirmPassword: "",
