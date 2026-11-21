@@ -152,15 +152,19 @@ export default function Login() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md relative z-10"
       >
-        <div className="text-center mb-10">
+        <div className="relative mb-10 text-center">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-[4.6rem] z-0 h-28 w-64 -translate-x-1/2 bg-[radial-gradient(ellipse_at_center,rgba(255,250,238,0.96)_0%,rgba(255,238,205,0.62)_36%,transparent_70%)] blur-md"
+          />
           <img
             src={`${import.meta.env.BASE_URL}images/zumio-pin.png`}
             alt=""
             width={257}
             height={321}
-            className="mx-auto mb-3 h-20 w-auto object-contain"
+            className="relative z-10 mx-auto mb-3 h-20 w-auto object-contain"
           />
-          <h1 aria-label="Zumio" className="mx-auto mb-2 inline-flex items-end justify-center rounded-2xl bg-white px-6 pb-1.5 pt-8 font-display text-[3.35rem] font-extrabold leading-none tracking-[-0.045em] text-[#07192F]">
+          <h1 aria-label="Zumio" className="relative z-10 mb-2 flex items-end justify-center font-display text-[3.35rem] font-extrabold leading-none tracking-[-0.045em] text-[#07192F]">
             <span aria-hidden>Zum</span>
             <span aria-hidden className="relative mx-[0.01em] inline-block">
               <span className="inline-block h-[0.72em] overflow-hidden leading-none">i</span>
