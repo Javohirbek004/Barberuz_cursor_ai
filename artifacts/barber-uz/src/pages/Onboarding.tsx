@@ -915,7 +915,7 @@ export default function Onboarding() {
                   ref={addressRef}
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  placeholder={t("Tuzla, Postane, Manastır Yolu", "Тузла, Постане, Манастир Йолу")}
+                  placeholder={t("Manzilingizni kiriting", "Введите ваш адрес")}
                   className="h-12 min-w-0 flex-1 bg-transparent px-3 outline-none"
                 />
                 <button type="button" aria-label={t("Tahrir", "Изменить")} onClick={() => addressRef.current?.focus()} className="h-11 w-11 shrink-0 text-primary flex items-center justify-center">
