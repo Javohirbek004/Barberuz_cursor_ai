@@ -164,19 +164,14 @@ export default function Login() {
             height={321}
             className="relative z-10 mx-auto mb-3 h-20 w-auto object-contain"
           />
-          <h1 aria-label="Zumio" className="relative z-10 mb-2 flex items-end justify-center font-display text-[3.35rem] font-extrabold leading-none tracking-[-0.045em] text-[#07192F]">
-            <span aria-hidden>Zum</span>
-            <span aria-hidden className="relative mx-[0.01em] inline-block">
-              ı
-              <img
-                src={`${import.meta.env.BASE_URL}images/zumio-i-pin.png`}
-                alt=""
-                width={52}
-                height={66}
-                className="absolute bottom-[0.56em] left-1/2 h-[0.36em] w-auto -translate-x-1/2 object-contain"
-              />
-            </span>
-            <span aria-hidden>o</span>
+          <h1 aria-label="Zumio" className="relative z-10 mb-2">
+            <img
+              src={`${import.meta.env.BASE_URL}images/zumio-word.png`}
+              alt=""
+              width={452}
+              height={146}
+              className="mx-auto h-20 w-auto object-contain"
+            />
           </h1>
           <p className="text-muted-foreground">{t("login.title")}</p>
         </div>
