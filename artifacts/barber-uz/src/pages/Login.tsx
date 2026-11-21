@@ -173,7 +173,7 @@ export default function Login() {
                 alt=""
                 width={52}
                 height={66}
-                className="absolute bottom-[0.72em] left-1/2 h-[0.36em] w-auto -translate-x-1/2 object-contain"
+                className="absolute bottom-[0.56em] left-1/2 h-[0.36em] w-auto -translate-x-1/2 object-contain"
               />
             </span>
             <span aria-hidden>o</span>
