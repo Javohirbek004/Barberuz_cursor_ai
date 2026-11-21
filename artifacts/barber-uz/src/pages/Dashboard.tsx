@@ -13,7 +13,7 @@ import {
 import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { bookingDay, bookingStartMs, isOpenBooking, tashkentClock } from "@/lib/booking-feed";
-import { BookingStatusBadge, BotUnlinkedBang, bookingLook, showsBotGap } from "@/components/BookingStatusBadge";
+import { BookingStatusBadge, bookingLook } from "@/components/BookingStatusBadge";
 import { Layout } from "@/components/Layout";
 import { openBarberBot } from "@/lib/bot-link";
 import { ONBOARDING_GREET_KEY } from "@/lib/onboarding";
@@ -744,7 +744,6 @@ function IndividualDashboard() {
               <div className="space-y-2">
                 {upcomingBookings.map((b) => {
                   const look = bookingLook(b, now.getTime());
-                  const botGap = showsBotGap(b);
                   return (
                   <motion.div
                     key={b.id}
@@ -758,13 +757,12 @@ function IndividualDashboard() {
                         flashId === b.id ? "border-primary/60 bg-primary/10 scale-[1.02]" : ""
                       }`}
                     >
-                      <div className={`w-14 h-12 rounded-xl flex items-center justify-center font-bold flex-shrink-0 ${look.badge} ${botGap ? "ring-2 ring-primary" : ""}`}>
+                      <div className={`w-14 h-12 rounded-xl flex items-center justify-center font-bold flex-shrink-0 ${look.badge}`}>
                         <span className="text-sm whitespace-nowrap">{b.startTime.slice(0, 5)}</span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1 min-w-0">
                           <span className="font-semibold text-foreground truncate">{b.clientName}</span>
-                          <BotUnlinkedBang show={botGap} />
                         </div>
                         <div className="text-xs text-muted-foreground truncate">
                           {serviceNames(b.serviceName).join(", ") || t("dash.service_fallback")}
@@ -788,18 +786,16 @@ function IndividualDashboard() {
               <h2 className="text-lg font-bold text-foreground mb-4">{pick(lang, "⚠️ Yakunlash kutilmoqda", "⚠️ Ждёт завершения")}</h2>
               <div className="space-y-2">
                 {reviewBookings.map((b) => {
-                  const botGap = showsBotGap(b);
                   return (
                   <Card key={b.id} className="relative bg-card border-white/5 overflow-hidden">
                     <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-amber-400/80" aria-hidden />
                     <button type="button" onClick={() => setSelectedBooking(b)} className="w-full px-4 py-3 flex items-center gap-4 text-left">
-                      <div className={`w-14 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold flex-shrink-0 ${botGap ? "ring-2 ring-primary" : ""}`}>
+                      <div className="w-14 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold flex-shrink-0">
                         <span className="text-sm whitespace-nowrap">{b.startTime.slice(0, 5)}</span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1 min-w-0">
                           <div className="font-semibold text-foreground truncate">{b.clientName}</div>
-                          <BotUnlinkedBang show={botGap} />
                         </div>
                         <div className="text-xs text-muted-foreground truncate">
                           {serviceNames(b.serviceName).join(", ") || t("dash.service_fallback")}

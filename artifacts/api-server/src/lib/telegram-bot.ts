@@ -6,6 +6,7 @@
  *  Login        : https://t.me/BARBERUZ_YORDAMCHI_BOT?start=auth_{code}_{lang}
  *  Password reset: https://t.me/BARBERUZ_YORDAMCHI_BOT?start=reset_password
  *  Phone update : https://t.me/BARBERUZ_YORDAMCHI_BOT?start=update_phone
+ *  Client link : https://t.me/BARBERUZ_YORDAMCHI_BOT?start=client_{clientId}
  *                 or start=update_phone_<barberSlug> to return to that page
  *
  * Registration flow:
@@ -593,6 +594,77 @@ async function sendBotConnectDone(chatId: number) {
   if (hiddenId) await callTelegram("deleteMessage", { chat_id: chatId, message_id: hiddenId });
 }
 
+function tashkentNowStamp(): { date: string; time: string } {
+  const shifted = new Date(Date.now() + 5 * 60 * 60 * 1000);
+  const date = shifted.toISOString().slice(0, 10);
+  const time = `${String(shifted.getUTCHours()).padStart(2, "0")}:${String(shifted.getUTCMinutes()).padStart(2, "0")}`;
+  return { date, time };
+}
+
+async function handleClientInviteStart(
+  chatId: number,
+  clientId: string,
+  from?: Record<string, unknown>,
+) {
+  const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, clientId)).limit(1);
+  if (!client) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "Mijoz topilmadi. Sartaroshdan yangi havola so‘rang.",
+    });
+    return;
+  }
+  const [barber] = await db.select().from(usersTable).where(eq(usersTable.id, client.barberId)).limit(1);
+  const tg = String(from?.id || chatId);
+  const username = typeof from?.username === "string" ? from.username.replace(/^@/, "") : null;
+  await db.update(clientsTable).set({
+    telegramId: tg,
+    telegramUsername: username,
+    updatedAt: new Date(),
+  }).where(eq(clientsTable.id, client.id));
+  await db.update(bookingsTable).set({
+    clientTelegramId: tg,
+  }).where(and(
+    eq(bookingsTable.clientId, client.id),
+    isNull(bookingsTable.deletedAt),
+    inArray(bookingsTable.status, ["pending", "confirmed"]),
+  ));
+
+  const now = tashkentNowStamp();
+  const [active] = await db.select().from(bookingsTable).where(and(
+    eq(bookingsTable.clientId, client.id),
+    isNull(bookingsTable.deletedAt),
+    inArray(bookingsTable.status, ["pending", "confirmed"]),
+    sql`(${bookingsTable.date} > ${now.date} OR (${bookingsTable.date} = ${now.date} AND left(${bookingsTable.startTime}, 5) >= ${now.time}))`,
+  )).orderBy(bookingsTable.date, bookingsTable.startTime).limit(1);
+
+  const clientName = client.name?.trim() || "Mijoz";
+  const barberName = barber?.name?.trim() || barber?.brandName?.trim() || "usta";
+  const lines = [
+    `Assalomu alaykum, ${clientName}! Sartaroshingiz ${barberName} bilan muvaffaqiyatli bog‘landingiz ✅`,
+  ];
+  if (active) {
+    lines.push(
+      "Sizning faol broningiz mavjud:",
+      `📅 Sana: ${formatDateLabel(active.date)}`,
+      `⏰ Vaqti: ${active.startTime.slice(0, 5)}`,
+      `✂️ Xizmat: ${active.serviceName?.trim() || "Xizmat"}`,
+      "Endi barcha bronlaringizni kuzatib borishingiz, eslatmalar olishingiz va 24/7 navbatga yozilishingiz mumkin!",
+      "💡 Eslatma: Qabul vaqtingizni o‘tkazib yubormaslik va eslatmalar olish uchun botni o‘chirmang (bloklamang).",
+    );
+  } else {
+    lines.push(
+      "Endi barcha bronlaringizni kuzatib borishingiz, qabul vaqti haqida eslatmalar olishingiz hamda istalgan vaqtda 24/7 navbatga yozilishingiz mumkin!",
+      "💡 Eslatma: Kelgusi bronlaringiz haqida xabardor bo‘lish uchun botni o‘chirmang (bloklamang).",
+    );
+  }
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: lines.join("\n"),
+    reply_markup: clientReplyKeyboard(),
+  });
+}
+
 async function handleBotConnectStart(
   chatId: number,
   userId: string,
@@ -954,6 +1026,12 @@ export async function handleTelegramUpdate(update: unknown) {
         ? payload.slice("update_phone_".length)
         : "";
       await handlePhoneUpdateStart(chatId, from, slug);
+      return;
+    }
+
+    const clientInvite = payload.match(/^client_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+    if (clientInvite) {
+      await handleClientInviteStart(chatId, clientInvite[1]!.toLowerCase(), from);
       return;
     }
 

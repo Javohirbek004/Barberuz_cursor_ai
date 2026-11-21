@@ -9,6 +9,7 @@ export const clientsTable = pgTable("clients", {
   name: text("name").notNull(),
   phone: text("phone"),
   telegramId: text("telegram_id"),
+  telegramUsername: text("telegram_username"),
   notes: text("notes"),
   status: text("status", { enum: ["regular", "new", "blacklist"] }).notNull().default("new"),
   visitCount: integer("visit_count").notNull().default(0),

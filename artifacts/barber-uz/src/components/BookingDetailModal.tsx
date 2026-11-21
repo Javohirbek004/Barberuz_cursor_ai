@@ -14,6 +14,7 @@ import type { Booking } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { bookingStartMs } from "@/lib/booking-feed";
 import { BookingStatusBadge, BotLinkPrompt, bookingLook, showsBotGap } from "@/components/BookingStatusBadge";
+import { useAuth } from "@/hooks/useAuth";
 import { noteFromBooking, parseBookingNotes } from "@/lib/booking-note";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { moneyLabel, pick } from "@/i18n/pick";
@@ -221,6 +222,7 @@ export function BookingDetailModal({
 }) {
   const { toast } = useToast();
   const { lang } = useTranslation();
+  const { user } = useAuth(false);
 
   // ── Client note (registered-client bookings) ──────────────────
   const [clientNote, setClientNote] = useState("");
@@ -478,7 +480,13 @@ export function BookingDetailModal({
             </SheetRow>
           </div>
 
-          <BotLinkPrompt show={botGap} />
+          <BotLinkPrompt
+            show={botGap}
+            clientId={booking.clientId}
+            clientName={clientData?.name || booking.clientName}
+            phone={phone}
+            barberName={user?.name || ""}
+          />
 
           {/* ── Section 3: Note (view/edit toggle) ── */}
           {booking.clientId ? (

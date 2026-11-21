@@ -425,6 +425,7 @@ function EditClientModal({
 
 function ClientDetailInner({ id }: { id: string }) {
   const { t } = useTranslation();
+  const { user } = useAuth(false);
   const queryClient = useQueryClient();
   const [showEdit, setShowEdit] = useState(false);
   const [localName, setLocalName] = useState<string | null>(null);
@@ -575,7 +576,13 @@ function ClientDetailInner({ id }: { id: string }) {
       )}
 
       <div className="mb-4">
-        <BotLinkPrompt show={showsBotGap(client)} />
+        <BotLinkPrompt
+          show={showsBotGap(client)}
+          clientId={client.id}
+          clientName={displayName}
+          phone={displayPhone}
+          barberName={user?.name || ""}
+        />
       </div>
 
       <div className="mb-4">

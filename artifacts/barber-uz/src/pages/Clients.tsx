@@ -5,7 +5,7 @@ import { pick } from "@/i18n/pick";
 import { Layout } from "@/components/Layout";
 import { useListClients } from "@workspace/api-client-react";
 import { Search, ChevronRight, Phone, Users, UserX } from "lucide-react";
-import { BotUnlinkedBang, showsBotGap } from "@/components/BookingStatusBadge";
+import { showsBotGap } from "@/components/BookingStatusBadge";
 import { Switch } from "@/components/ui/switch";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
@@ -51,7 +51,6 @@ function ClientCard({
   const { t } = useTranslation();
   const seg = SEGMENT_META[client.segment];
   const segLabel = t(`segment.${client.segment}` as `segment.regular` | `segment.new` | `segment.lost`);
-  const botGap = showsBotGap(client);
 
   return (
     <motion.div
@@ -61,7 +60,7 @@ function ClientCard({
     >
       <Link href={`/client/${client.id}`}>
         <div className="bg-card border border-white/5 p-4 rounded-2xl flex items-center gap-4 hover:bg-white/[0.03] hover:border-white/10 transition-all cursor-pointer group">
-          <div className={`w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center font-display font-bold text-primary text-lg uppercase shrink-0 ${botGap ? "ring-2 ring-primary" : "border border-primary/20"}`}>
+          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center font-display font-bold text-primary text-lg uppercase shrink-0 border border-primary/20">
             {client.name.charAt(0)}
           </div>
 
@@ -70,7 +69,6 @@ function ClientCard({
               <span className="font-bold text-foreground text-base truncate">
                 {client.name}
               </span>
-              <BotUnlinkedBang show={botGap} />
               <span className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full border ${seg.bg} ${seg.color}`}>
                 {seg.emoji} {segLabel}
               </span>

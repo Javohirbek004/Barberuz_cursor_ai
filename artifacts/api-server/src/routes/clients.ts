@@ -150,6 +150,31 @@ router.post("/", authenticate, async (req, res) => {
   }
 });
 
+router.get("/phone-check", authenticate, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const phone = normalizePhone(typeof req.query.phone === "string" ? req.query.phone : "");
+    if (!phone) {
+      res.json({ ready: false });
+      return;
+    }
+    const found = await findClientByPhone(user.id, phone);
+    if (!found) {
+      res.json({ ready: true, state: "free" });
+      return;
+    }
+    res.json({
+      ready: true,
+      state: found.telegramId?.trim() ? "linked" : "unlinked",
+      clientId: found.id,
+      name: found.name,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
 router.get("/:clientId/bookings", authenticate, async (req, res) => {
   try {
     const user = getUser(req);

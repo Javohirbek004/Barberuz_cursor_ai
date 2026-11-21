@@ -2,6 +2,7 @@ import { AlertTriangle, Calendar, CheckCircle2, UserX, XCircle, type LucideIcon 
 import { bookingVisualStatus, type BookingVisualKey } from "@/lib/booking-feed";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { pick } from "@/i18n/pick";
+import { ClientBotConnect } from "@/components/ClientBotConnect";
 
 const LOOK: Record<BookingVisualKey, { Icon: LucideIcon; badge: string; card: string; dot: string; price: string }> = {
   confirmed: {
@@ -57,40 +58,28 @@ export function showsBotGap(record: object): boolean {
   return true;
 }
 
-/** Inside a booking or a client profile. The button does nothing until the copy step is added. */
-export function BotLinkPrompt({ show }: { show: boolean }) {
-  const { lang } = useTranslation();
-  if (!show) return null;
+/** Plain button. The connection windows open only after the barber taps it. */
+export function BotLinkPrompt({
+  show,
+  clientId,
+  clientName,
+  phone,
+  barberName,
+}: {
+  show: boolean;
+  clientId?: string | null;
+  clientName: string;
+  phone?: string | null;
+  barberName: string;
+}) {
+  if (!show || !clientId) return null;
   return (
-    <div
-      data-testid="bot-link-box"
-      className="mt-3 rounded-2xl border border-primary/45 bg-primary/10 px-3 py-3"
-    >
-      <p className="mb-2 text-xs text-muted-foreground">{pick(lang, "Bot holati", "Статус бота")}</p>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-bold text-primary">{pick(lang, "⚠️ Botga ulanmagan", "⚠️ Не подключён к боту")}</span>
-        <button
-          type="button"
-          data-testid="bot-link-button"
-          className="shrink-0 rounded-xl bg-primary px-3.5 py-2 text-sm font-extrabold text-primary-foreground"
-        >
-          {pick(lang, "Botga ulash", "Подключить к боту")}
-        </button>
-      </div>
-      <p className="mt-2 text-[13px] font-medium leading-snug text-muted-foreground">
-        {pick(lang, "Mijozga eslatmalar borishi uchun botga ulang", "Подключите к боту, чтобы клиент получал напоминания")}
-      </p>
-    </div>
-  );
-}
-
-export function BotUnlinkedBang({ show }: { show: boolean }) {
-  if (!show) return null;
-  return (
-    <span className="shrink-0 inline-flex items-center gap-0.5 text-sm leading-none" aria-hidden>
-      <span>⚠️</span>
-      <span>🔕</span>
-    </span>
+    <ClientBotConnect
+      clientId={clientId}
+      clientName={clientName}
+      phone={phone}
+      barberName={barberName}
+    />
   );
 }
 
