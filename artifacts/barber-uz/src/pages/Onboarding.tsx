@@ -69,6 +69,27 @@ const TEMPLATES: ServiceDraft[] = [
   { key: "yuz", name: "Yuzni tozalash / Maskalar", duration: 25, price: 60000, category: "Yuz parvarishi", on: false },
 ];
 
+const PRESET_NAMES: Record<string, { uz: string; ru: string }> = {
+  soch: { uz: "Soch olish", ru: "Стрижка" },
+  soqol: { uz: "Soqol olish", ru: "Оформление бороды" },
+  kompleks: { uz: "Soch va soqol (Kompleks)", ru: "Стрижка и борода (Комплекс)" },
+  bola: { uz: "Bolalar sochi", ru: "Детская стрижка" },
+  yuz: { uz: "Yuzni tozalash / Maskalar", ru: "Чистка лица / Маски" },
+};
+
+function presetName(key: string, lang: string): string {
+  const pair = PRESET_NAMES[key];
+  if (!pair) return "";
+  return lang === "ru" ? pair.ru : pair.uz;
+}
+
+function withPresetName<T extends { key: string; name: string }>(item: T, lang: string): T {
+  const pair = PRESET_NAMES[item.key];
+  if (!pair || (item.name !== pair.uz && item.name !== pair.ru)) return item;
+  const name = presetName(item.key, lang);
+  return name === item.name ? item : { ...item, name };
+}
+
 const SALON = [
   { id: "kreslo", file: "kreslo.jpg", uz: "Kreslo va ish joyi", ru: "Кресло и рабочее место" },
   { id: "qurol", file: "qurol.jpg", uz: "Ish qurollari", ru: "Инструменты" },
@@ -623,9 +644,14 @@ export default function Onboarding() {
   }
 
   function openReady() {
-    setReady(TEMPLATES.map((item) => ({ ...item, on: false })));
+    setReady(TEMPLATES.map((item) => ({ ...item, name: presetName(item.key, lang), on: false })));
     setReadyOpen(true);
   }
+
+  useEffect(() => {
+    setReady((list) => list.map((item) => withPresetName(item, lang)));
+    setServices((list) => list.map((item) => withPresetName(item, lang)));
+  }, [lang]);
 
   function saveReady() {
     const picked = ready.filter((item) => item.on && item.name.trim());
@@ -925,7 +951,7 @@ export default function Onboarding() {
               onChange={(e) => setBio(e.target.value.slice(0, 200))}
               rows={4}
               maxLength={200}
-              placeholder="Masalan: 5 yillik tajribaga ega Barber. Soch, soqol ustasi."
+              placeholder={t("Masalan: 5 yillik tajribaga ega Barber. Soch, soqol ustasi.", "Например: Барбер с 5-летним опытом. Мастер по стрижкам и бороде.")}
               className="mt-5 w-full rounded-xl bg-card border border-white/10 px-3 py-3 resize-none leading-snug"
             />
             <p className={`mt-2 text-xs text-right tabular-nums ${bio.length >= 180 ? "text-primary" : "text-muted-foreground/40"}`}>{bio.length} / 200</p>
@@ -1011,8 +1037,8 @@ export default function Onboarding() {
               <span className="ml-2 inline-block align-middle rounded-full bg-white/10 px-2 py-0.5 text-[13px] font-normal leading-5 text-muted-foreground">{stepMark}</span>
             </h1>
             <p className="mt-2 text-sm leading-snug">{t("Mijozlaringiz sizni topishi va ishlaringizni ko‘rishi uchun profillaringizni qo‘shish tavsiya qilinadi.", "Добавьте профили, чтобы клиенты могли найти вас и увидеть работы.")}</p>
-            <SocialField label={t("Instagram username ni kiriting", "Введите имя в Instagram")} value={instagram} onChange={setInstagram} placeholder="@ali_barber" ok={!!cleanHandle(instagram)} mark="ig" />
-            <SocialField label={t("Telegram username ni kiriting", "Введите имя в Telegram")} value={telegram} onChange={setTelegram} placeholder="@ali_barber" ok={!!cleanHandle(telegram)} mark="tg" />
+            <SocialField label={t("Instagram username ni kiriting", "Введите имя в Instagram")} value={instagram} onChange={setInstagram} placeholder={lang === "ru" ? "@ivan_barber" : "@ali_barber"} ok={!!cleanHandle(instagram)} mark="ig" />
+            <SocialField label={t("Telegram username ni kiriting", "Введите имя в Telegram")} value={telegram} onChange={setTelegram} placeholder={lang === "ru" ? "@ivan_barber" : "@ali_barber"} ok={!!cleanHandle(telegram)} mark="tg" />
             <div className="mt-auto pt-6 flex gap-2">
               <button type="button" onClick={() => { stepLock.current = null; setStep(4); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
                 <ChevronLeft className="w-5 h-5" />
