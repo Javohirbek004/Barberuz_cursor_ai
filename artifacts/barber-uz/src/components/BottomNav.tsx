@@ -6,10 +6,11 @@ import { BookingFlowDialog } from "./BookingFlowDialog";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { ONBOARDING_HINT_KEY } from "@/lib/onboarding";
+import { pick } from "@/i18n/pick";
 
 export function BottomNav() {
   const [location] = useLocation();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const { user } = useAuth(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [guardNav, setGuardNav] = useState(false);
@@ -84,7 +85,7 @@ export function BottomNav() {
               <div className="relative" style={{ top: -22 }}>
                 {showHint && (
                   <div className="absolute bottom-[68px] left-1/2 w-52 -translate-x-1/2 rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-center text-[13px] leading-snug text-foreground shadow-lg">
-                    Birinchi mijozingizni shu yerdan qo‘shing
+                    {pick(lang, "Birinchi mijozingizni shu yerdan qo‘shing", "Добавьте первого клиента здесь")}
                     <span className="absolute left-1/2 -bottom-1.5 h-2.5 w-2.5 -translate-x-1/2 rotate-45 border-b border-r border-white/10 bg-zinc-900" />
                   </div>
                 )}

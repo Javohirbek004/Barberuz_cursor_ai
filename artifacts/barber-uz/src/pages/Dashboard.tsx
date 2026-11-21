@@ -1094,6 +1094,7 @@ export default function Dashboard() {
 }
 
 function WelcomeNote() {
+  const { lang } = useTranslation();
   const [phase, setPhase] = useState<"in" | "out" | "off">("off");
 
   useEffect(() => {
@@ -1115,7 +1116,7 @@ function WelcomeNote() {
       <div
         className={`fixed top-4 left-1/2 z-[60] w-[min(92vw,22rem)] -translate-x-1/2 rounded-2xl border border-[#F5B82E]/50 bg-zinc-900 px-4 py-3 text-center text-sm font-medium leading-snug text-foreground shadow-lg transition-opacity duration-300 ${phase === "in" ? "opacity-100" : "opacity-0"}`}
       >
-        Xush kelibsiz, hisobingiz muvaffaqiyatli ochildi 🎉
+        {pick(lang, "Xush kelibsiz, hisobingiz muvaffaqiyatli ochildi 🎉", "Добро пожаловать, ваш аккаунт успешно открыт 🎉")}
       </div>
     </>
   );
