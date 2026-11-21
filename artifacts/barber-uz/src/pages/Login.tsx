@@ -162,7 +162,7 @@ export default function Login() {
             alt=""
             width={257}
             height={321}
-            className="relative z-10 mx-auto mb-3 h-20 w-auto object-contain"
+            className="relative z-10 mx-auto mb-1 h-20 w-auto object-contain"
           />
           <h1 aria-label="Zumio" className="relative z-10 mb-2">
             <img
@@ -170,7 +170,7 @@ export default function Login() {
               alt=""
               width={452}
               height={146}
-              className="mx-auto h-20 w-auto object-contain"
+              className="mx-auto h-[4.5rem] w-auto object-contain"
             />
           </h1>
           <p className="text-muted-foreground">{t("login.title")}</p>
