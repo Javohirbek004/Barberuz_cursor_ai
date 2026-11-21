@@ -160,7 +160,7 @@ export default function Login() {
             height={321}
             className="mx-auto mb-3 h-20 w-auto object-contain"
           />
-          <h1 aria-label="Zumio" className="mb-2 flex items-end justify-center font-display text-5xl font-extrabold leading-none tracking-tight text-[#12304A]">
+          <h1 aria-label="Zumio" className="mx-auto mb-2 inline-flex items-end justify-center rounded-2xl bg-white px-6 pb-1.5 pt-8 font-display text-[3.35rem] font-extrabold leading-none tracking-[-0.045em] text-[#07192F]">
             <span aria-hidden>Zum</span>
             <span aria-hidden className="relative mx-[0.01em] inline-block">
               <span className="inline-block h-[0.72em] overflow-hidden leading-none">i</span>
@@ -169,7 +169,7 @@ export default function Login() {
                 alt=""
                 width={52}
                 height={66}
-                className="absolute bottom-[0.78em] left-1/2 h-[0.42em] w-auto -translate-x-1/2 object-contain"
+                className="absolute bottom-[0.7em] left-1/2 h-[0.36em] w-auto -translate-x-1/2 object-contain"
               />
             </span>
             <span aria-hidden>o</span>
