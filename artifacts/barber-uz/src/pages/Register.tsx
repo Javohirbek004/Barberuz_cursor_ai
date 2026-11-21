@@ -269,7 +269,7 @@ export default function Register() {
           alt=""
           className="h-full w-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/62 via-black/76 to-black/84" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-black/50 to-black/68" />
       </div>
 
       <div className="absolute top-6 right-6 z-50">
@@ -281,17 +281,24 @@ export default function Register() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md relative z-10"
       >
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-display font-bold text-foreground mb-2">
+        <div className="mb-6 text-center">
+          <img
+            src={`${import.meta.env.BASE_URL}images/zumio-pin.png`}
+            alt=""
+            width={257}
+            height={321}
+            className="mx-auto mb-3 h-20 w-auto object-contain"
+          />
+          <h1 className="mb-3 font-display text-4xl font-bold text-white">
             {t("register.title")}
           </h1>
-          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-500/90 text-sm p-3 rounded-xl inline-block mt-2 font-medium">
+          <div className="inline-block rounded-xl border border-amber-400/80 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-300">
             {t("register.note")}
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-          <div className="space-y-5 rounded-3xl border border-white/12 bg-[#16181c]/50 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8">
+        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+          <div className="space-y-5 rounded-3xl border border-white/15 bg-[#141210]/75 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8">
             <Field
               blockRef={fieldRefs.name}
               inputRef={inputRefs.name}
@@ -376,7 +383,7 @@ export default function Register() {
           <Button
             type="submit"
             disabled={waitPhase !== null}
-            className="w-full h-14 text-lg font-bold rounded-xl bg-gradient-to-r from-primary to-amber-600 hover:shadow-xl hover:shadow-primary/30 text-black border-0 mt-4 transition-all flex items-center justify-center gap-2 disabled:opacity-100"
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-xl border-0 bg-primary text-lg font-bold text-black transition-all hover:bg-primary/90 disabled:opacity-100"
           >
             {waitPhase && <WaitSpinner />}
             {waitPhase === "account"
@@ -522,7 +529,7 @@ function Field({
           autoComplete={autoComplete}
           aria-invalid={error || invalid ? true : undefined}
           className={cn(
-            "h-12 rounded-xl bg-[#10141c]/55 text-white placeholder:text-white/35",
+            "h-12 rounded-xl border-white/10 bg-[#2a2724]/85 text-white placeholder:text-white/40",
             trailing && "pr-12",
             error || invalid
               ? "border-red-500 focus-visible:ring-red-500"
