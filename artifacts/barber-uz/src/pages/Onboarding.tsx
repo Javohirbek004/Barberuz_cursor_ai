@@ -15,6 +15,26 @@ import {
 } from "@/lib/schedule";
 import { ONBOARDING_COMPLETED_KEY, ONBOARDING_GREET_KEY, ONBOARDING_HINT_KEY, ONBOARDING_PENDING_KEY, ONBOARDING_INTRO_KEY } from "@/lib/onboarding";
 
+function WaitTicks() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" className="animate-spin" style={{ animationDuration: "0.8s" }}>
+      {Array.from({ length: 12 }, (_, i) => (
+        <rect
+          key={i}
+          x="8.15"
+          y="1.1"
+          width="1.7"
+          height="4.6"
+          rx="0.85"
+          fill="currentColor"
+          opacity={0.18 + (i / 11) * 0.82}
+          transform={`rotate(${i * 30} 9 9)`}
+        />
+      ))}
+    </svg>
+  );
+}
+
 const DRAFT_KEY = "barber_onboarding_draft";
 const STEPS = 6;
 const FLOW = 2;
@@ -345,12 +365,23 @@ export default function Onboarding() {
   const [instagram, setInstagram] = useState(saved.current?.instagram || "");
   const [telegram, setTelegram] = useState(saved.current?.telegram || "");
   const [busy, setBusy] = useState(false);
+  const [slowSave, setSlowSave] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [gpsBusy, setGpsBusy] = useState(false);
   const [gpsError, setGpsError] = useState("");
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [clock, setClock] = useState<null | { field: "workStart" | "workEnd" | "lunchStart" | "lunchEnd"; title: string }>(null);
   const stepLock = useRef<number | null>(null);
+  const finishLock = useRef(false);
+
+  useEffect(() => {
+    if (!busy) {
+      setSlowSave(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setSlowSave(true), 2500);
+    return () => window.clearTimeout(timer);
+  }, [busy]);
   const [readyOpen, setReadyOpen] = useState(false);
   const [ready, setReady] = useState<ServiceDraft[]>([]);
   const [sheet, setSheet] = useState<null | { key: string | null; name: string; duration: string; price: string; category: string; fromReady?: boolean }>(null);
@@ -485,7 +516,7 @@ export default function Onboarding() {
   }
 
   async function goNext() {
-    if (busy || stepLock.current === step) return;
+    if (busy || finishLock.current || stepLock.current === step) return;
     if (step === 0) {
       const chosen = services.filter((item) => item.on && item.name.trim());
       if (chosen.length === 0) {
@@ -556,8 +587,11 @@ export default function Onboarding() {
       }
       return;
     }
+    const finishing = step === 5;
+    if (finishing) finishLock.current = true;
     setBusy(true);
     let moved = false;
+    let finished = false;
     try {
       if (step === 5) {
         await saveServices();
@@ -599,13 +633,17 @@ export default function Onboarding() {
         localStorage.setItem(ONBOARDING_HINT_KEY, "1");
         localStorage.removeItem(ONBOARDING_PENDING_KEY);
         sessionStorage.removeItem(DRAFT_KEY);
+        finished = true;
         navigate("/dashboard");
         return;
       }
       setStep((n) => n + 1);
       moved = true;
     } finally {
-      setBusy(false);
+      if (!finished) {
+        finishLock.current = false;
+        setBusy(false);
+      }
     }
     if (moved) showPageTop();
   }
@@ -1039,15 +1077,36 @@ export default function Onboarding() {
             <p className="mt-2 text-sm leading-snug">{t("Mijozlaringiz sizni topishi va ishlaringizni ko‘rishi uchun profillaringizni qo‘shish tavsiya qilinadi.", "Добавьте профили, чтобы клиенты могли найти вас и увидеть работы.")}</p>
             <SocialField label={t("Instagram username ni kiriting", "Введите имя в Instagram")} value={instagram} onChange={setInstagram} placeholder={lang === "ru" ? "@ivan_barber" : "@ali_barber"} ok={!!cleanHandle(instagram)} mark="ig" />
             <SocialField label={t("Telegram username ni kiriting", "Введите имя в Telegram")} value={telegram} onChange={setTelegram} placeholder={lang === "ru" ? "@ivan_barber" : "@ali_barber"} ok={!!cleanHandle(telegram)} mark="tg" />
-            <div className="mt-auto pt-6 flex gap-2">
-              <button type="button" onClick={() => { stepLock.current = null; setStep(4); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
-                <ChevronLeft className="w-5 h-5" />
-                {t("Orqaga", "Назад")}
-              </button>
-              <button type="button" onClick={goNext} className="h-12 flex-1 rounded-xl bg-primary text-black text-base font-medium flex items-center justify-center gap-2">
-                {t("Tugatish", "Готово")}
-                <ChevronRight className="w-5 h-5" />
-              </button>
+            <div className="mt-auto pt-6">
+              {slowSave && (
+                <p className="mb-2 text-center text-[13px] leading-snug text-muted-foreground">
+                  {t("Profilingiz tayyorlanmoqda, biroz kuting...", "Профиль подготавливается, подождите немного...")}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { stepLock.current = null; setStep(4); }} className="h-12 w-[148px] shrink-0 rounded-xl border border-white/15 text-base font-medium flex items-center justify-center gap-2">
+                  <ChevronLeft className="w-5 h-5" />
+                  {t("Orqaga", "Назад")}
+                </button>
+                <button
+                  type="button"
+                  onClick={goNext}
+                  disabled={busy}
+                  className={`h-12 flex-1 rounded-xl bg-primary text-black text-base font-medium flex items-center justify-center gap-2 disabled:opacity-75`}
+                >
+                  {busy ? (
+                    <>
+                      <WaitTicks />
+                      {t("Saqlanmoqda...", "Сохранение...")}
+                    </>
+                  ) : (
+                    <>
+                      {t("Tugatish", "Готово")}
+                      <ChevronRight className="w-5 h-5" />
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </section>
         )}
