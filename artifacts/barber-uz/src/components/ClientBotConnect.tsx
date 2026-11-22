@@ -3,6 +3,8 @@ import { Loader2, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetClientQueryKey, getListClientsQueryKey } from "@workspace/api-client-react";
 import { useBotUsername } from "@/lib/bot-link";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { pick } from "@/i18n/pick";
 
 type PhoneState = "free" | "unlinked" | "linked";
 
@@ -61,6 +63,7 @@ export function ClientBotConnect({
   barberName: string;
 }) {
   const botUsername = useBotUsername();
+  const { lang } = useTranslation();
   const queryClient = useQueryClient();
   const [knownPhone, setKnownPhone] = useState((phone || "").trim());
   const [phoneOpen, setPhoneOpen] = useState(false);
@@ -208,14 +211,26 @@ export function ClientBotConnect({
 
   return (
     <>
-      <button
-        type="button"
-        data-testid="bot-link-button"
-        onClick={start}
-        className="mt-3 h-11 w-full rounded-xl bg-primary text-sm font-extrabold text-black"
+      <div
+        data-testid="bot-link-box"
+        className="mt-3 rounded-2xl border border-primary/45 bg-primary/10 px-3 py-3"
       >
-        Botga ulash
-      </button>
+        <p className="mb-2 text-xs text-muted-foreground">{pick(lang, "Bot holati", "Статус бота")}</p>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm font-bold text-primary">{pick(lang, "⚠️ Botga ulanmagan", "⚠️ Не подключён к боту")}</span>
+          <button
+            type="button"
+            data-testid="bot-link-button"
+            onClick={start}
+            className="shrink-0 rounded-xl bg-primary px-3.5 py-2 text-sm font-extrabold text-primary-foreground"
+          >
+            {pick(lang, "Botga ulash", "Подключить к боту")}
+          </button>
+        </div>
+        <p className="mt-2 text-[13px] font-medium leading-snug text-muted-foreground">
+          {pick(lang, "Mijozga eslatmalar borishi uchun botga ulang", "Подключите к боту, чтобы клиент получал напоминания")}
+        </p>
+      </div>
 
       {phoneOpen && (
         <div className="fixed inset-0 z-[230] flex items-end bg-black/70 sm:items-center sm:justify-center">

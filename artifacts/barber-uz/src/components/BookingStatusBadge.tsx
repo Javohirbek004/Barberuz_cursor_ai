@@ -58,7 +58,18 @@ export function showsBotGap(record: object): boolean {
   return true;
 }
 
-/** Plain button. The connection windows open only after the barber taps it. */
+/** Yellow mark beside a client the bot does not know. */
+export function BotUnlinkedBang({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <span className="shrink-0 inline-flex items-center gap-0.5 text-sm leading-none" aria-hidden>
+      <span>⚠️</span>
+      <span>🔕</span>
+    </span>
+  );
+}
+
+/** The old status card. Botga ulash still opens the phone, Telegram and SMS steps. */
 export function BotLinkPrompt({
   show,
   clientId,

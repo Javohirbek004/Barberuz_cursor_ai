@@ -11,7 +11,7 @@ import type { Booking } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { isOpenBooking } from "@/lib/booking-feed";
-import { BookingStatusBadge, bookingLook } from "@/components/BookingStatusBadge";
+import { BookingStatusBadge, BotUnlinkedBang, bookingLook, showsBotGap } from "@/components/BookingStatusBadge";
 import { BookingDetailModal } from "@/components/BookingDetailModal";
 import { BookingNoteBadge } from "@/components/BookingNoteBadge";
 import { noteFromBooking } from "@/lib/booking-note";
@@ -359,11 +359,12 @@ function IndividualCalendar() {
             {reviewOpen && (
               <div className="space-y-2">
                 {reviewBookings.map((b) => {
+                  const botGap = showsBotGap(b);
                   return (
                   <div key={b.id} className="relative rounded-2xl bg-card border border-white/5 overflow-hidden">
                     <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-amber-400/80" aria-hidden />
                     <button type="button" onClick={() => setSelectedBooking(b)} className="w-full p-4 flex items-start gap-4 text-left">
-                      <div className="flex flex-col items-center justify-center min-w-[2.75rem] rounded-xl px-1.5 py-1">
+                      <div className={`flex flex-col items-center justify-center min-w-[2.75rem] rounded-xl px-1.5 py-1 ${botGap ? "ring-2 ring-primary" : ""}`}>
                         <span className="text-sm font-bold tabular-nums text-foreground">{b.startTime.slice(0, 5)}</span>
                         <div className="mt-1.5 w-2.5 h-2.5 rounded-full bg-amber-400" />
                       </div>
@@ -371,6 +372,7 @@ function IndividualCalendar() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex items-center gap-1">
                             <span className="font-bold truncate text-foreground">{b.clientName}</span>
+                            <BotUnlinkedBang show={botGap} />
                           </div>
                           <BookingStatusBadge booking={b} />
                         </div>
@@ -437,6 +439,7 @@ function IndividualCalendar() {
           {visibleBookings.map((b, i) => {
             const view = bookingLook(b);
             const waiting = view.key === "pending_action";
+            const botGap = showsBotGap(b);
             return (
             <motion.button
               key={b.id}
@@ -449,7 +452,7 @@ function IndividualCalendar() {
               data-off-booking={selectedClosed ? "1" : "0"}
               className={`w-full text-left rounded-2xl border p-4 flex items-start gap-4 transition-colors ${view.card} ${selectedClosed ? "ring-2 ring-primary/70 shadow-lg shadow-primary/20" : ""}`}
             >
-              <div className="flex flex-col items-center justify-center min-w-[2.75rem] rounded-xl px-1.5 py-1">
+              <div className={`flex flex-col items-center justify-center min-w-[2.75rem] rounded-xl px-1.5 py-1 ${botGap ? "ring-2 ring-primary" : ""}`}>
                 <span className="text-sm font-bold tabular-nums text-foreground">
                   {b.startTime.slice(0, 5)}
                 </span>
@@ -461,6 +464,7 @@ function IndividualCalendar() {
                     <span className="font-bold truncate text-foreground">
                       {b.clientName}
                     </span>
+                    <BotUnlinkedBang show={botGap} />
                   </div>
                   <BookingStatusBadge
                     booking={b}
