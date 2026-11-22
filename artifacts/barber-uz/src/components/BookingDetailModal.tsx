@@ -480,14 +480,6 @@ export function BookingDetailModal({
             </SheetRow>
           </div>
 
-          <BotLinkPrompt
-            show={botGap}
-            clientId={booking.clientId}
-            clientName={clientData?.name || booking.clientName}
-            phone={phone}
-            barberName={user?.name || ""}
-          />
-
           {/* ── Section 3: Note (view/edit toggle) ── */}
           {booking.clientId ? (
             <NoteSection
@@ -518,6 +510,14 @@ export function BookingDetailModal({
               onRevert={handleBookingNoteRevert}
             />
           )}
+
+          <BotLinkPrompt
+            show={botGap}
+            clientId={booking.clientId}
+            clientName={clientData?.name || booking.clientName}
+            phone={phone}
+            barberName={user?.name || ""}
+          />
 
           {/* ── Section 4: Action buttons ── */}
           {needsReview && (

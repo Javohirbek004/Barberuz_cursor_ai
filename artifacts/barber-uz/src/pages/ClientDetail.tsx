@@ -576,20 +576,20 @@ function ClientDetailInner({ id }: { id: string }) {
       )}
 
       <div className="mb-4">
+        <NotesField
+          clientId={id}
+          initial={client.notes ?? ""}
+          onSaved={handleNoteSaved}
+        />
+      </div>
+
+      <div className="mb-4">
         <BotLinkPrompt
           show={showsBotGap(client)}
           clientId={client.id}
           clientName={displayName}
           phone={displayPhone}
           barberName={user?.name || ""}
-        />
-      </div>
-
-      <div className="mb-4">
-        <NotesField
-          clientId={id}
-          initial={client.notes ?? ""}
-          onSaved={handleNoteSaved}
         />
       </div>
 
