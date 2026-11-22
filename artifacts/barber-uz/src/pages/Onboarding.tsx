@@ -803,7 +803,7 @@ export default function Onboarding() {
         {step === 0 && (
           <section className="flex flex-1 flex-col min-h-[calc(100dvh-6.5rem)]">
             <StepName
-              title={savedServices.length > 0 ? t("Saqlangan xizmatlar", "Сохранённые услуги") : t("Xizmatlarni qo‘shing", "Добавьте услуги")}
+              title={savedServices.length > 0 ? t("Saqlangan xizmatlar", "Сохранённые услуги") : t("Xizmatlar", "Услуги")}
               mark={savedServices.length > 0 ? undefined : stepMark}
               tone={stepTone}
             />
