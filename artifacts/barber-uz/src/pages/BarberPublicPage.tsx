@@ -24,7 +24,10 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { useBotUsername } from "@/lib/bot-link";
 import { SpecialtyTags } from "@/components/SpecialtyTags";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PageTabs } from "@/components/PageTabs";
+import { useTranslation } from "@/i18n/LanguageContext";
+import { moneyLabel, pick, weekdayNames } from "@/i18n/pick";
 import { parseSpecializations } from "@/lib/specializations";
 import { getCategoryIcon } from "@/lib/category-icon";
 import {
@@ -91,40 +94,43 @@ function mapsHref(lat: string, lng: string, mapLink: string | null): string {
   return `https://www.google.com/maps?q=${lat},${lng}`;
 }
 
-const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-const DAY_LABELS: Record<string, string> = {
-  mon: "Du", tue: "Se", wed: "Ch", thu: "Pa", fri: "Ju", sat: "Sh", sun: "Ya",
-};
+const WEEK_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
-function formatDur(n: number) {
+function formatDur(n: number, lang = "uz") {
+  if (lang === "ru") {
+    if (n < 60) return `${n} мин`;
+    const h = Math.floor(n / 60), m = n % 60;
+    return m > 0 ? `${h} ч ${m} мин` : `${h} ч`;
+  }
   if (n < 60) return `${n} min`;
   const h = Math.floor(n / 60), m = n % 60;
   return m > 0 ? `${h}s ${m}m` : `${h} soat`;
 }
 
-function formatPrice(n: number) {
-  return n.toLocaleString("uz-UZ") + " so'm";
+function formatPrice(n: number, lang = "uz") {
+  return moneyLabel(lang, n);
+}
+
+function serviceTitle(service: { name: string; nameRu?: string | null }, lang: string) {
+  const ru = service.nameRu?.trim();
+  return lang === "ru" && ru ? ru : service.name;
 }
 
 // ── Date-picker helpers ───────────────────────────────────────────────────────
 const UZ_SHORT_DAYS_PUB = ["Ya", "Du", "Se", "Ch", "Pa", "Ju", "Sh"];
 const UZ_FULL_DAYS_PUB  = ["Yakshanba", "Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"];
 const UZ_MONTHS_PUB     = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
+const RU_SHORT_DAYS_PUB = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+const RU_FULL_DAYS_PUB  = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"];
+const RU_MONTHS_PUB     = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 
-/** Short label for the date-picker button: "Bugun" / "Ertaga" / "Du 28" */
-function dateBtnLabel(iso: string, todayISO: string, tomorrowISO: string): string {
-  if (iso === todayISO) return "Bugun";
-  if (iso === tomorrowISO) return "Ertaga";
+function dateFullLabel(iso: string, todayISO: string, tomorrowISO: string, lang = "uz"): string {
+  if (iso === todayISO) return pick(lang, "Bugun", "Сегодня");
+  if (iso === tomorrowISO) return pick(lang, "Ertaga", "Завтра");
   const d = new Date(`${iso}T12:00:00Z`);
-  return `${UZ_SHORT_DAYS_PUB[d.getUTCDay()]} ${d.getUTCDate()}`;
-}
-
-/** Full human-readable label used in confirm / done steps */
-function dateFullLabel(iso: string, todayISO: string, tomorrowISO: string): string {
-  if (iso === todayISO) return "Bugun";
-  if (iso === tomorrowISO) return "Ertaga";
-  const d = new Date(`${iso}T12:00:00Z`);
-  return `${UZ_FULL_DAYS_PUB[d.getUTCDay()]}, ${d.getUTCDate()}-${UZ_MONTHS_PUB[d.getUTCMonth()]}`;
+  const days = lang === "ru" ? RU_FULL_DAYS_PUB : UZ_FULL_DAYS_PUB;
+  const months = lang === "ru" ? RU_MONTHS_PUB : UZ_MONTHS_PUB;
+  return `${days[d.getUTCDay()]}, ${d.getUTCDate()}-${months[d.getUTCMonth()]}`;
 }
 
 type PubBookingStep = "time" | "name" | "confirm" | "phone" | "verifying" | "done";
@@ -156,12 +162,14 @@ function ClientDateGrid({
   isClosed,
   onSelect,
   onClosed,
+  lang = "uz",
 }: {
   todayISO: string;
   selected: string;
   isClosed: (iso: string) => boolean;
   onSelect: (iso: string) => void;
   onClosed: (iso: string) => void;
+  lang?: string;
 }) {
   const latest = addDaysISO(todayISO, 365);
   const initial = isoParts(selected >= todayISO ? selected : todayISO);
@@ -177,19 +185,19 @@ function ClientDateGrid({
         <button
           type="button"
           disabled={atStart}
-          aria-label="Oldingi oy"
+          aria-label={pick(lang, "Oldingi oy", "Предыдущий месяц")}
           onClick={() => setView((current) => shiftMonth(current.year, current.month, -1))}
           className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground disabled:opacity-30"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
         <p className="text-sm font-semibold text-foreground">
-          {UZ_MONTHS_PUB[view.month - 1]} {view.year}
+          {(lang === "ru" ? RU_MONTHS_PUB : UZ_MONTHS_PUB)[view.month - 1]} {view.year}
         </p>
         <button
           type="button"
           disabled={atEnd}
-          aria-label="Keyingi oy"
+          aria-label={pick(lang, "Keyingi oy", "Следующий месяц")}
           onClick={() => setView((current) => shiftMonth(current.year, current.month, 1))}
           className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground disabled:opacity-30"
         >
@@ -197,7 +205,7 @@ function ClientDateGrid({
         </button>
       </div>
       <div className="mb-1 grid grid-cols-7 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60">
-        {UZ_SHORT_DAYS_PUB.map((label) => <span key={label}>{label}</span>)}
+        {(lang === "ru" ? RU_SHORT_DAYS_PUB : UZ_SHORT_DAYS_PUB).map((label) => <span key={label}>{label}</span>)}
       </div>
       <div className="grid grid-cols-7 gap-1">
         {monthCells(view.year, view.month).map((iso, index) => {
@@ -254,9 +262,6 @@ type SuccessFacts = {
   date: string;
   time: string;
 };
-
-const CANCEL_OLD_TEXT = "Bu harakatni tasdiqlasangiz eski broningiz bekor qilinadi va yangi tanlagan broningiz tasdiqlanadi. Bu harakatni tasdiqlaysizmi?";
-const MOVE_CLOSED_TEXT = "Belgilangan vaqtga 1 soatdan kam qolgani sababli vaqtni o‘zgartirib bo‘lmaydi. Iltimos, usta bilan bog‘laning.";
 
 interface SavedClient {
   tgId: string;
@@ -376,6 +381,8 @@ function PublicBookingModal({
   onLeaveSuccess?: () => void;
   resume?: BookingDraft | null;
 }) {
+  const { lang } = useTranslation();
+  const say = (uz: string, ru: string) => pick(lang, uz, ru);
   // Calendar days are always Tashkent days, whatever the client's device timezone is.
   const todayISO    = tashkentTodayISO();
   const tomorrowISO = addDaysISO(todayISO, 1);
@@ -512,7 +519,7 @@ function PublicBookingModal({
   const [otherDateOpen, setOtherDateOpen] = useState(false);
   const returnNameRef = useRef<HTMLInputElement>(null);
   const displayName = barber.pageName?.trim() || barber.brandName || barber.name;
-  const dateLabel   = dateFullLabel(dateOpt, todayISO, tomorrowISO);
+  const dateLabel   = dateFullLabel(dateOpt, todayISO, tomorrowISO, lang);
   // Hours, lunch and buffer come from the barber's saved settings for THIS weekday.
   const daySchedule = resolveDaySchedule(barber, dateOpt);
   const bufferMins = normalizeBuffer(barber.bufferTime);
@@ -601,7 +608,7 @@ function PublicBookingModal({
     setStep("time");
     setSlotReload((n) => n + 1);
     setFormError(message);
-    toast({ title: "Vaqt mos emas", description: message, variant: "destructive" });
+    toast({ title: say("Vaqt mos emas", "Время не подходит"), description: message, variant: "destructive" });
   }
 
   function rememberDirectClient() {
@@ -642,13 +649,13 @@ function PublicBookingModal({
       }
       if (res.status === 403 && message) {
         setFormError(message);
-        toast({ title: "Bekor qilib bo'lmaydi", description: message, variant: "destructive" });
+        toast({ title: say("Bekor qilib bo'lmaydi", "Отменить нельзя"), description: message, variant: "destructive" });
         return false;
       }
       if (res.status === 429) {
-        const text = message || "Ko'p urinish. Biroz kuting.";
+        const text = message || say("Ko'p urinish. Biroz kuting.", "Слишком много попыток. Подождите немного.");
         setFormError(text);
-        toast({ title: "Biroz kuting", description: text, variant: "destructive" });
+        toast({ title: say("Biroz kuting", "Подождите немного"), description: text, variant: "destructive" });
         return false;
       }
       throw new Error(message || "booking failed");
@@ -661,23 +668,23 @@ function PublicBookingModal({
     const said = err instanceof Error ? err.message.trim() : "";
     const text = said && said !== "booking failed" && said !== "not confirmed"
       ? said
-      : "Bron saqlanmadi. Qayta urinib ko'ring.";
+      : say("Bron saqlanmadi. Qayta urinib ko'ring.", "Запись не сохранилась. Попробуйте ещё раз.");
     setFormError(text);
-    toast({ title: "Bron saqlanmadi", description: text, variant: "destructive" });
+    toast({ title: say("Bron saqlanmadi", "Запись не сохранилась"), description: text, variant: "destructive" });
   }
 
   async function handleDirectConfirm() {
     if (submitting || !selectedTime) return;
     const nameOk = !!clientName.trim();
     const phoneOk = phoneReady(clientPhone);
-    setNameError(nameOk ? "" : "Ism majburiy");
-    setPhoneError(phoneOk ? "" : "Telefon raqam majburiy");
+    setNameError(nameOk ? "" : say("Ism majburiy", "Имя обязательно"));
+    setPhoneError(phoneOk ? "" : say("Telefon raqam majburiy", "Номер телефона обязателен"));
     if (!nameOk || !phoneOk) {
-      setFormError(phoneOk ? "Ismingizni kiriting." : "Telefon raqamini kiriting.");
+      setFormError(phoneOk ? say("Ismingizni kiriting.", "Введите имя.") : say("Telefon raqamini kiriting.", "Введите номер телефона."));
       return;
     }
     if (dateOpt === todayISO && toMins(selectedTime) <= tashkentNowMinutes()) {
-      timeNoLongerOpen("O'tgan vaqtga bron qilib bo'lmaydi. Boshqa vaqtni tanlang.");
+      timeNoLongerOpen(say("O'tgan vaqtga bron qilib bo'lmaydi. Boshqa vaqtni tanlang.", "На прошедшее время записаться нельзя. Выберите другое время."));
       return;
     }
     setSubmitting(true);
@@ -758,27 +765,27 @@ function PublicBookingModal({
         setRescheduleMode(false);
         setActiveBooking({ ...activeBooking, canMove: false });
         setSelectedTime(null);
-        toast({ title: "Vaqtni o‘zgartirib bo‘lmaydi", description: message || MOVE_CLOSED_TEXT, variant: "destructive" });
+        toast({ title: say("Vaqtni o‘zgartirib bo‘lmaydi", "Время изменить нельзя"), description: message || say("Belgilangan vaqtga 1 soatdan kam qolgani sababli vaqtni o‘zgartirib bo‘lmaydi. Iltimos, usta bilan bog‘laning.", "До записи осталось меньше часа, поэтому время изменить нельзя. Свяжитесь с мастером."), variant: "destructive" });
         return;
       }
       if (res.status === 409) {
         setSelectedTime(null);
         setSlotReload((n) => n + 1);
-        const text = message || "Tanlangan vaqt allaqachon band";
+        const text = message || say("Tanlangan vaqt allaqachon band", "Выбранное время уже занято");
         setFormError(text);
-        toast({ title: "Vaqt band", description: text, variant: "destructive" });
+        toast({ title: say("Vaqt band", "Время занято"), description: text, variant: "destructive" });
         return;
       }
       if (!res.ok || data?.status !== "confirmed") {
-        const text = message || "Vaqtni saqlab bo‘lmadi. Boshqa vaqtni tanlang.";
+        const text = message || say("Vaqtni saqlab bo‘lmadi. Boshqa vaqtni tanlang.", "Не удалось сохранить время. Выберите другое.");
         setFormError(text);
-        toast({ title: "Vaqt mos emas", description: text, variant: "destructive" });
+        toast({ title: say("Vaqt mos emas", "Время не подходит"), description: text, variant: "destructive" });
         return;
       }
       setSuccessFacts({
         master: activeBooking.master,
         service: activeBooking.service,
-        price: formatPrice(Number(activeBooking.price) || 0),
+        price: formatPrice(Number(activeBooking.price) || 0, lang),
         date: dateLabel,
         time: selectedTime,
       });
@@ -801,7 +808,7 @@ function PublicBookingModal({
   }
 
   function slotJustTaken() {
-    const text = "Ushbu vaqt yangigina band qilindi. Iltimos, boshqa vaqtni tanlang.";
+    const text = say("Ushbu vaqt yangigina band qilindi. Iltimos, boshqa vaqtni tanlang.", "Это время только что заняли. Выберите другое.");
     setRescheduleMode(false);
     setActiveBooking(null);
     setActiveAsk(null);
@@ -809,14 +816,14 @@ function PublicBookingModal({
     setStep("time");
     setSlotReload((n) => n + 1);
     setFormError(text);
-    toast({ title: "Vaqt band", description: text, variant: "destructive" });
+    toast({ title: say("Vaqt band", "Время занято"), description: text, variant: "destructive" });
   }
 
   async function handleConfirm() {
     if (submitting || !selectedTime) return;
     if (!clientName.trim()) {
-      setNameError("Ism majburiy");
-      setFormError("Ismingizni kiriting.");
+      setNameError(say("Ism majburiy", "Имя обязательно"));
+      setFormError(say("Ismingizni kiriting.", "Введите имя."));
       return;
     }
     setSubmitting(true);
@@ -860,9 +867,9 @@ function PublicBookingModal({
 
       if (link) window.location.assign(link);
     } catch {
-      const text = "Telegram ochilmadi. Qayta urinib ko'ring.";
+      const text = say("Telegram ochilmadi. Qayta urinib ko'ring.", "Telegram не открылся. Попробуйте ещё раз.");
       setFormError(text);
-      toast({ title: "Xatolik", description: text, variant: "destructive" });
+      toast({ title: say("Xatolik", "Ошибка"), description: text, variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -919,17 +926,17 @@ function PublicBookingModal({
             </button>
           )}
           <div className="flex-1">
-            {step === "time" && <h2 className="font-bold text-base">{rescheduleMode ? "Vaqtni o‘zgartirish" : "Vaqt tanlash"}</h2>}
-            {step === "name" && <h2 className="font-bold text-base">✍️ Ismingizni kiriting</h2>}
-            {step === "confirm" && <h2 className="font-bold text-base">{returning ? "Buyurtmani tasdiqlash" : "📌 Buyurtmani tasdiqlash"}</h2>}
-            {step === "phone" && <h2 className="font-bold text-base">Raqamni yangilash</h2>}
-            {step === "verifying" && <h2 className="font-bold text-base text-[#2AABEE]">Tasdiq kutilmoqda...</h2>}
-            {step === "done" && <h2 className="font-bold text-base text-emerald-400">{bookedDirect ? "Bron tasdiqlandi" : "Bron tasdiqlandi! 🎉"}</h2>}
+            {step === "time" && <h2 className="font-bold text-base">{rescheduleMode ? say("Vaqtni o‘zgartirish", "Изменить время") : say("Vaqt tanlash", "Выбор времени")}</h2>}
+            {step === "name" && <h2 className="font-bold text-base">{say("✍️ Ismingizni kiriting", "✍️ Введите имя")}</h2>}
+            {step === "confirm" && <h2 className="font-bold text-base">{returning ? say("Buyurtmani tasdiqlash", "Подтверждение записи") : say("📌 Buyurtmani tasdiqlash", "📌 Подтверждение записи")}</h2>}
+            {step === "phone" && <h2 className="font-bold text-base">{say("Raqamni yangilash", "Обновить номер")}</h2>}
+            {step === "verifying" && <h2 className="font-bold text-base text-[#2AABEE]">{say("Tasdiq kutilmoqda...", "Ждём подтверждение...")}</h2>}
+            {step === "done" && <h2 className="font-bold text-base text-emerald-400">{bookedDirect ? say("Bron tasdiqlandi", "Запись подтверждена") : say("Bron tasdiqlandi! 🎉", "Запись подтверждена! 🎉")}</h2>}
           </div>
           {(step !== "done" || bookedDirect) && (
             <button onClick={step === "done" && bookedDirect ? finishToShop : onClose}
               className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0"
-              aria-label="Yopish">
+              aria-label={say("Yopish", "Закрыть")}>
               <X className="w-4 h-4" />
             </button>
           )}
@@ -939,12 +946,12 @@ function PublicBookingModal({
             <div className="bg-primary/6 border border-primary/12 rounded-2xl px-4 py-3 mt-4 mb-5 flex items-center justify-between gap-3">
               <div className="flex flex-wrap gap-1.5 flex-1">
                 {selectedServices.map(s => (
-                  <span key={s.id} className="text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20">{s.name}</span>
+                  <span key={s.id} className="text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20">{serviceTitle(s, lang)}</span>
                 ))}
               </div>
               <div className="text-right shrink-0">
-                <p className="text-xs text-muted-foreground">{formatDur(totalDuration)}</p>
-                <p className="text-sm font-bold text-primary">{formatPrice(totalPrice)}</p>
+                <p className="text-xs text-muted-foreground">{formatDur(totalDuration, lang)}</p>
+                <p className="text-sm font-bold text-primary">{formatPrice(totalPrice, lang)}</p>
               </div>
             </div>
           )}
@@ -961,7 +968,7 @@ function PublicBookingModal({
                       data-closed={closed ? "1" : "0"}
                       onClick={() => {
                         if (closed) {
-                          toast({ title: "Afsuski, bu kun usta uchun dam olish kuni. Iltimos, boshqa sanani tanlang." });
+                          toast({ title: say("Afsuski, bu kun usta uchun dam olish kuni. Iltimos, boshqa sanani tanlang.", "В этот день у мастера выходной. Выберите другую дату.") });
                           return;
                         }
                         setDateOpt(day);
@@ -974,7 +981,7 @@ function PublicBookingModal({
                             ? "bg-primary/15 border-primary/30 text-primary"
                             : "bg-white/4 border-white/8 text-muted-foreground hover:bg-white/8"
                       }`}>
-                      {i === 0 ? "Bugun" : "Ertaga"}
+                      {i === 0 ? say("Bugun", "Сегодня") : say("Ertaga", "Завтра")}
                     </button>
                     );
                   })}
@@ -986,16 +993,17 @@ function PublicBookingModal({
                       className="text-sm font-medium flex items-center gap-1.5 py-1 transition-colors"
                       style={{ color: dateOpt !== todayISO && dateOpt !== tomorrowISO ? "#FACC15" : "rgba(250,204,21,0.65)" }}>
                       📅 {dateOpt !== todayISO && dateOpt !== tomorrowISO
-                        ? `${dateFullLabel(dateOpt, todayISO, tomorrowISO)} tanlandi`
-                        : "Boshqa sana ➔"}
+                        ? say(`${dateFullLabel(dateOpt, todayISO, tomorrowISO, lang)} tanlandi`, `Выбрано: ${dateFullLabel(dateOpt, todayISO, tomorrowISO, lang)}`)
+                        : say("Boshqa sana ➔", "Другая дата ➔")}
                     </button>
                   </div>
                   {otherDateOpen && (
                     <ClientDateGrid
                       todayISO={todayISO}
                       selected={dateOpt}
+                      lang={lang}
                       isClosed={(iso) => !isWorkingDate(barber, iso)}
-                      onClosed={() => toast({ title: "Afsuski, bu kun usta uchun dam olish kuni. Iltimos, boshqa sanani tanlang." })}
+                      onClosed={() => toast({ title: say("Afsuski, bu kun usta uchun dam olish kuni. Iltimos, boshqa sanani tanlang.", "В этот день у мастера выходной. Выберите другую дату.") })}
                       onSelect={(iso) => {
                         setDateOpt(iso);
                         setSelectedTime(null);
@@ -1006,20 +1014,20 @@ function PublicBookingModal({
                 </div>
                 <ShopTimeHint />
                 {!slotsLoading && allSlots.length > 0 && (
-                  <SlotPeriodTabs value={period} onChange={setPeriod} />
+                  <SlotPeriodTabs value={period} onChange={setPeriod} lang={lang} />
                 )}
                 {slotsLoading ? (
                   <div className="flex justify-center py-10">
                     <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   </div>
                 ) : !daySchedule.enabled ? (
-                  <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">Bu kun dam olish kuni 😴</div>
+                  <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">{say("Bu kun dam olish kuni 😴", "В этот день выходной 😴")}</div>
                 ) : todayPassed ? (
-                  <div data-testid="today-passed-notice" className="text-center py-10 px-4 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">{TODAY_PASSED_MESSAGE}</div>
+                  <div data-testid="today-passed-notice" className="text-center py-10 px-4 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">{say(TODAY_PASSED_MESSAGE, "На сегодня рабочее время закончилось. Выберите завтра.")}</div>
                 ) : allSlots.length === 0 ? (
-                  <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">Bu kun bo'sh vaqt yo'q 😔</div>
+                  <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">{say("Bu kun bo'sh vaqt yo'q 😔", "На этот день свободного времени нет 😔")}</div>
                 ) : slots.length === 0 ? (
-                  <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">Bu vaqt oralig'ida bo'sh joy yo'q</div>
+                  <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-foreground text-sm">{say("Bu vaqt oralig'ida bo'sh joy yo'q", "В этом промежутке свободного времени нет")}</div>
                 ) : (
                   <div className="flex flex-wrap gap-2" data-testid="public-slot-grid">
                     {slots.map(slot => (
@@ -1041,7 +1049,7 @@ function PublicBookingModal({
                 }} disabled={!selectedTime || slotsLoading || submitting}
                   data-testid={rescheduleMode ? "save-reschedule" : undefined}
                   className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base mt-6 disabled:opacity-30 shadow-lg shadow-primary/20">
-                  {rescheduleMode ? (submitting ? "Saqlanmoqda..." : "Vaqtni saqlash") : returning ? "Davom etish →" : "Keyingi →"}
+                  {rescheduleMode ? (submitting ? say("Saqlanmoqda...", "Сохранение...") : say("Vaqtni saqlash", "Сохранить время")) : returning ? say("Davom etish →", "Продолжить →") : say("Keyingi →", "Далее →")}
                 </button>
               </motion.div>
             )}
@@ -1050,19 +1058,19 @@ function PublicBookingModal({
                 <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-6 flex items-center gap-3">
                   <Clock className="w-4 h-4 text-primary shrink-0" />
                   <div>
-                    <p className="text-xs text-muted-foreground">Tanlangan vaqt</p>
-                    <p className="text-sm font-bold">{dateLabel}, soat {selectedTime}</p>
+                    <p className="text-xs text-muted-foreground">{say("Tanlangan vaqt", "Выбранное время")}</p>
+                    <p className="text-sm font-bold">{dateLabel}, {say("soat", "в")} {selectedTime}</p>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-muted-foreground block">Ismingizni kiriting (Masalan: Ali)</label>
-                  <input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Masalan: Ali"
+                  <label className="text-sm font-semibold text-muted-foreground block">{say("Ismingizni kiriting (Masalan: Ali)", "Введите имя (например: Али)")}</label>
+                  <input value={clientName} onChange={e => setClientName(e.target.value)} placeholder={say("Masalan: Ali", "Например: Али")}
                     autoFocus
                     className="w-full h-12 px-4 rounded-2xl bg-white/5 border border-white/8 text-sm focus:outline-none focus:border-primary/50" />
                 </div>
                 <button onClick={() => clientName.trim() && setStep("confirm")} disabled={!clientName.trim()}
                   className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base mt-6 disabled:opacity-30 shadow-lg shadow-primary/20">
-                  Davom etish →
+                  {say("Davom etish →", "Продолжить →")}
                 </button>
               </motion.div>
             )}
@@ -1070,11 +1078,11 @@ function PublicBookingModal({
               <motion.div key="confirm-return" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="pt-4">
                 <div className="bg-white/4 border border-white/8 rounded-2xl p-4 mb-5">
                   {([
-                    ["👤", "Usta", displayName],
-                    ["✂️", "Xizmat", selectedServices.map(s => s.name).join(", ")],
-                    ["💰", "Narx", formatPrice(totalPrice)],
-                    ["📅", "Sana", dateLabel],
-                    ["⏰", "Vaqt", selectedTime || ""],
+                    ["👤", say("Usta", "Мастер"), displayName],
+                    ["✂️", say("Xizmat", "Услуга"), selectedServices.map(s => serviceTitle(s, lang)).join(", ")],
+                    ["💰", say("Narx", "Цена"), formatPrice(totalPrice, lang)],
+                    ["📅", say("Sana", "Дата"), dateLabel],
+                    ["⏰", say("Vaqt", "Время"), selectedTime || ""],
                   ] as const).map(([icon, label, value]) => (
                     <div key={label} className="flex items-center gap-3 mb-3">
                       <span className="text-base w-5 shrink-0">{icon}</span>
@@ -1085,7 +1093,7 @@ function PublicBookingModal({
                     </div>
                   ))}
                   <div className="space-y-2 mt-1">
-                    <label className="text-sm font-semibold text-muted-foreground block">Ism</label>
+                    <label className="text-sm font-semibold text-muted-foreground block">{say("Ism", "Имя")}</label>
                     <div className="relative">
                       <input
                         ref={returnNameRef}
@@ -1095,7 +1103,7 @@ function PublicBookingModal({
                       />
                       <button
                         type="button"
-                        aria-label="Ismni tahrirlash"
+                        aria-label={say("Ismni tahrirlash", "Изменить имя")}
                         onClick={() => returnNameRef.current?.focus()}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-primary text-base"
                       >
@@ -1105,7 +1113,7 @@ function PublicBookingModal({
                     {nameError && <p className="text-xs text-red-400">{nameError}</p>}
                   </div>
                   <div className="space-y-2 mt-3">
-                    <label className="text-sm font-semibold text-muted-foreground block">Telefon</label>
+                    <label className="text-sm font-semibold text-muted-foreground block">{say("Telefon", "Телефон")}</label>
                     <input
                       value={formatSavedPhone(clientPhone)}
                       readOnly
@@ -1120,8 +1128,8 @@ function PublicBookingModal({
                   data-testid="direct-confirm"
                   className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold text-base disabled:opacity-40 shadow-lg shadow-primary/20">
                   {submitting
-                    ? <span className="inline-flex items-center gap-2"><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Saqlanmoqda...</span>
-                    : "Bronni tasdiqlash"}
+                    ? <span className="inline-flex items-center gap-2"><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> {say("Saqlanmoqda...", "Сохранение...")}</span>
+                    : say("Bronni tasdiqlash", "Подтвердить запись")}
                 </button>
               </motion.div>
             )}
@@ -1129,12 +1137,12 @@ function PublicBookingModal({
               <motion.div key="confirm" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="pt-2">
                 <div className="bg-white/4 border border-white/8 rounded-2xl p-4 space-y-3 mb-4">
                   {([
-                    ["💇‍♂️", "Usta", displayName],
-                    ["🛠", "Xizmat", selectedServices.map(s => s.name).join(", ")],
-                    ["💸", "Narx", formatPrice(totalPrice)],
-                    ["📅", "Sana", dateLabel],
-                    ["⏰", "Vaqt", selectedTime || ""],
-                    ["👤", "Ism", clientName.trim()],
+                    ["💇‍♂️", say("Usta", "Мастер"), displayName],
+                    ["🛠", say("Xizmat", "Услуга"), selectedServices.map(s => serviceTitle(s, lang)).join(", ")],
+                    ["💸", say("Narx", "Цена"), formatPrice(totalPrice, lang)],
+                    ["📅", say("Sana", "Дата"), dateLabel],
+                    ["⏰", say("Vaqt", "Время"), selectedTime || ""],
+                    ["👤", say("Ism", "Имя"), clientName.trim()],
                   ] as const).map(([icon, label, value]) => (
                     <div key={label} className="flex items-center gap-3">
                       <span className="text-base w-5 shrink-0">{icon}</span>
@@ -1150,56 +1158,60 @@ function PublicBookingModal({
                   data-testid="telegram-confirm"
                   className="w-full py-3.5 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40">
                   {submitting
-                    ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Ochilmoqda...</>
-                    : "👉 📲 Telegram orqali tasdiqlash"}
+                    ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {say("Ochilmoqda...", "Открывается...")}</>
+                    : say("👉 📲 Telegram orqali tasdiqlash", "👉 📲 Подтвердить через Telegram")}
                 </button>
               </motion.div>
             )}
             {step === "phone" && (
               <motion.div key="phone" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="pt-4">
                 <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-4 mb-5">
-                  <p className="text-sm leading-relaxed">Oʻzgartirmoqchi boʻlgan raqamingiz faol Telegram hisobingizga ulangan boʻlishi kerak.</p>
+                  <p className="text-sm leading-relaxed">{say("Oʻzgartirmoqchi boʻlgan raqamingiz faol Telegram hisobingizga ulangan boʻlishi kerak.", "Номер, который хотите изменить, должен быть привязан к вашему Telegram.")}</p>
                 </div>
                 <button type="button" onClick={openPhoneChange}
                   className="w-full py-3.5 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm">
-                  📲 Telegram orqali raqamni yangilash
+                  {say("📲 Telegram orqali raqamni yangilash", "📲 Обновить номер через Telegram")}
                 </button>
               </motion.div>
             )}
             {step === "verifying" && (
               <motion.div key="verifying" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-10">
                 <div className="w-20 h-20 rounded-3xl bg-[#2AABEE]/10 border border-[#2AABEE]/20 flex items-center justify-center text-4xl mx-auto mb-5">💬</div>
-                <h2 className="text-lg font-bold mb-1">Telegram bot kutilmoqda</h2>
-                <p className="text-sm text-muted-foreground mb-6">Botda <b>📱 Raqamimni yuborish</b> tugmasini bosing</p>
+                <h2 className="text-lg font-bold mb-1">{say("Telegram bot kutilmoqda", "Ждём Telegram-бот")}</h2>
+                <p className="text-sm text-muted-foreground mb-6">
+                  {lang === "ru"
+                    ? <>В боте нажмите <b>📱 Отправить номер</b></>
+                    : <>Botda <b>📱 Raqamimni yuborish</b> tugmasini bosing</>}
+                </p>
                 <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-6">
                   {[0, 0.2, 0.4].map((d, i) => (
                     <span key={i} className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: `${d}s` }} />
                   ))}
-                  <span className="ml-1">Tasdiq kutilmoqda</span>
+                  <span className="ml-1">{say("Tasdiq kutilmoqda", "Ждём подтверждение")}</span>
                 </div>
                 {deepLink && (
                   <a href={deepLink}
                     className="w-full h-12 rounded-2xl bg-[#2AABEE]/15 border border-[#2AABEE]/30 text-[#2AABEE] font-semibold text-sm flex items-center justify-center gap-2 mb-3">
-                    <Send className="w-4 h-4" /> Telegram botni qayta ochish
+                    <Send className="w-4 h-4" /> {say("Telegram botni qayta ochish", "Открыть Telegram-бот снова")}
                   </a>
                 )}
                 <button onClick={() => { stopPolling(); setStep("confirm"); }}
-                  className="text-xs text-muted-foreground underline">Bekor qilish</button>
+                  className="text-xs text-muted-foreground underline">{say("Bekor qilish", "Отмена")}</button>
               </motion.div>
             )}
             {step === "done" && bookedDirect && (
               <motion.div key="done-direct" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="py-6">
-                <h2 className="text-lg font-bold text-center mb-4 leading-snug">Broningiz muvaffaqiyatli tasdiqlandi!</h2>
+                <h2 className="text-lg font-bold text-center mb-4 leading-snug">{say("Broningiz muvaffaqiyatli tasdiqlandi!", "Запись успешно подтверждена!")}</h2>
                 <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-5 text-left space-y-2">
-                  <p className="text-sm"><span className="text-muted-foreground">Usta:</span> <span className="font-semibold">{successFacts?.master ?? displayName}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">Xizmat:</span> <span className="font-semibold">{successFacts?.service ?? selectedServices.map(s => s.name).join(", ")}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">Narx:</span> <span className="font-semibold">{successFacts?.price ?? formatPrice(totalPrice)}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">Sana:</span> <span className="font-semibold">{successFacts?.date ?? dateLabel}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">Vaqt:</span> <span className="font-semibold">{successFacts?.time ?? selectedTime}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">{say("Usta", "Мастер")}:</span> <span className="font-semibold">{successFacts?.master ?? displayName}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">{say("Xizmat", "Услуга")}:</span> <span className="font-semibold">{successFacts?.service ?? selectedServices.map(s => serviceTitle(s, lang)).join(", ")}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">{say("Narx", "Цена")}:</span> <span className="font-semibold">{successFacts?.price ?? formatPrice(totalPrice, lang)}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">{say("Sana", "Дата")}:</span> <span className="font-semibold">{successFacts?.date ?? dateLabel}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">{say("Vaqt", "Время")}:</span> <span className="font-semibold">{successFacts?.time ?? selectedTime}</span></p>
                 </div>
                 <button onClick={finishToShop}
                   className="w-full h-12 rounded-2xl bg-white/8 border border-white/10 text-foreground font-bold mb-3">
-                  🌐 Sahifaga qaytish
+                  {say("🌐 Sahifaga qaytish", "🌐 Вернуться на страницу")}
                 </button>
                 <a
                   href={`https://t.me/${botUsername}`}
@@ -1207,20 +1219,20 @@ function PublicBookingModal({
                   rel="noopener noreferrer"
                   className="w-full h-12 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2"
                 >
-                  🤖 Botga qaytish
+                  {say("🤖 Botga qaytish", "🤖 Вернуться в бот")}
                 </a>
               </motion.div>
             )}
             {step === "done" && !bookedDirect && (
               <motion.div key="done" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-8">
                 <div className="w-24 h-24 rounded-3xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-5xl mx-auto mb-5">✅</div>
-                <h2 className="text-xl font-bold mb-2">Broningiz muvaffaqiyatli tasdiqlandi!</h2>
-                <p className="text-sm text-muted-foreground mb-5">Barcha ma'lumotlar Telegram orqali yuborildi.</p>
+                <h2 className="text-xl font-bold mb-2">{say("Broningiz muvaffaqiyatli tasdiqlandi!", "Запись успешно подтверждена!")}</h2>
+                <p className="text-sm text-muted-foreground mb-5">{say("Barcha ma'lumotlar Telegram orqali yuborildi.", "Все данные отправлены в Telegram.")}</p>
                 <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-5 text-left space-y-2">
-                  <p className="text-sm"><span className="text-muted-foreground">Usta:</span> <span className="font-semibold">{displayName}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">Xizmat:</span> <span className="font-semibold">{selectedServices.map(s => s.name).join(", ")}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">Sana:</span> <span className="font-semibold">{dateLabel}</span></p>
-                  <p className="text-sm"><span className="text-muted-foreground">Vaqt:</span> <span className="font-semibold">{selectedTime}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">{say("Usta", "Мастер")}:</span> <span className="font-semibold">{displayName}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">{say("Xizmat", "Услуга")}:</span> <span className="font-semibold">{selectedServices.map(s => serviceTitle(s, lang)).join(", ")}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">{say("Sana", "Дата")}:</span> <span className="font-semibold">{dateLabel}</span></p>
+                  <p className="text-sm"><span className="text-muted-foreground">{say("Vaqt", "Время")}:</span> <span className="font-semibold">{selectedTime}</span></p>
                 </div>
                 <a
                   href={`https://t.me/${botUsername}`}
@@ -1228,11 +1240,11 @@ function PublicBookingModal({
                   rel="noopener noreferrer"
                   className="w-full h-12 rounded-2xl bg-[#2AABEE] text-white font-bold text-sm flex items-center justify-center gap-2 mb-3"
                 >
-                  🤖 Telegram Botga oʻtish
+                  {say("🤖 Telegram Botga oʻtish", "🤖 Перейти в Telegram-бот")}
                 </a>
                 <button onClick={onClose}
                   className="w-full h-12 rounded-2xl bg-white/8 border border-white/10 text-foreground font-bold">
-                  Yopish
+                  {say("Yopish", "Закрыть")}
                 </button>
               </motion.div>
             )}
@@ -1243,46 +1255,46 @@ function PublicBookingModal({
         <div className="absolute inset-0 z-20 flex items-end justify-center" data-testid="active-booking-modal">
           <div className="absolute inset-0 bg-black/75" />
           <div className="relative w-full max-w-md bg-card rounded-t-3xl z-10 max-h-[92vh] overflow-y-auto px-5 pb-6 pt-5">
-            <h2 className="font-bold text-base leading-snug mb-4">⚠️ Sizda allaqachon faol bron mavjud!</h2>
+            <h2 className="font-bold text-base leading-snug mb-4">{say("⚠️ Sizda allaqachon faol bron mavjud!", "⚠️ У вас уже есть активная запись!")}</h2>
             <div className="bg-white/4 border border-white/8 rounded-2xl px-4 py-3 mb-4 space-y-2">
-              <p className="text-sm">👤 Usta: <span className="font-semibold">{activeBooking.master}</span></p>
-              <p className="text-sm">✂️ Xizmat: <span className="font-semibold">{activeBooking.service}</span></p>
-              <p className="text-sm">📅 Sana va Vaqt: <span className="font-semibold">{dateFullLabel(activeBooking.date, todayISO, tomorrowISO)}, {activeBooking.time}</span></p>
-              <p className="text-sm">💵 Narx: <span className="font-semibold">{formatPrice(Number(activeBooking.price) || 0)}</span></p>
+              <p className="text-sm">👤 {say("Usta", "Мастер")}: <span className="font-semibold">{activeBooking.master}</span></p>
+              <p className="text-sm">✂️ {say("Xizmat", "Услуга")}: <span className="font-semibold">{activeBooking.service}</span></p>
+              <p className="text-sm">📅 {say("Sana va Vaqt", "Дата и время")}: <span className="font-semibold">{dateFullLabel(activeBooking.date, todayISO, tomorrowISO, lang)}, {activeBooking.time}</span></p>
+              <p className="text-sm">💵 {say("Narx", "Цена")}: <span className="font-semibold">{formatPrice(Number(activeBooking.price) || 0, lang)}</span></p>
             </div>
             <div className="space-y-2">
               {activeBooking.canCancel ? (
                 <button type="button" onClick={() => { setFormError(""); setActiveAsk("cancel"); }} disabled={submitting}
                   data-testid="cancel-old-booking"
                   className="w-full h-12 rounded-2xl bg-red-500/12 border border-red-400/30 text-red-200 font-semibold disabled:opacity-40">
-                  ❌ Eski bronni bekor qilish
+                  {say("❌ Eski bronni bekor qilish", "❌ Отменить старую запись")}
                 </button>
               ) : (
                 <p className="text-sm text-amber-300 px-1" data-testid="cancel-closed">
-                  ⚠️ Bekor qilish vaqti tugagan.{activeBooking.contactPhone ? ` Aloqa: ${formatSavedPhone(activeBooking.contactPhone)}` : ""}
+                  {say("⚠️ Bekor qilish vaqti tugagan.", "⚠️ Время отмены прошло.")}{activeBooking.contactPhone ? ` ${say("Aloqa", "Связь")}: ${formatSavedPhone(activeBooking.contactPhone)}` : ""}
                 </p>
               )}
               {activeBooking.canMove ? (
                 <button type="button" onClick={startReschedule} disabled={submitting}
                   data-testid="move-old-booking"
                   className="w-full h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-medium text-foreground disabled:opacity-40">
-                  🔄 Eski bron vaqtini o‘zgartirish
+                  {say("🔄 Eski bron vaqtini o‘zgartirish", "🔄 Изменить время старой записи")}
                 </button>
               ) : (
                 <p className="text-sm leading-relaxed text-amber-100/90 bg-amber-500/10 border border-amber-500/20 rounded-2xl px-4 py-3" data-testid="move-closed">
-                  {MOVE_CLOSED_TEXT}
-                  {activeBooking.phone ? <span className="block mt-1 font-semibold">Aloqa: {formatSavedPhone(activeBooking.phone)}</span> : null}
+                  {say("Belgilangan vaqtga 1 soatdan kam qolgani sababli vaqtni o‘zgartirib bo‘lmaydi. Iltimos, usta bilan bog‘laning.", "До записи осталось меньше часа, поэтому время изменить нельзя. Свяжитесь с мастером.")}
+                  {activeBooking.phone ? <span className="block mt-1 font-semibold">{say("Aloqa", "Связь")}: {formatSavedPhone(activeBooking.phone)}</span> : null}
                 </p>
               )}
             </div>
             <div className="grid grid-cols-2 gap-2 mt-4">
               <button type="button" onClick={returnToBot}
                 className="h-10 rounded-xl bg-transparent border border-white/10 text-xs font-medium text-foreground/75">
-                🤖 Botga qaytish
+                {say("🤖 Botga qaytish", "🤖 Вернуться в бот")}
               </button>
               <button type="button" onClick={() => { setActiveBooking(null); setActiveAsk(null); setRescheduleMode(false); finishToShop(); }}
                 className="h-10 rounded-xl bg-transparent border border-white/10 text-xs font-medium text-foreground/75">
-                🌐 Sahifaga qaytish
+                {say("🌐 Sahifaga qaytish", "🌐 Вернуться на страницу")}
               </button>
             </div>
           </div>
@@ -1292,17 +1304,17 @@ function PublicBookingModal({
         <div className="absolute inset-0 z-30 flex items-center justify-center px-5" data-testid="active-booking-ask">
           <div className="absolute inset-0 bg-black/80" />
           <div className="relative w-full max-w-sm bg-card rounded-3xl p-5">
-            <p className="text-sm leading-relaxed mb-4">{CANCEL_OLD_TEXT}</p>
+            <p className="text-sm leading-relaxed mb-4">{say("Bu harakatni tasdiqlasangiz eski broningiz bekor qilinadi va yangi tanlagan broningiz tasdiqlanadi. Bu harakatni tasdiqlaysizmi?", "Если подтвердите, старая запись отменится и подтвердится новая. Подтверждаете?")}</p>
             {formError && <p className="text-sm text-red-400 mb-3">{formError}</p>}
             <button type="button" disabled={submitting}
               onClick={() => void confirmCancelOld()}
               data-testid="active-ask-yes"
               className="w-full py-3.5 rounded-2xl bg-primary text-black font-bold mb-3 disabled:opacity-40">
-              {submitting ? "Saqlanmoqda..." : "Ha, tasdiqlayman"}
+              {submitting ? say("Saqlanmoqda...", "Сохранение...") : say("Ha, tasdiqlayman", "Да, подтверждаю")}
             </button>
             <button type="button" disabled={submitting} onClick={() => { setActiveAsk(null); setFormError(""); }}
               className="w-full py-3.5 rounded-2xl bg-white/8 border border-white/10 text-foreground font-bold disabled:opacity-40">
-              Yo‘q
+              {say("Yo‘q", "Нет")}
             </button>
           </div>
         </div>
@@ -1336,6 +1348,8 @@ function GalleryStrip({ images }: { images: string[] }) {
 const COVER_GRADS = ["from-primary/50 via-primary/20 to-transparent", "from-amber-600/50 via-amber-600/20 to-transparent", "from-emerald-600/50 via-emerald-600/20 to-transparent", "from-violet-600/50 via-violet-600/20 to-transparent"];
 
 function PublicView({ barber }: { barber: BarberData }) {
+  const { lang } = useTranslation();
+  const say = (uz: string, ru: string) => pick(lang, uz, ru);
   const [tab, setTab] = useState<"asosiy" | "xizmatlar">(() => {
     if (typeof window === "undefined") return "asosiy";
     return new URLSearchParams(window.location.search).get("bron") === "1" ? "xizmatlar" : "asosiy";
@@ -1368,8 +1382,12 @@ function PublicView({ barber }: { barber: BarberData }) {
   const gradIdx = displayName.charCodeAt(0) % COVER_GRADS.length;
 
   const workDays: string[] = readOpenDaysShort(barber.scheduleJson);
+  const dayNames = weekdayNames(lang);
   const workDaysLabel = workDays.length > 0
-    ? workDays.map(k => DAY_LABELS[k] || k).join(", ")
+    ? workDays.map(k => {
+        const i = WEEK_KEYS.indexOf(k);
+        return i >= 0 ? dayNames[i] : k;
+      }).join(", ")
     : null;
 
   const hasInfo = !!(barber.bio || specs.length || barber.workingHoursStart || barber.address || telegramHandle || instagramHandle);
@@ -1385,8 +1403,11 @@ function PublicView({ barber }: { barber: BarberData }) {
   function bronUrl(serviceNames?: string[]) {
     if (!telegramHandle) return null;
     const text = serviceNames && serviceNames.length > 0
-      ? `Assalomu alaykum! ${serviceNames.map(n => `"${n}"`).join(", ")} xizmatiga yozilmoqchiman.`
-      : "Assalomu alaykum! Yozilmoqchiman.";
+      ? say(
+          `Assalomu alaykum! ${serviceNames.map(n => `"${n}"`).join(", ")} xizmatiga yozilmoqchiman.`,
+          `Здравствуйте! Хочу записаться на ${serviceNames.map(n => `«${n}»`).join(", ")}.`,
+        )
+      : say("Assalomu alaykum! Yozilmoqchiman.", "Здравствуйте! Хочу записаться.");
     return `https://t.me/${telegramHandle}?text=${encodeURIComponent(text)}`;
   }
 
@@ -1402,6 +1423,9 @@ function PublicView({ barber }: { barber: BarberData }) {
               </div>
           }
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+          <div className="absolute top-3 right-4 z-10">
+            <LanguageSwitcher />
+          </div>
           <div className="absolute bottom-3 left-4">
             <div className="w-20 h-20 rounded-full border-4 border-black/50 overflow-hidden bg-zinc-900 flex items-center justify-center shadow-2xl shadow-black/60">
               {barber.avatarUrl
@@ -1426,7 +1450,7 @@ function PublicView({ barber }: { barber: BarberData }) {
             {galleryImages.map((src, i) => (
               <div key={i} className="relative shrink-0 w-40 h-28 rounded-2xl overflow-hidden border border-white/8">
                 <img src={src} className="w-full h-full object-cover" alt="" />
-                {i === 0 && <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-primary/80 text-black text-[9px] font-bold rounded-full">Muqova</div>}
+                {i === 0 && <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-primary/80 text-black text-[9px] font-bold rounded-full">{say("Muqova", "Обложка")}</div>}
               </div>
             ))}
           </div>
@@ -1438,8 +1462,8 @@ function PublicView({ barber }: { barber: BarberData }) {
           value={tab}
           onChange={setTab}
           items={[
-            { key: "asosiy", label: "🏠 Asosiy" },
-            { key: "xizmatlar", label: "📋 Xizmatlar" },
+            { key: "asosiy", label: say("🏠 Asosiy", "🏠 Основное") },
+            { key: "xizmatlar", label: say("📋 Xizmatlar", "📋 Услуги") },
           ]}
         />
       </div>
@@ -1452,37 +1476,37 @@ function PublicView({ barber }: { barber: BarberData }) {
               {!hasInfo && (
                 <div className="text-center py-10 border border-dashed border-white/8 rounded-2xl">
                   <p className="text-3xl mb-2">✂️</p>
-                  <p className="text-sm text-muted-foreground">Ma'lumotlar hali to'ldirilmagan</p>
+                  <p className="text-sm text-muted-foreground">{say("Ma'lumotlar hali to'ldirilmagan", "Данные ещё не заполнены")}</p>
                 </div>
               )}
 
-              <SpecialtyTags value={specs} />
+              <SpecialtyTags value={specs} heading={say("Mutaxassislik", "Специализация")} />
 
               {/* 🕐 Ish vaqti */}
               {(barber.workingHoursStart || workDaysLabel) && (
                 <div>
                   <div className="flex items-center gap-2 mb-2.5">
                     <span className="text-sm">🕐</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Ish vaqti</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">{say("Ish vaqti", "Время работы")}</span>
                     <div className="flex-1 h-px bg-white/6" />
                   </div>
                   <div className="flex items-center justify-between bg-white/4 border border-white/8 rounded-2xl px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <Clock className="w-4 h-4 text-primary/70 shrink-0" />
                       <div>
-                        <p className="text-[10px] text-muted-foreground/50 mb-0.5">Kun</p>
+                        <p className="text-[10px] text-muted-foreground/50 mb-0.5">{say("Kun", "День")}</p>
                         <p className="text-xs text-foreground font-medium">{workDaysLabel || "—"}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] text-muted-foreground/50 mb-0.5">Soat</p>
+                      <p className="text-[10px] text-muted-foreground/50 mb-0.5">{say("Soat", "Часы")}</p>
                       <p className="text-xs text-foreground font-medium">{barber.workingHoursStart || "09:00"}–{barber.workingHoursEnd || "20:00"}</p>
                     </div>
                   </div>
                   {barber.lunchBreakEnabled && barber.lunchBreakStart && barber.lunchBreakEnd && (
                     <div className="flex items-center gap-2 mt-2 px-4 py-2.5 bg-white/3 border border-white/6 rounded-2xl">
                       <span className="text-sm">🍽</span>
-                      <span className="text-xs text-muted-foreground">Tushlik tanaffus: {barber.lunchBreakStart}–{barber.lunchBreakEnd}</span>
+                      <span className="text-xs text-muted-foreground">{say("Tushlik tanaffus", "Обеденный перерыв")}: {barber.lunchBreakStart}–{barber.lunchBreakEnd}</span>
                     </div>
                   )}
                 </div>
@@ -1493,13 +1517,13 @@ function PublicView({ barber }: { barber: BarberData }) {
                 <div>
                   <div className="flex items-center gap-2 mb-2.5">
                     <span className="text-sm">📞</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Aloqa</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">{say("Aloqa", "Контакты")}</span>
                     <div className="flex-1 h-px bg-white/6" />
                   </div>
                   <a href={`tel:${barber.phone}`}
                     className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-500/8 border border-emerald-500/20 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/15 transition-colors">
                     <Phone className="w-4 h-4 shrink-0" />
-                    <span>Qo'ng'iroq qilish</span>
+                    <span>{say("Qo'ng'iroq qilish", "Позвонить")}</span>
                     <span className="ml-auto text-xs text-emerald-400/70">{barber.phone}</span>
                   </a>
                 </div>
@@ -1510,12 +1534,12 @@ function PublicView({ barber }: { barber: BarberData }) {
                 <div>
                   <div className="flex items-center gap-2 mb-2.5">
                     <span className="text-sm">📍</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Manzil</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">{say("Manzil", "Адрес")}</span>
                     <div className="flex-1 h-px bg-white/6" />
                   </div>
                   <div className="space-y-2">
                     <div className="rounded-2xl overflow-hidden border border-white/8" style={{ height: 160 }}>
-                      <iframe src={osmEmbedUrl(barber.latitude, barber.longitude)} className="w-full h-full" style={{ border: 0, pointerEvents: "none" }} scrolling="no" loading="lazy" title="Joylashuv" />
+                      <iframe src={osmEmbedUrl(barber.latitude, barber.longitude)} className="w-full h-full" style={{ border: 0, pointerEvents: "none" }} scrolling="no" loading="lazy" title={say("Joylashuv", "Место")} />
                     </div>
                     {barber.address && (
                       <p className="text-sm text-muted-foreground px-0.5 flex items-start gap-1.5">
@@ -1525,7 +1549,7 @@ function PublicView({ barber }: { barber: BarberData }) {
                     )}
                     <a href={mapsHref(barber.latitude, barber.longitude, barber.mapLink)} target="_blank" rel="noopener noreferrer"
                       className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-card border border-white/8 text-sm font-semibold text-primary hover:border-primary/30 transition-colors">
-                      <MapPin className="w-4 h-4" /> Xaritada ochish
+                      <MapPin className="w-4 h-4" /> {say("Xaritada ochish", "Открыть на карте")}
                     </a>
                   </div>
                 </div>
@@ -1533,7 +1557,7 @@ function PublicView({ barber }: { barber: BarberData }) {
                 <div>
                   <div className="flex items-center gap-2 mb-2.5">
                     <span className="text-sm">📍</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Manzil</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">{say("Manzil", "Адрес")}</span>
                     <div className="flex-1 h-px bg-white/6" />
                   </div>
                   {(() => {
@@ -1551,7 +1575,7 @@ function PublicView({ barber }: { barber: BarberData }) {
                         <div className="px-4 py-3 flex items-center gap-2">
                           <MapPin className="w-4 h-4 text-primary shrink-0" />
                           <span className="text-sm text-foreground flex-1">{barber.address}</span>
-                          {href && <span className="text-xs text-primary font-semibold">Ko'rish →</span>}
+                          {href && <span className="text-xs text-primary font-semibold">{say("Ko'rish →", "Открыть →")}</span>}
                         </div>
                       </Tag>
                     );
@@ -1564,7 +1588,7 @@ function PublicView({ barber }: { barber: BarberData }) {
                 <div>
                   <div className="flex items-center gap-2 mb-2.5">
                     <span className="text-sm">🔗</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Ijtimoiy tarmoqlar</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">{say("Ijtimoiy tarmoqlar", "Соцсети")}</span>
                     <div className="flex-1 h-px bg-white/6" />
                   </div>
                   <div className="space-y-2">
@@ -1593,7 +1617,7 @@ function PublicView({ barber }: { barber: BarberData }) {
               {barber.services.length === 0 ? (
                 <div className="text-center py-10 border border-dashed border-white/8 rounded-2xl">
                   <p className="text-3xl mb-2">✂️</p>
-                  <p className="text-sm text-muted-foreground">Hozircha xizmatlar qo'shilmagan</p>
+                  <p className="text-sm text-muted-foreground">{say("Hozircha xizmatlar qo'shilmagan", "Услуг пока нет")}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1607,9 +1631,9 @@ function PublicView({ barber }: { barber: BarberData }) {
                           {getCategoryIcon([s.category, s.name].filter(Boolean).join(" "))}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm text-foreground">{s.name}</p>
+                          <p className="font-semibold text-sm text-foreground">{serviceTitle(s, lang)}</p>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {formatDur(s.duration)} · <span className="text-foreground/80 font-medium">{formatPrice(s.price)}</span>
+                            {formatDur(s.duration, lang)} · <span className="text-foreground/80 font-medium">{formatPrice(s.price, lang)}</span>
                           </p>
                         </div>
                         <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${selected ? "bg-primary border-primary text-black" : "bg-white/5 border-white/20 text-muted-foreground"}`}>
@@ -1636,12 +1660,12 @@ function PublicView({ barber }: { barber: BarberData }) {
             {selectedIds.length > 0 ? (
               <motion.div key="selected" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-muted-foreground truncate">{selectedServices.map(s => s.name).join(", ")}</p>
-                  <p className="text-sm font-bold text-foreground">{formatDur(totalDur)} · {formatPrice(totalPrice)}</p>
+                  <p className="text-xs text-muted-foreground truncate">{selectedServices.map(s => serviceTitle(s, lang)).join(", ")}</p>
+                  <p className="text-sm font-bold text-foreground">{formatDur(totalDur, lang)} · {formatPrice(totalPrice, lang)}</p>
                 </div>
                 <button onClick={() => setBookingOpen(true)}
                   className="shrink-0 h-12 px-5 rounded-2xl bg-primary text-black font-bold text-sm shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all flex items-center">
-                  💈 Bron qilish
+                  {say("💈 Bron qilish", "💈 Записаться")}
                 </button>
               </motion.div>
             ) : (
@@ -1649,7 +1673,7 @@ function PublicView({ barber }: { barber: BarberData }) {
                 <button
                   onClick={() => setTab("xizmatlar")}
                   className="w-full h-12 rounded-2xl border border-amber-500/30 bg-zinc-800 text-white font-medium text-sm">
-                  📅 Xizmat tanlash
+                  {say("📅 Xizmat tanlash", "📅 Выбрать услугу")}
                 </button>
               </motion.div>
             )}
