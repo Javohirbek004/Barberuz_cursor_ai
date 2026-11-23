@@ -2448,19 +2448,6 @@ export default function PersonalPage() {
       )}
 
       <AnimatePresence>
-        {saveMsg?.type === "ok" && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="pointer-events-none fixed left-1/2 z-[9999] w-[min(92vw,22rem)] -translate-x-1/2"
-            style={{ top: "max(16px, env(safe-area-inset-top))" }}
-          >
-            <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/12 px-4 py-3 text-center text-sm font-semibold text-emerald-400">
-              {saveMsg.text}
-            </div>
-          </motion.div>
-        )}
         {saveMsg?.type === "err" && (
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
             className="mb-4 px-4 py-3 rounded-2xl text-sm font-semibold bg-destructive/12 border border-destructive/25 text-destructive">
@@ -2494,6 +2481,18 @@ export default function PersonalPage() {
               onChange={setTab}
               items={TABS.map((t) => ({ key: t.id, label: t.label }))}
             />
+            <AnimatePresence>
+              {saveMsg?.type === "ok" && (
+                <motion.p
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  className="pointer-events-none mt-2 text-center text-sm font-semibold text-emerald-400"
+                >
+                  {saveMsg.text}
+                </motion.p>
+              )}
+            </AnimatePresence>
           </div>
 
           <AnimatePresence mode="wait">
