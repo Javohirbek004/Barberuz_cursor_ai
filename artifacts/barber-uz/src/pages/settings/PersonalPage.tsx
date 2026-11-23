@@ -36,7 +36,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { ONBOARDING_READY_KEY } from "@/lib/onboarding";
 import { Layout } from "@/components/Layout";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft, Check, Eye, ArrowRight,
@@ -622,11 +622,13 @@ function AsosiyTab({
   profile,
   onChange,
   onSave,
+  onSpecialitySaved,
   saving,
 }: {
   profile: ProfileData;
   onChange: (p: ProfileData) => void;
   onSave: () => void;
+  onSpecialitySaved: (next: string[]) => void;
   saving: boolean;
 }) {
   const { lang } = useTranslation();
@@ -689,6 +691,7 @@ function AsosiyTab({
     onChange({ ...profile, speciality: next });
     try {
       await apiPut("/api/settings/profile", { specializations: JSON.stringify(next) });
+      onSpecialitySaved(next);
     } catch {
       /* local list still updates; full Saqlash will retry */
     }
@@ -2271,6 +2274,10 @@ export default function PersonalPage() {
   const [loadingServices, setLoadingServices] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [savedKey, setSavedKey] = useState("");
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const leaving = useRef(false);
+  const [, navigate] = useLocation();
   const [userSlug, setUserSlug] = useState(user?.username || "");
 
   useEffect(() => { setUserSlug(user?.username || ""); }, [user?.username]);
@@ -2289,7 +2296,9 @@ export default function PersonalPage() {
     apiGet("/api/settings/profile")
       .then((data: Record<string, unknown>) => {
         if (cancelled) return;
-        setProfile(apiToProfile(data));
+        const next = apiToProfile(data);
+        setProfile(next);
+        setSavedKey(JSON.stringify(next));
         if (typeof data.username === "string" && data.username) {
           setUserSlug(data.username);
           try {
@@ -2322,13 +2331,30 @@ export default function PersonalPage() {
       .catch(() => setLoadingServices(false));
   }
 
+  const dirty = savedKey !== "" && JSON.stringify(profile) !== savedKey;
+
+  function rememberSaved(next: ProfileData) {
+    setProfile(next);
+    setSavedKey(JSON.stringify(next));
+  }
+
+  function noteSpecialitySaved(next: string[]) {
+    setSavedKey((prev) => {
+      if (!prev) return prev;
+      const data = JSON.parse(prev) as ProfileData;
+      data.speciality = next;
+      return JSON.stringify(data);
+    });
+  }
+
   async function handleSave() {
     setSaving(true); setSaveMsg(null);
     try {
       const updated = await apiPut("/api/settings/profile", profileToApi(profile));
-      setProfile(apiToProfile(updated));
-      setSaveMsg({ type: "ok", text: pick(lang, "Muvaffaqiyatli saqlandi ✓", "Успешно сохранено ✓") });
-      setTimeout(() => setSaveMsg(null), 3000);
+      rememberSaved(apiToProfile(updated));
+      setSaveMsg({ type: "ok", text: pick(lang, "Muvaffaqiyatli saqlandi ✅", "Успешно сохранено ✅") });
+      setTimeout(() => setSaveMsg(null), 2800);
+      return true;
     } catch (err) {
       const code = err instanceof Error ? err.message : "";
       const text = code === "phone_invalid"
@@ -2337,9 +2363,41 @@ export default function PersonalPage() {
           ? pick(lang, "Bu raqam boshqa hisobda yozilgan.", "Этот номер уже записан в другом аккаунте.")
           : pick(lang, "Saqlashda xatolik. Qayta urinib ko'ring.", "Не сохранилось. Попробуйте ещё раз.");
       setSaveMsg({ type: "err", text });
+      return false;
     }
     finally { setSaving(false); }
   }
+
+  function leavePage() {
+    leaving.current = true;
+    setLeaveOpen(false);
+    navigate("/settings");
+  }
+
+  function askLeave() {
+    if (dirty && !saving) {
+      setLeaveOpen(true);
+      return;
+    }
+    leavePage();
+  }
+
+  async function saveThenLeave() {
+    const ok = await handleSave();
+    if (ok) leavePage();
+  }
+
+  useEffect(() => {
+    if (!dirty) return;
+    window.history.pushState({ pageGuard: true }, "");
+    const onPop = () => {
+      if (leaving.current) return;
+      setLeaveOpen(true);
+      window.history.pushState({ pageGuard: true }, "");
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [dirty]);
 
   const pageTitle = isTeam ? pick(lang, "🌐 Barbershop sahifasi", "🌐 Страница барбершопа") : pick(lang, "🌐 Mening sahifam", "🌐 Моя страница");
   const TABS: { id: Tab; label: string }[] = [
@@ -2352,11 +2410,13 @@ export default function PersonalPage() {
     <Layout hideBottomNav>
       {/* Page header */}
       <div className="flex items-center gap-3 mb-4">
-        <Link href="/settings">
-          <button className="w-10 h-10 rounded-2xl bg-card border border-white/8 flex items-center justify-center hover:bg-white/5 transition-colors shrink-0">
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-        </Link>
+        <button
+          type="button"
+          onClick={askLeave}
+          className="w-10 h-10 rounded-2xl bg-card border border-white/8 flex items-center justify-center hover:bg-white/5 transition-colors shrink-0"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
         <h1 className="text-lg font-display font-bold text-foreground flex-1 truncate">{pageTitle}</h1>
         {preview ? (
           <button
@@ -2387,11 +2447,23 @@ export default function PersonalPage() {
         </div>
       )}
 
-      {/* Save toast */}
       <AnimatePresence>
-        {saveMsg && (
+        {saveMsg?.type === "ok" && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="pointer-events-none fixed left-1/2 z-[9999] w-[min(92vw,22rem)] -translate-x-1/2"
+            style={{ top: "max(16px, env(safe-area-inset-top))" }}
+          >
+            <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/12 px-4 py-3 text-center text-sm font-semibold text-emerald-400">
+              {saveMsg.text}
+            </div>
+          </motion.div>
+        )}
+        {saveMsg?.type === "err" && (
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-            className={`mb-4 px-4 py-3 rounded-2xl text-sm font-semibold ${saveMsg.type === "ok" ? "bg-emerald-500/12 border border-emerald-500/25 text-emerald-400" : "bg-destructive/12 border border-destructive/25 text-destructive"}`}>
+            className="mb-4 px-4 py-3 rounded-2xl text-sm font-semibold bg-destructive/12 border border-destructive/25 text-destructive">
             {saveMsg.text}
           </motion.div>
         )}
@@ -2429,7 +2501,7 @@ export default function PersonalPage() {
               <motion.div key="asosiy" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
                 {loadingProfile
                   ? <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
-                  : <AsosiyTab profile={profile} onChange={setProfile} onSave={handleSave} saving={saving} />
+                  : <AsosiyTab profile={profile} onChange={setProfile} onSave={handleSave} onSpecialitySaved={noteSpecialitySaved} saving={saving} />
                 }
               </motion.div>
             )}
@@ -2452,6 +2524,34 @@ export default function PersonalPage() {
             )}
           </AnimatePresence>
         </>
+      )}
+
+      {leaveOpen && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center px-4">
+          <button type="button" aria-label={pick(lang, "Yopish", "Закрыть")} className="absolute inset-0 bg-black/60" onClick={() => setLeaveOpen(false)} />
+          <div className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-[#1a1a1f] p-4">
+            <h2 className="text-lg font-bold text-foreground">{pick(lang, "Saqlanmagan o‘zgarishlar bor", "Есть несохранённые изменения")}</h2>
+            <p className="mt-2 text-sm leading-snug text-muted-foreground">
+              {pick(lang, "Kiritgan o‘zgarishlaringiz saqlanmadi. Davom etishdan oldin saqlaysizmi?", "Изменения не сохранены. Сохранить перед выходом?")}
+            </p>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void saveThenLeave()}
+              className="mt-4 h-12 w-full rounded-2xl bg-primary text-base font-extrabold text-black disabled:opacity-60"
+            >
+              {pick(lang, "Saqlash", "Сохранить")}
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={leavePage}
+              className="mt-2 h-12 w-full rounded-2xl border border-white/15 text-base font-bold text-foreground disabled:opacity-60"
+            >
+              {pick(lang, "Saqlamasdan chiqish", "Выйти без сохранения")}
+            </button>
+          </div>
+        </div>
       )}
 
     </Layout>
