@@ -695,7 +695,7 @@ async function sendTelegramAlreadyLinked(chatId: number, accountName: string) {
       `Eslatma va bron xabarlari o\u2018sha ulangan hisobga yuboriladi \u2014 o\u2018sha hisob nomi va paroli bilan kiring.`,
     reply_markup: {
       remove_keyboard: true,
-      inline_keyboard: [[{ text: "Kirish", url: `${getAppUrl()}/login` }]],
+      inline_keyboard: [[{ text: "Kirish", url: `${getAppUrl()}/login?stay=1` }]],
     },
   });
 }

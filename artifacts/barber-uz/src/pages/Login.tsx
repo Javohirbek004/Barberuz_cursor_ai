@@ -45,6 +45,7 @@ export default function Login() {
   const [registerGlow, setRegisterGlow] = useState(false);
   const botUsername = useBotUsername();
   const entryCode = resetParams.get("entry");
+  const stayOnLogin = resetParams.get("stay") === "1";
 
   useEffect(() => {
     if (!resetSuccess) return;
@@ -67,7 +68,7 @@ export default function Login() {
   }, [registerGlow]);
 
   useEffect(() => {
-    if (entryCode) return;
+    if (entryCode || stayOnLogin) return;
     const token = localStorage.getItem("barber_token");
     if (!token || resetSuccess) return;
     fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
