@@ -4,6 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 export type PublicServicePick = {
   id: string;
   name: string;
+  nameRu: string | null;
   price: number;
   duration: number;
 };
@@ -48,6 +49,7 @@ export async function resolveCatalogServices(
     picked.push({
       id: match.id,
       name: match.name,
+      nameRu: match.nameRu?.trim() || null,
       price: Number(match.price) || 0,
       duration: Math.max(Number(match.duration) || 1, 1),
     });

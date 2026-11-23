@@ -25,6 +25,8 @@ export const bookingsTable = pgTable(
     /** Client tapped "I will come" in Telegram. Existing rows stay true so they are not auto-cancelled. */
     clientConfirmed: boolean("client_confirmed").notNull().default(true),
     clientTelegramId: text("client_telegram_id"),
+    /** Language the client chose on the barber page. Client bot messages follow this. */
+    clientLang: text("client_lang").notNull().default("uz"),
     reminded24h: boolean("reminded_24h").notNull().default(false),
     reminded1h: boolean("reminded_1h").notNull().default(false),
     remindedFollowup: boolean("reminded_followup").notNull().default(false),

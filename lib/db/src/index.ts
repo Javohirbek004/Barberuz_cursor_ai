@@ -108,6 +108,7 @@ const ENSURE_SCHEMA_SQL = [
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "buffer_time" integer DEFAULT 10 NOT NULL`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "client_confirmed" boolean DEFAULT true NOT NULL`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "client_telegram_id" text`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "client_lang" text DEFAULT 'uz' NOT NULL`,
   `ALTER TABLE "clients" ADD COLUMN IF NOT EXISTS "telegram_username" text`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_24h" boolean DEFAULT false NOT NULL`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_1h" boolean DEFAULT false NOT NULL`,

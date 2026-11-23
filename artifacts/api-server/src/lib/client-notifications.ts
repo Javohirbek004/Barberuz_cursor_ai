@@ -8,6 +8,18 @@ import { db, bookingsTable, bookingSessionsTable, clientsTable, usersTable } fro
 import { syncClientMetrics } from "./client-metrics";
 import { getTelegramBotToken } from "./telegram-token";
 import { barberEntryMarkup } from "./barber-entry-keyboard";
+import {
+  asClientLang,
+  ct,
+  serviceLabel,
+  MENU_BOOKINGS_RU,
+  MENU_BOOKINGS_UZ,
+  MENU_CONTACT_RU,
+  MENU_CONTACT_UZ,
+  MENU_REBOOK_RU,
+  MENU_REBOOK_UZ,
+  type ClientLang,
+} from "./client-lang";
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -18,6 +30,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const MONTHS = [
   "yanvar", "fevral", "mart", "aprel", "may", "iyun",
   "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr",
+];
+const RU_MONTHS = [
+  "января", "февраля", "марта", "апреля", "мая", "июня",
+  "июля", "августа", "сентября", "октября", "ноября", "декабря",
 ];
 
 interface BarberCard {
@@ -51,6 +67,7 @@ interface BookingCard {
   status: string;
   clientConfirmed: boolean;
   clientTelegramId: string | null;
+  clientLang?: string | null;
   reminded24h: boolean;
   reminded1h: boolean;
   remindedFollowup: boolean;
@@ -104,9 +121,10 @@ function formatPhone(raw: string | null | undefined): string {
   return (raw || "").trim();
 }
 
-function uzDate(iso: string): string {
+function uzDate(iso: string, lang: ClientLang = "uz"): string {
   const [, m, d] = iso.split("-").map(Number);
-  return `${d}-${MONTHS[(m || 1) - 1]}`;
+  const months = lang === "ru" ? RU_MONTHS : MONTHS;
+  return lang === "ru" ? `${d} ${months[(m || 1) - 1]}` : `${d}-${months[(m || 1) - 1]}`;
 }
 
 function tashkentNow(now = Date.now()): { hour: number; minute: number; date: string } {
@@ -149,14 +167,16 @@ function resolveMapUrl(barber: {
   return `https://www.google.com/maps?q=${lat},${lng}`;
 }
 
-function addressLine(mapUrl: string, address: string): string | null {
+function addressLine(mapUrl: string, address: string, lang: ClientLang = "uz"): string | null {
   const link = safeMap(mapUrl);
   const place = address.trim();
+  const label = ct(lang, "Manzil", "Адрес");
+  const mapWord = ct(lang, "Xaritadan ko'rish", "Открыть карту");
   if (link && place) {
-    return `📍 Manzil: <a href="${esc(link)}">🗺️ Xaritadan ko'rish</a> — ${esc(place)}`;
+    return `📍 ${label}: <a href="${esc(link)}">🗺️ ${mapWord}</a> — ${esc(place)}`;
   }
-  if (link) return `📍 Manzil: <a href="${esc(link)}">🗺️ Xaritadan ko'rish</a>`;
-  if (place) return `📍 Manzil: ${esc(place)}`;
+  if (link) return `📍 ${label}: <a href="${esc(link)}">🗺️ ${mapWord}</a>`;
+  if (place) return `📍 ${label}: ${esc(place)}`;
   return null;
 }
 
@@ -164,9 +184,9 @@ function salonName(barber: BarberCard): string {
   return barber.brandName?.trim() || barber.name?.trim() || "Barber.uz";
 }
 
-function contactLine(barber: BarberCard): string | null {
+function contactLine(barber: BarberCard, lang: ClientLang = "uz"): string | null {
   if (!barber.phoneVisible || !barber.phone?.trim()) return null;
-  return `📞 Bogʻlanish: ${esc(formatPhone(barber.phone))}`;
+  return `📞 ${ct(lang, "Bogʻlanish", "Связь")}: ${esc(formatPhone(barber.phone))}`;
 }
 
 export const CLIENT_CANCEL_LIMITS = [30, 60, 120, 180] as const;
@@ -176,51 +196,60 @@ export function normalizeCancelLimit(value: unknown): number {
   return (CLIENT_CANCEL_LIMITS as readonly number[]).includes(n) ? n : 60;
 }
 
-function limitPhrase(minutes: number): string {
+function limitPhrase(minutes: number, lang: ClientLang = "uz"): string {
+  if (lang === "ru") {
+    if (minutes <= 30) return "меньше 30 минут";
+    if (minutes <= 60) return "меньше 1 часа";
+    if (minutes <= 120) return "меньше 2 часов";
+    return "меньше 3 часов";
+  }
   if (minutes <= 30) return "30 daqiqadan kam";
   if (minutes <= 60) return "1 soatdan kam";
   if (minutes <= 120) return "2 soatdan kam";
   return "3 soatdan kam";
 }
 
-export function clientCancelKeyboard(bookingId: string) {
+export function clientCancelKeyboard(bookingId: string, lang: ClientLang = "uz") {
   return {
     inline_keyboard: [[
-      { text: "❌ Bronni bekor qilish", callback_data: `cancel_${bookingId}` },
+      { text: ct(lang, "❌ Bronni bekor qilish", "❌ Отменить запись"), callback_data: `cancel_${bookingId}` },
     ]],
   };
 }
 
-export function clientMenuKeyboard() {
+export function clientMenuKeyboard(lang: ClientLang = "uz") {
   return {
     keyboard: [
-      [{ text: "📅 Mening bronlarim" }],
-      [{ text: "🔄 Qayta bron qilish" }, { text: "📞 Aloqa" }],
+      [{ text: lang === "ru" ? MENU_BOOKINGS_RU : MENU_BOOKINGS_UZ }],
+      [
+        { text: lang === "ru" ? MENU_REBOOK_RU : MENU_REBOOK_UZ },
+        { text: lang === "ru" ? MENU_CONTACT_RU : MENU_CONTACT_UZ },
+      ],
     ],
     resize_keyboard: true,
     is_persistent: true,
   };
 }
 
-function mapLinkLine(barber: BarberCard): string | null {
+function mapLinkLine(barber: BarberCard, lang: ClientLang = "uz"): string | null {
   const link = resolveMapUrl(barber);
   if (!link) return null;
-  return `📍 Manzil: <a href="${esc(link)}">Xaritadan ko'rish</a>`;
+  return `📍 ${ct(lang, "Manzil", "Адрес")}: <a href="${esc(link)}">${ct(lang, "Xaritadan ko'rish", "Открыть карту")}</a>`;
 }
 
-function phoneLine(barber: BarberCard): string | null {
+function phoneLine(barber: BarberCard, lang: ClientLang = "uz"): string | null {
   if (barber.phoneVisible === false || !barber.phone?.trim()) return null;
-  return `📞 Aloqa: ${esc(formatPhone(barber.phone))}`;
+  return `📞 ${ct(lang, "Aloqa", "Связь")}: ${esc(formatPhone(barber.phone))}`;
 }
 
-function botNote(): string {
+function botNote(lang: ClientLang = "uz"): string {
   return lines(
-    "🤖 <b>Bot haqida eslatma:</b>",
-    "Ushbu bot sizning shaxsiy yordamchingiz:",
-    "• Navbatingizga oz qolganda eslatma yuboradi",
-    "• Istalgan vaqtda qayta bron qilishga yordam beradi",
+    ct(lang, "🤖 <b>Bot haqida eslatma:</b>", "🤖 <b>О боте:</b>"),
+    ct(lang, "Ushbu bot sizning shaxsiy yordamchingiz:", "Этот бот — ваш помощник:"),
+    ct(lang, "• Navbatingizga oz qolganda eslatma yuboradi", "• Напомнит, когда до записи останется немного"),
+    ct(lang, "• Istalgan vaqtda qayta bron qilishga yordam beradi", "• Поможет записаться снова в любое время"),
     "",
-    "Chatni o'chirmang, qulaylikdan foydalaning!",
+    ct(lang, "Chatni o'chirmang, qulaylikdan foydalaning!", "Не удаляйте чат — так удобнее."),
   );
 }
 
@@ -229,25 +258,45 @@ function moneyAmount(price: string | number | null | undefined): string {
   return Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") : "0";
 }
 
-function arrivalNote(minutesLeft: number): string {
+function arrivalNote(minutesLeft: number, lang: ClientLang = "uz"): string {
   if (minutesLeft >= 60) {
     return lines(
-      "Iltimos, broningiz vaqtidan 5-10 daqiqa ertaroq keling.",
+      ct(lang, "Iltimos, broningiz vaqtidan 5-10 daqiqa ertaroq keling.", "Пожалуйста, приходите на 5–10 минут раньше."),
       "",
-      "ℹ️ <b>Eslatma:</b> Bronni bekor qilish uchun cheklov vaqti mavjud. Cheklov vaqti o'tgach, faqat usta bilan bog'lanib bronni bekor qilishingiz mumkin.",
+      ct(
+        lang,
+        "ℹ️ <b>Eslatma:</b> Bronni bekor qilish uchun cheklov vaqti mavjud. Cheklov vaqti o'tgach, faqat usta bilan bog'lanib bronni bekor qilishingiz mumkin.",
+        "ℹ️ <b>Напоминание:</b> отменить запись можно только до определённого времени. После этого — только через мастера.",
+      ),
     );
   }
   if (minutesLeft >= 20) {
     return lines(
-      "⏳ <b>Eslatma:</b> Uchrashuv vaqtiga oz qoldi (1 soatdan kam vaqt qoldi). Iltimos, tayyorgarlikni ko'ring.",
+      ct(
+        lang,
+        "⏳ <b>Eslatma:</b> Uchrashuv vaqtiga oz qoldi (1 soatdan kam vaqt qoldi). Iltimos, tayyorgarlikni ko'ring.",
+        "⏳ <b>Напоминание:</b> до встречи осталось меньше часа. Пожалуйста, соберитесь.",
+      ),
       "",
-      "⚠️ <b>Eslatma:</b> Bu bron uchun bekor qilish vaqti tugagan. O'zgarishlar bo'lsa, ustaga to'g'ridan-to'g'ri qo'ng'iroq qiling.",
+      ct(
+        lang,
+        "⚠️ <b>Eslatma:</b> Bu bron uchun bekor qilish vaqti tugagan. O'zgarishlar bo'lsa, ustaga to'g'ridan-to'g'ri qo'ng'iroq qiling.",
+        "⚠️ <b>Напоминание:</b> время отмены этой записи прошло. Если планы изменились, позвоните мастеру.",
+      ),
     );
   }
   return lines(
-    "🚨 <b>Diqqat!</b> Uchrashuv vaqtiga juda oz qoldi! Iltimos, darhol yo'lga chiqing yoki tezroq yetib boring.",
+    ct(
+      lang,
+      "🚨 <b>Diqqat!</b> Uchrashuv vaqtiga juda oz qoldi! Iltimos, darhol yo'lga chiqing yoki tezroq yetib boring.",
+      "🚨 <b>Внимание!</b> До встречи осталось совсем мало времени. Выходите сразу.",
+    ),
     "",
-    "⚠️ <b>Eslatma:</b> Bu bronni endi bekor qilib bo'lmaydi. Har qanday o'zgarish bo'yicha ustaga zudlik bilan qo'ng'iroq qiling.",
+    ct(
+      lang,
+      "⚠️ <b>Eslatma:</b> Bu bronni endi bekor qilib bo'lmaydi. Har qanday o'zgarish bo'yicha ustaga zudlik bilan qo'ng'iroq qiling.",
+      "⚠️ <b>Напоминание:</b> эту запись уже нельзя отменить. По любым изменениям сразу звоните мастеру.",
+    ),
   );
 }
 
@@ -260,32 +309,34 @@ export function clientReceiptMessage(input: {
   time: string;
   minutesLeft: number;
   bookingId?: string | null;
+  lang?: ClientLang;
 }): {
   text: string;
   reply_markup: ReturnType<typeof clientMenuKeyboard>;
   cancelMarkup: ReturnType<typeof clientCancelKeyboard> | null;
 } {
+  const lang = asClientLang(input.lang);
   const limit = normalizeCancelLimit(input.barber.cancelLimit);
   const canCancel = input.minutesLeft > limit && !!input.bookingId;
   const text = lines(
-    `🥳 <b>Broningiz qabul qilindi, ${esc(input.clientName)}!</b>`,
+    ct(lang, `🥳 <b>Broningiz qabul qilindi, ${esc(input.clientName)}!</b>`, `🥳 <b>Запись принята, ${esc(input.clientName)}!</b>`),
     "",
-    `👤 Usta: ${esc(salonName(input.barber))}`,
-    `✂️ Xizmat: ${esc(input.service)}`,
-    `💵 Narx: ${esc(moneyAmount(input.price))} so'm`,
-    `📅 Sana: ${esc(uzDate(input.date))}`,
-    `⏰ Vaqt: ${esc(input.time)}`,
-    phoneLine(input.barber),
-    mapLinkLine(input.barber),
+    `👤 ${ct(lang, "Usta", "Мастер")}: ${esc(salonName(input.barber))}`,
+    `✂️ ${ct(lang, "Xizmat", "Услуга")}: ${esc(input.service)}`,
+    `💵 ${ct(lang, "Narx", "Цена")}: ${esc(moneyAmount(input.price))} ${ct(lang, "so'm", "сум")}`,
+    `📅 ${ct(lang, "Sana", "Дата")}: ${esc(uzDate(input.date, lang))}`,
+    `⏰ ${ct(lang, "Vaqt", "Время")}: ${esc(input.time)}`,
+    phoneLine(input.barber, lang),
+    mapLinkLine(input.barber, lang),
     "",
-    arrivalNote(input.minutesLeft),
+    arrivalNote(input.minutesLeft, lang),
     "",
-    botNote(),
+    botNote(lang),
   );
   return {
     text,
-    reply_markup: clientMenuKeyboard(),
-    cancelMarkup: canCancel ? clientCancelKeyboard(input.bookingId!) : null,
+    reply_markup: clientMenuKeyboard(lang),
+    cancelMarkup: canCancel ? clientCancelKeyboard(input.bookingId!, lang) : null,
   };
 }
 
@@ -295,19 +346,21 @@ export function reminder24Message(input: {
   service: string;
   time: string;
   bookingId: string;
+  lang?: ClientLang;
 }): { text: string; reply_markup: ReturnType<typeof clientCancelKeyboard> } {
+  const lang = asClientLang(input.lang);
   return {
     text: lines(
-      `⏰ <b>Ertaga navbatingiz bor, ${esc(input.clientName)}!</b>`,
+      ct(lang, `⏰ <b>Ertaga navbatingiz bor, ${esc(input.clientName)}!</b>`, `⏰ <b>Завтра у вас запись, ${esc(input.clientName)}!</b>`),
       "",
-      `👤 Usta: ${esc(salonName(input.barber))}`,
-      `✂️ Xizmat: ${esc(input.service)}`,
-      `⏰ Vaqt: Ertaga ${esc(input.time)} da`,
-      mapLinkLine(input.barber),
+      `👤 ${ct(lang, "Usta", "Мастер")}: ${esc(salonName(input.barber))}`,
+      `✂️ ${ct(lang, "Xizmat", "Услуга")}: ${esc(input.service)}`,
+      ct(lang, `⏰ Vaqt: Ertaga ${esc(input.time)} da`, `⏰ Время: завтра в ${esc(input.time)}`),
+      mapLinkLine(input.barber, lang),
       "",
-      "💡 Iltimos, belgilangan vaqtda keling.",
+      ct(lang, "💡 Iltimos, belgilangan vaqtda keling.", "💡 Пожалуйста, приходите вовремя."),
     ),
-    reply_markup: clientCancelKeyboard(input.bookingId),
+    reply_markup: clientCancelKeyboard(input.bookingId, lang),
   };
 }
 
@@ -317,20 +370,22 @@ export function reminder1hMessage(input: {
   service: string;
   time: string;
   bookingId: string;
+  lang?: ClientLang;
 }): { text: string; reply_markup?: ReturnType<typeof clientCancelKeyboard> } {
+  const lang = asClientLang(input.lang);
   const limit = normalizeCancelLimit(input.barber.cancelLimit);
   const text = lines(
-    `🚨 <b>Diqqat, ${esc(input.clientName)}! 1 soatdan keyin navbatingiz bor!</b>`,
+    ct(lang, `🚨 <b>Diqqat, ${esc(input.clientName)}! 1 soatdan keyin navbatingiz bor!</b>`, `🚨 <b>Внимание, ${esc(input.clientName)}! Через 1 час у вас запись!</b>`),
     "",
-    `👤 Usta: ${esc(salonName(input.barber))}`,
-    `✂️ Xizmat: ${esc(input.service)}`,
-    `⏰ Vaqt: ${esc(input.time)} (1 soat qoldi)`,
-    mapLinkLine(input.barber),
+    `👤 ${ct(lang, "Usta", "Мастер")}: ${esc(salonName(input.barber))}`,
+    `✂️ ${ct(lang, "Xizmat", "Услуга")}: ${esc(input.service)}`,
+    ct(lang, `⏰ Vaqt: ${esc(input.time)} (1 soat qoldi)`, `⏰ Время: ${esc(input.time)} (остался 1 час)`),
+    mapLinkLine(input.barber, lang),
     "",
-    "💡 Iltimos, belgilangan vaqtda keling. Agarda kechikishingiz mumkin bo‘lsa yoki qandaydir sababga ko‘ra kela olmasangiz, darhol barber bilan aloqaga chiqing!",
+    ct(lang, "💡 Iltimos, belgilangan vaqtda keling. Agarda kechikishingiz mumkin bo‘lsa yoki qandaydir sababga ko‘ra kela olmasangiz, darhol barber bilan aloqaga chiqing!", "💡 Пожалуйста, приходите вовремя. Если задержитесь или не сможете прийти, сразу свяжитесь с мастером."),
   );
   return limit === 30
-    ? { text, reply_markup: clientCancelKeyboard(input.bookingId) }
+    ? { text, reply_markup: clientCancelKeyboard(input.bookingId, lang) }
     : { text };
 }
 
@@ -402,52 +457,56 @@ export function reminder1hText(barber: BarberCard, time: string): string {
   );
 }
 
-function confirmedText(): string {
+function confirmedText(lang: ClientLang = "uz"): string {
   return [
-    "✨ <b>Ajoyib! Navbatingiz tasdiqlandi.</b>",
+    ct(lang, "✨ <b>Ajoyib! Navbatingiz tasdiqlandi.</b>", "✨ <b>Отлично! Запись подтверждена.</b>"),
     "",
-    "Sizni belgilangan vaqtda kutapmiz.",
-    "Iltimos belgilangan vaqtdan 5 daqiqa oldin keling!",
+    ct(lang, "Sizni belgilangan vaqtda kutapmiz.", "Ждём вас в назначенное время."),
+    ct(lang, "Iltimos belgilangan vaqtdan 5 daqiqa oldin keling!", "Пожалуйста, приходите за 5 минут."),
   ].join("\n");
 }
 
-function tooLateText(barber: BarberCard, limit = normalizeCancelLimit(barber.cancelLimit)): string {
+function tooLateText(barber: BarberCard, limit = normalizeCancelLimit(barber.cancelLimit), lang: ClientLang = "uz"): string {
   const phone = barber.phone?.trim()
-    ? `\n📞 Telefon: ${esc(formatPhone(barber.phone))}`
+    ? `\n📞 ${ct(lang, "Telefon", "Телефон")}: ${esc(formatPhone(barber.phone))}`
     : "";
   return [
-    "🚫 <b>Bekor qilish vaqti o'tdi!</b>",
+    ct(lang, "🚫 <b>Bekor qilish vaqti o'tdi!</b>", "🚫 <b>Время отмены прошло!</b>"),
     "",
-    `Navbatga ${limitPhrase(limit)} vaqt qolgani sababli bot orqali bekor qilib bo'lmaydi.`,
-    `Iltimos, usta bilan bevosita bog'laning:${phone}`,
+    ct(
+      lang,
+      `Navbatga ${limitPhrase(limit)} vaqt qolgani sababli bot orqali bekor qilib bo'lmaydi.`,
+      `До записи осталось ${limitPhrase(limit, lang)}, поэтому через бот отменить нельзя.`,
+    ),
+    ct(lang, `Iltimos, usta bilan bevosita bog'laning:${phone}`, `Свяжитесь с мастером напрямую:${phone}`),
   ].join("\n");
 }
 
-export async function handleClientCancelNo(chatId: number, messageId?: number): Promise<void> {
-  await editOrSend(String(chatId), messageId, "Bron saqlanib qoldi.", {
+export async function handleClientCancelNo(chatId: number, messageId?: number, lang: ClientLang = "uz"): Promise<void> {
+  await editOrSend(String(chatId), messageId, ct(lang, "Bron saqlanib qoldi.", "Запись сохранена."), {
     reply_markup: { inline_keyboard: [] },
   });
 }
 
-function cancelledText(): string {
+function cancelledText(lang: ClientLang = "uz"): string {
   return [
-    "🗑️ <b>Navbatingiz bekor qilindi.</b>",
+    ct(lang, "🗑️ <b>Navbatingiz bekor qilindi.</b>", "🗑️ <b>Запись отменена.</b>"),
     "",
-    "Boshqa qulay vaqtda koʻrishguncha! Qayta bron qilish uchun quyidagi tugmani bosing 👇",
+    ct(lang, "Boshqa qulay vaqtda koʻrishguncha! Qayta bron qilish uchun quyidagi tugmani bosing 👇", "До встречи в другое удобное время. Чтобы записаться снова, нажмите кнопку 👇"),
   ].join("\n");
 }
 
-function barberCancelledText(barber: BarberCard, service: string, date: string, time: string): string {
+function barberCancelledText(barber: BarberCard, service: string, date: string, time: string, lang: ClientLang = "uz"): string {
   return lines(
-    "🗑️ <b>Navbatingiz bekor qilindi</b>",
+    ct(lang, "🗑️ <b>Navbatingiz bekor qilindi</b>", "🗑️ <b>Ваша запись отменена</b>"),
     "",
-    `💈 Salon: ${esc(salonName(barber))}`,
-    `✂️ Xizmat: ${esc(service)}`,
-    `🗓️ Sana: ${esc(uzDate(date))}`,
-    `⏰ Vaqt: ${esc(time)}`,
+    `💈 ${ct(lang, "Salon", "Салон")}: ${esc(salonName(barber))}`,
+    `✂️ ${ct(lang, "Xizmat", "Услуга")}: ${esc(service)}`,
+    `🗓️ ${ct(lang, "Sana", "Дата")}: ${esc(uzDate(date, lang))}`,
+    `⏰ ${ct(lang, "Vaqt", "Время")}: ${esc(time)}`,
     "",
-    "Noqulaylik uchun uzr so'raymiz. Qulay boshqa vaqtni tanlash uchun quyidagi tugmani bosing 👇",
-    contactLine(barber),
+    ct(lang, "Noqulaylik uchun uzr so'raymiz. Qulay boshqa vaqtni tanlash uchun quyidagi tugmani bosing 👇", "Извините за неудобство. Выберите другое удобное время по кнопке ниже 👇"),
+    contactLine(barber, lang),
   );
 }
 
@@ -456,16 +515,17 @@ function barberRescheduledText(
   service: string,
   from: { date: string; time: string },
   to: { date: string; time: string },
+  lang: ClientLang = "uz",
 ): string {
   return lines(
-    "🔄 <b>Navbatingiz vaqti o'zgartirildi</b>",
+    ct(lang, "🔄 <b>Navbatingiz vaqti o'zgartirildi</b>", "🔄 <b>Время записи изменено</b>"),
     "",
-    `💈 Salon: ${esc(salonName(barber))}`,
-    `✂️ Xizmat: ${esc(service)}`,
-    `❌ Avvalgi vaqt: ${esc(uzDate(from.date))}, ${esc(from.time)}`,
-    `✅ Yangi vaqt: ${esc(uzDate(to.date))}, ${esc(to.time)}`,
-    addressLine(resolveMapUrl(barber), barber.address || ""),
-    contactLine(barber),
+    `💈 ${ct(lang, "Salon", "Салон")}: ${esc(salonName(barber))}`,
+    `✂️ ${ct(lang, "Xizmat", "Услуга")}: ${esc(service)}`,
+    `❌ ${ct(lang, "Avvalgi vaqt", "Прежнее время")}: ${esc(uzDate(from.date, lang))}, ${esc(from.time)}`,
+    `✅ ${ct(lang, "Yangi vaqt", "Новое время")}: ${esc(uzDate(to.date, lang))}, ${esc(to.time)}`,
+    addressLine(resolveMapUrl(barber), barber.address || "", lang),
+    contactLine(barber, lang),
   );
 }
 
@@ -564,6 +624,23 @@ async function loadBarber(barberId: string): Promise<BarberCard | null> {
   return row ?? null;
 }
 
+async function shownService(booking: BookingCard, lang: ClientLang): Promise<string> {
+  const fallback = booking.serviceName?.trim() || ct(lang, "Xizmat", "Услуга");
+  if (lang !== "ru") return fallback;
+  const [session] = await db
+    .select({ bookingData: bookingSessionsTable.bookingData })
+    .from(bookingSessionsTable)
+    .where(eq(bookingSessionsTable.bookingId, booking.id))
+    .limit(1);
+  if (!session?.bookingData) return fallback;
+  try {
+    const data = JSON.parse(session.bookingData) as { services?: Array<{ name?: string; nameRu?: string | null }> };
+    return serviceLabel("ru", data.services, fallback);
+  } catch {
+    return fallback;
+  }
+}
+
 async function loadBooking(bookingId: string): Promise<BookingCard | null> {
   const [row] = await db.select().from(bookingsTable).where(eq(bookingsTable.id, bookingId)).limit(1);
   return row ?? null;
@@ -599,8 +676,8 @@ async function findTelegram(barberId: string, phone: string | null, clientId: st
   return sessionHit?.clientTelegramId ?? null;
 }
 
-function rebookMarkup(username: string) {
-  return { inline_keyboard: [[{ text: "📱 Qayta bron qilish", url: rebookUrl(username) }]] };
+function rebookMarkup(username: string, lang: ClientLang = "uz") {
+  return { inline_keyboard: [[{ text: ct(lang, "📱 Qayta bron qilish", "📱 Записаться снова"), url: rebookUrl(username) }]] };
 }
 
 export async function deliverBookingReceipt(
@@ -621,7 +698,8 @@ export async function deliverBookingReceipt(
   if (!chat) chat = await findTelegram(booking.barberId, hint?.phone ?? null, booking.clientId);
   if (!chat) return false;
 
-  const service = booking.serviceName?.trim() || "Xizmat";
+  const lang = asClientLang(booking.clientLang);
+  const service = await shownService(booking, lang);
   const time = booking.startTime.slice(0, 5);
   const minutesLeft = (appointmentMs(booking.date, time) - Date.now()) / 60000;
   const message = clientReceiptMessage({
@@ -633,11 +711,12 @@ export async function deliverBookingReceipt(
     time,
     minutesLeft,
     bookingId: booking.id,
+    lang,
   });
   const ok = await send(chat, message.text, { reply_markup: message.reply_markup });
   if (!ok) return false;
   if (message.cancelMarkup) {
-    await send(chat, "Bronni bekor qilmoqchi bo‘lsangiz, shu tugmani bosing.", {
+    await send(chat, ct(lang, "Bronni bekor qilmoqchi bo‘lsangiz, shu tugmani bosing.", "Если хотите отменить запись, нажмите кнопку."), {
       reply_markup: message.cancelMarkup,
     });
   }
@@ -667,12 +746,13 @@ export async function handleClientConfirm(
   messageId?: number,
 ): Promise<void> {
   const booking = await loadBooking(bookingId);
+  const lang = asClientLang(booking?.clientLang);
   if (!booking || !ownsChat(booking, chatId)) {
-    await send(String(chatId), "Bron topilmadi.");
+    await send(String(chatId), ct(lang, "Bron topilmadi.", "Запись не найдена."));
     return;
   }
   if (booking.status === "cancelled" || booking.status === "auto_cancelled") {
-    await send(String(chatId), "Bu navbat allaqachon bekor qilingan.");
+    await send(String(chatId), ct(lang, "Bu navbat allaqachon bekor qilingan.", "Эта запись уже отменена."));
     return;
   }
   await db.update(bookingsTable).set({
@@ -680,7 +760,7 @@ export async function handleClientConfirm(
     clientConfirmed: true,
     updatedAt: new Date(),
   }).where(eq(bookingsTable.id, booking.id));
-  await editOrSend(String(chatId), messageId, confirmedText(), { reply_markup: { inline_keyboard: [] } });
+  await editOrSend(String(chatId), messageId, confirmedText(lang), { reply_markup: { inline_keyboard: [] } });
 }
 
 export async function handleClientCancel(
@@ -689,12 +769,13 @@ export async function handleClientCancel(
   messageId?: number,
 ): Promise<void> {
   const booking = await loadBooking(bookingId);
+  const lang = asClientLang(booking?.clientLang);
   if (!booking || !ownsChat(booking, chatId)) {
-    await send(String(chatId), "Bron topilmadi.");
+    await send(String(chatId), ct(lang, "Bron topilmadi.", "Запись не найдена."));
     return;
   }
   if (booking.status === "cancelled" || booking.status === "auto_cancelled") {
-    await send(String(chatId), "Bu navbat allaqachon bekor qilingan.");
+    await send(String(chatId), ct(lang, "Bu navbat allaqachon bekor qilingan.", "Эта запись уже отменена."));
     return;
   }
   const barber = await loadBarber(booking.barberId);
@@ -703,15 +784,15 @@ export async function handleClientCancel(
   const minutesLeft = (appointmentMs(booking.date, booking.startTime) - Date.now()) / 60000;
   const limit = normalizeCancelLimit(barber.cancelLimit);
   if (minutesLeft <= limit) {
-    await editOrSend(String(chatId), messageId, tooLateText(barber, limit), { reply_markup: { inline_keyboard: [] } });
+    await editOrSend(String(chatId), messageId, tooLateText(barber, limit, lang), { reply_markup: { inline_keyboard: [] } });
     return;
   }
 
-  await send(String(chatId), "Haqiqatan ham ushbu bronni bekor qilmoqchimisiz?", {
+  await send(String(chatId), ct(lang, "Haqiqatan ham ushbu bronni bekor qilmoqchimisiz?", "Точно хотите отменить эту запись?"), {
     reply_markup: {
       inline_keyboard: [[
-        { text: "✅ Ha, bekor qilish", callback_data: `clyes_${booking.id}` },
-        { text: "🛑 Bekor qilmaslik", callback_data: `clno_${booking.id}` },
+        { text: ct(lang, "✅ Ha, bekor qilish", "✅ Да, отменить"), callback_data: `clyes_${booking.id}` },
+        { text: ct(lang, "🛑 Bekor qilmaslik", "🛑 Не отменять"), callback_data: `clno_${booking.id}` },
       ]],
     },
   });
@@ -723,12 +804,13 @@ export async function handleClientCancelYes(
   messageId?: number,
 ): Promise<void> {
   const booking = await loadBooking(bookingId);
+  const lang = asClientLang(booking?.clientLang);
   if (!booking || !ownsChat(booking, chatId)) {
-    await send(String(chatId), "Bron topilmadi.");
+    await send(String(chatId), ct(lang, "Bron topilmadi.", "Запись не найдена."));
     return;
   }
   if (booking.status === "cancelled" || booking.status === "auto_cancelled") {
-    await editOrSend(String(chatId), messageId, "Bu navbat allaqachon bekor qilingan.", { reply_markup: { inline_keyboard: [] } });
+    await editOrSend(String(chatId), messageId, ct(lang, "Bu navbat allaqachon bekor qilingan.", "Эта запись уже отменена."), { reply_markup: { inline_keyboard: [] } });
     return;
   }
   const barber = await loadBarber(booking.barberId);
@@ -737,7 +819,7 @@ export async function handleClientCancelYes(
   const minutesLeft = (appointmentMs(booking.date, booking.startTime) - Date.now()) / 60000;
   const limit = normalizeCancelLimit(barber.cancelLimit);
   if (minutesLeft <= limit) {
-    await editOrSend(String(chatId), messageId, tooLateText(barber, limit), { reply_markup: { inline_keyboard: [] } });
+    await editOrSend(String(chatId), messageId, tooLateText(barber, limit, lang), { reply_markup: { inline_keyboard: [] } });
     return;
   }
 
@@ -749,8 +831,8 @@ export async function handleClientCancelYes(
   await db.update(bookingSessionsTable).set({ status: "cancelled" })
     .where(eq(bookingSessionsTable.bookingId, booking.id));
 
-  await editOrSend(String(chatId), messageId, cancelledText(), {
-    reply_markup: rebookMarkup(barber.username),
+  await editOrSend(String(chatId), messageId, cancelledText(lang), {
+    reply_markup: rebookMarkup(barber.username, lang),
   });
 
   if (barber.telegramId && barber.notifyCancel !== false) {
@@ -802,15 +884,16 @@ export async function notifyClientOfBarberChange(bookingId: string, change: Barb
   const barber = await loadBarber(booking.barberId);
   if (!barber) return false;
 
-  const service = booking.serviceName?.trim() || "Xizmat";
+  const lang = asClientLang(booking.clientLang);
+  const service = await shownService(booking, lang);
   const time = booking.startTime.slice(0, 5);
 
   if (change.kind === "cancelled") {
-    return send(chat, barberCancelledText(barber, service, booking.date, time), {
-      reply_markup: rebookMarkup(barber.username),
+    return send(chat, barberCancelledText(barber, service, booking.date, time, lang), {
+      reply_markup: rebookMarkup(barber.username, lang),
     });
   }
-  return send(chat, barberRescheduledText(barber, service, change.from, { date: booking.date, time }));
+  return send(chat, barberRescheduledText(barber, service, change.from, { date: booking.date, time }, lang));
 }
 
 export async function runClientNotificationCycle(now = Date.now()): Promise<void> {
@@ -832,7 +915,8 @@ export async function runClientNotificationCycle(now = Date.now()): Promise<void
     if (!booking.clientTelegramId) continue;
     const barber = await barberOf(booking.barberId);
     if (!barber) continue;
-    const service = booking.serviceName?.trim() || "Xizmat";
+    const lang = asClientLang(booking.clientLang);
+    const service = await shownService(booking, lang);
     const time = booking.startTime.slice(0, 5);
     const minutesLeft = (appointmentMs(booking.date, time) - now) / 60000;
     if (minutesLeft < 0) continue;
@@ -844,6 +928,7 @@ export async function runClientNotificationCycle(now = Date.now()): Promise<void
         service,
         time,
         bookingId: booking.id,
+        lang,
       });
       const ok = await send(booking.clientTelegramId, message.text, { reply_markup: message.reply_markup });
       if (ok) {
@@ -858,6 +943,7 @@ export async function runClientNotificationCycle(now = Date.now()): Promise<void
         service,
         time,
         bookingId: booking.id,
+        lang,
       });
       const ok = await send(booking.clientTelegramId, message.text, message.reply_markup
         ? { reply_markup: message.reply_markup }

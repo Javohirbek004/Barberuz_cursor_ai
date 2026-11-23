@@ -51,6 +51,17 @@ import {
 } from "./client-notifications";
 import { getTelegramBotToken, getTelegramBotUsername, hasLearnedBotUsername, rememberBotUsername, webhookSecretToken } from "./telegram-token";
 import {
+  asClientLang,
+  ct,
+  menuKind,
+  PHONE_BUTTON_ALT_RU,
+  PHONE_BUTTON_ALT_UZ,
+  PHONE_BUTTON_RU,
+  PHONE_BUTTON_UZ,
+  serviceLabel,
+  type ClientLang,
+} from "./client-lang";
+import {
   bindPendingToChat,
   createUserFromPending,
   findPendingByChat,
@@ -136,13 +147,16 @@ async function deleteRegistrationPrompts(chatId: number) {
   ));
 }
 
-const CLIENT_MENU_BOOKINGS = "📅 Mening bronlarim";
-const CLIENT_MENU_REBOOK = "🔄 Qayta bron qilish";
-const CLIENT_MENU_REBOOK_OLD = "✂️ Qayta bron";
-const CLIENT_MENU_CONTACT = "📞 Aloqa";
+function clientReplyKeyboard(lang: ClientLang = "uz") {
+  return clientMenuKeyboard(lang);
+}
 
-function clientReplyKeyboard() {
-  return clientMenuKeyboard();
+async function clientChatLang(chatId: number): Promise<ClientLang> {
+  const [row] = await db.select({ clientLang: bookingsTable.clientLang }).from(bookingsTable)
+    .where(eq(bookingsTable.clientTelegramId, String(chatId)))
+    .orderBy(desc(bookingsTable.createdAt))
+    .limit(1);
+  return asClientLang(row?.clientLang);
 }
 
 function rememberBookingPrompt(chatId: number, messageId: number | undefined) {
@@ -638,30 +652,35 @@ async function handleClientInviteStart(
     sql`(${bookingsTable.date} > ${now.date} OR (${bookingsTable.date} = ${now.date} AND left(${bookingsTable.startTime}, 5) >= ${now.time}))`,
   )).orderBy(bookingsTable.date, bookingsTable.startTime).limit(1);
 
-  const clientName = client.name?.trim() || "Mijoz";
-  const barberName = barber?.name?.trim() || barber?.brandName?.trim() || "usta";
+  const lang = active ? asClientLang(active.clientLang) : await clientChatLang(chatId);
+  const clientName = client.name?.trim() || ct(lang, "Mijoz", "Клиент");
+  const barberName = barber?.name?.trim() || barber?.brandName?.trim() || ct(lang, "usta", "мастер");
   const lines = [
-    `Assalomu alaykum, ${clientName}! Sartaroshingiz ${barberName} bilan muvaffaqiyatli bog‘landingiz ✅`,
+    ct(
+      lang,
+      `Assalomu alaykum, ${clientName}! Sartaroshingiz ${barberName} bilan muvaffaqiyatli bog‘landingiz ✅`,
+      `Здравствуйте, ${clientName}! Вы успешно связаны с мастером ${barberName} ✅`,
+    ),
   ];
   if (active) {
     lines.push(
-      "Sizning faol broningiz mavjud:",
-      `📅 Sana: ${formatDateLabel(active.date)}`,
-      `⏰ Vaqti: ${active.startTime.slice(0, 5)}`,
-      `✂️ Xizmat: ${active.serviceName?.trim() || "Xizmat"}`,
-      "Endi barcha bronlaringizni kuzatib borishingiz, eslatmalar olishingiz va 24/7 navbatga yozilishingiz mumkin!",
-      "💡 Eslatma: Qabul vaqtingizni o‘tkazib yubormaslik va eslatmalar olish uchun botni o‘chirmang (bloklamang).",
+      ct(lang, "Sizning faol broningiz mavjud:", "У вас есть активная запись:"),
+      `📅 ${ct(lang, "Sana", "Дата")}: ${clientDateLabel(active.date, lang)}`,
+      `⏰ ${ct(lang, "Vaqti", "Время")}: ${active.startTime.slice(0, 5)}`,
+      `✂️ ${ct(lang, "Xizmat", "Услуга")}: ${active.serviceName?.trim() || ct(lang, "Xizmat", "Услуга")}`,
+      ct(lang, "Endi barcha bronlaringizni kuzatib borishingiz, eslatmalar olishingiz va 24/7 navbatga yozilishingiz mumkin!", "Теперь вы можете следить за записями, получать напоминания и записываться в любое время."),
+      ct(lang, "💡 Eslatma: Qabul vaqtingizni o‘tkazib yubormaslik va eslatmalar olish uchun botni o‘chirmang (bloklamang).", "💡 Не удаляйте и не блокируйте бот, чтобы не пропустить время и напоминания."),
     );
   } else {
     lines.push(
-      "Endi barcha bronlaringizni kuzatib borishingiz, qabul vaqti haqida eslatmalar olishingiz hamda istalgan vaqtda 24/7 navbatga yozilishingiz mumkin!",
-      "💡 Eslatma: Kelgusi bronlaringiz haqida xabardor bo‘lish uchun botni o‘chirmang (bloklamang).",
+      ct(lang, "Endi barcha bronlaringizni kuzatib borishingiz, qabul vaqti haqida eslatmalar olishingiz hamda istalgan vaqtda 24/7 navbatga yozilishingiz mumkin!", "Теперь вы можете следить за записями, получать напоминания и записываться в любое время."),
+      ct(lang, "💡 Eslatma: Kelgusi bronlaringiz haqida xabardor bo‘lish uchun botni o‘chirmang (bloklamang).", "💡 Не удаляйте и не блокируйте бот, чтобы получать новости о следующих записях."),
     );
   }
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text: lines.join("\n"),
-    reply_markup: clientReplyKeyboard(),
+    reply_markup: clientReplyKeyboard(lang),
   });
 }
 
@@ -1113,12 +1132,7 @@ export async function handleTelegramUpdate(update: unknown) {
     return;
   }
 
-  if (
-    text === CLIENT_MENU_BOOKINGS ||
-    text === CLIENT_MENU_REBOOK ||
-    text === CLIENT_MENU_REBOOK_OLD ||
-    text === CLIENT_MENU_CONTACT
-  ) {
+  if (menuKind(text)) {
     await handleClientMenu(chatId, text);
     return;
   }
@@ -1791,7 +1805,7 @@ async function handleCallbackQuery(callbackQuery: Record<string, unknown>) {
     const bookingId = callbackBookingId(callbackData);
     if (clientAction === "confirm") await handleClientConfirm(bookingId, chatId, messageId);
     else if (clientAction === "cancel_yes") await handleClientCancelYes(bookingId, chatId, messageId);
-    else if (clientAction === "cancel_no") await handleClientCancelNo(chatId, messageId);
+    else if (clientAction === "cancel_no") await handleClientCancelNo(chatId, messageId, await clientChatLang(chatId));
     else await handleClientCancel(bookingId, chatId, messageId);
     return;
   }
@@ -2253,11 +2267,13 @@ async function handleConfirmCancel(chatId: number, sessionId: string) {
     telegramUserId: session.clientTelegramId || undefined,
   });
 
-  await callTelegram("sendMessage", { chat_id: chatId, text: "Bron bekor qilindi \u274C" });
+  let cancelLang: ClientLang = "uz";
+  try { cancelLang = asClientLang(data.lang); } catch { /* uz */ }
+  await callTelegram("sendMessage", { chat_id: chatId, text: ct(cancelLang, "Bron bekor qilindi \u274C", "Запись отменена \u274C") });
 
   if (!session.clientTelegramId || session.cancelNotificationSent) return;
 
-  const clientFirstName = session.clientName?.split(" ")[0] || "Mijoz";
+  const clientFirstName = session.clientName?.split(" ")[0] || ct(cancelLang, "Mijoz", "Клиент");
   const [rebookBarber] = await db
     .select({ username: usersTable.username })
     .from(usersTable)
@@ -2268,16 +2284,16 @@ async function handleConfirmCancel(chatId: number, sessionId: string) {
   if (!validateAppUrl(reBookUrl)) {
     await callTelegram("sendMessage", {
       chat_id: Number(session.clientTelegramId),
-      text: `Uzr, <b>${clientFirstName}</b>! \uD83D\uDE4F\n\nSizning ${formatDateLabel(data.date)}, <b>${data.time}</b> dagi navbatingiz bekor qilindi.\n\nXatolik yuz berdi. Iltimos, ilovaga qo\u02BBlda kiring.`,
+      text: ct(cancelLang, `Uzr, <b>${clientFirstName}</b>! \uD83D\uDE4F\n\nSizning ${formatDateLabel(data.date)}, <b>${data.time}</b> dagi navbatingiz bekor qilindi.\n\nXatolik yuz berdi. Iltimos, ilovaga qo\u02BBlda kiring.`, `Извините, <b>${clientFirstName}</b>! \uD83D\uDE4F\n\nВаша запись ${formatDateLabelRu(data.date)}, <b>${data.time}</b> отменена.\n\nПроизошла ошибка. Откройте приложение вручную.`),
       parse_mode: "HTML",
     });
   } else {
     await callTelegram("sendMessage", {
       chat_id: Number(session.clientTelegramId),
-      text: `Uzr, <b>${clientFirstName}</b>! \uD83D\uDE4F\n\nSizning ${formatDateLabel(data.date)}, <b>${data.time}</b> dagi navbatingiz bekor qilindi.\n\nQulay boshqa vaqtni tanlash uchun quyidagi tugmani bosing:`,
+      text: ct(cancelLang, `Uzr, <b>${clientFirstName}</b>! \uD83D\uDE4F\n\nSizning ${formatDateLabel(data.date)}, <b>${data.time}</b> dagi navbatingiz bekor qilindi.\n\nQulay boshqa vaqtni tanlash uchun quyidagi tugmani bosing:`, `Извините, <b>${clientFirstName}</b>! \uD83D\uDE4F\n\nВаша запись ${formatDateLabelRu(data.date)}, <b>${data.time}</b> отменена.\n\nВыберите другое удобное время по кнопке:`),
       parse_mode: "HTML",
       reply_markup: {
-        inline_keyboard: [[{ text: "\uD83D\uDCC5 Qayta bron qilish", url: reBookUrl }]],
+        inline_keyboard: [[{ text: ct(cancelLang, "\uD83D\uDCC5 Qayta bron qilish", "\uD83D\uDCC5 Записаться снова"), url: reBookUrl }]],
       },
     });
   }
@@ -2352,15 +2368,21 @@ async function handleCustomerConfirmCancel(chatId: number, sessionId: string) {
     // The saved page link is unusable. The username link above stays.
   }
 
+  const clientLang = asClientLang(data.lang);
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text:
+    text: ct(
+      clientLang,
       `\u2705 <b>Broningiz bekor qilindi!</b>\n\n` +
       `${formatDateLabel(data.date)}, soat <b>${data.time}</b> dagi navbat bekor qilindi.\n\n` +
       `Qayta bron qilish uchun quyidagi tugmani bosing:`,
+      `\u2705 <b>Запись отменена!</b>\n\n` +
+      `Запись ${formatDateLabelRu(data.date)} в <b>${data.time}</b> отменена.\n\n` +
+      `Чтобы записаться снова, нажмите кнопку:`,
+    ),
     parse_mode: "HTML",
     reply_markup: {
-      inline_keyboard: [[{ text: "\uD83D\uDD04 Qayta bron qilish", url: barberPageLink }]],
+      inline_keyboard: [[{ text: ct(clientLang, "\uD83D\uDD04 Qayta bron qilish", "\uD83D\uDD04 Записаться снова"), url: barberPageLink }]],
     },
   });
 
@@ -2658,7 +2680,8 @@ interface BookingData {
   date:           string;
   time:           string;
   totalPrice:     number;
-  services:       { name: string; price: number; duration: number }[];
+  services:       { name: string; nameRu?: string | null; price: number; duration: number }[];
+  lang?:          string;
 }
 
 function parseBookingPayload(payload: string): { sessionId?: string; bookingId?: string } | null {
@@ -2702,6 +2725,10 @@ function formatDateLabelRu(dateStr: string): string {
     const days = ["вс","пн","вт","ср","чт","пт","сб"];
     return `${d.getDate()} ${months[d.getMonth()]} (${days[d.getDay()]})`;
   } catch { return dateStr; }
+}
+
+function clientDateLabel(dateStr: string, lang: ClientLang): string {
+  return lang === "ru" ? formatDateLabelRu(dateStr) : formatDateLabel(dateStr);
 }
 
 function formatDateLabel(dateStr: string): string {
@@ -2876,6 +2903,7 @@ async function confirmBookingSession(
         endTime: addMinutes(data.time, totalDur || 30),
         price: String(data.totalPrice),
         status: "confirmed",
+        clientLang: asClientLang(data.lang),
       }).returning();
       bookingRowId = inserted?.id ?? null;
       if (bookingRowId) {
@@ -2891,6 +2919,7 @@ async function confirmBookingSession(
       .set({
         status: "confirmed",
         clientName: shownName,
+        clientLang: asClientLang(data.lang),
         ...(clientId ? { clientId } : {}),
         updatedAt: new Date(),
       })
@@ -2924,7 +2953,7 @@ async function confirmBookingSession(
     return;
   }
 
-  const serviceNames = data.services.map((s: { name: string }) => s.name).join(", ");
+  const serviceNames = serviceLabel(data.lang, data.services, data.services.map((s) => s.name).join(", "));
   const [barberRow] = await db
     .select({
       id: usersTable.id,
@@ -2961,10 +2990,11 @@ async function confirmBookingSession(
         time: data.time,
         minutesLeft,
         bookingId: bookingRowId,
+        lang: asClientLang(data.lang),
       })
     : {
-        text: `🥳 <b>Broningiz qabul qilindi, ${shownName}!</b>\n\n✂️ Xizmat: ${serviceNames}\n📅 Sana: ${formatDateLabel(data.date)}\n⏰ Vaqt: ${data.time}`,
-        reply_markup: clientMenuKeyboard(),
+        text: ct(asClientLang(data.lang), `🥳 <b>Broningiz qabul qilindi, ${shownName}!</b>\n\n✂️ Xizmat: ${serviceNames}\n📅 Sana: ${formatDateLabel(data.date)}\n⏰ Vaqt: ${data.time}`, `🥳 <b>Запись принята, ${shownName}!</b>\n\n✂️ Услуга: ${serviceLabel(data.lang, data.services, serviceNames)}\n📅 Дата: ${formatDateLabelRu(data.date)}\n⏰ Время: ${data.time}`),
+        reply_markup: clientMenuKeyboard(asClientLang(data.lang)),
         cancelMarkup: null,
       };
 
@@ -2978,7 +3008,7 @@ async function confirmBookingSession(
   if (sent?.ok && receipt.cancelMarkup) {
     await callTelegram("sendMessage", {
       chat_id: chatId,
-      text: "Bronni bekor qilmoqchi bo‘lsangiz, shu tugmani bosing.",
+      text: ct(asClientLang(data.lang), "Bronni bekor qilmoqchi bo‘lsangiz, shu tugmani bosing.", "Если хотите отменить запись, нажмите кнопку."),
       reply_markup: receipt.cancelMarkup,
     });
   }
@@ -3039,12 +3069,20 @@ async function handleBookingStart(
     console.warn("[Bot] handleBookingStart: could not persist chatId:", err);
   }
 
-  const greetName = session.clientName?.trim() || "mijoz";
+  let greetLang: ClientLang = "uz";
+  try {
+    greetLang = asClientLang((JSON.parse(session.bookingData) as BookingData).lang);
+  } catch { /* keep Uzbek */ }
+  const greetName = session.clientName?.trim() || ct(greetLang, "mijoz", "клиент");
   const greet = await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: `Salom, ${greetName}!\nBroningizni yakunlash uchun pastdagi tugmani bosib telefon raqamingizni yuboring:`,
+    text: ct(
+      greetLang,
+      `Salom, ${greetName}!\nBroningizni yakunlash uchun pastdagi tugmani bosib telefon raqamingizni yuboring:`,
+      `Здравствуйте, ${greetName}!\nЧтобы завершить запись, нажмите кнопку и отправьте номер телефона:`,
+    ),
     reply_markup: {
-      keyboard: [[{ text: "📞 Telefon raqamni yuborish", request_contact: true }]],
+      keyboard: [[{ text: greetLang === "ru" ? PHONE_BUTTON_RU : PHONE_BUTTON_UZ, request_contact: true }]],
       resize_keyboard: true,
       one_time_keyboard: true,
     },
@@ -3064,9 +3102,10 @@ async function handleBookingContact(
   pendingBookingVerifications.delete(chatId);
 
   if (!sessionId) {
+    const lostLang = await clientChatLang(chatId);
     await callTelegram("sendMessage", {
       chat_id: chatId,
-      text: "Xatolik yuz berdi. Iltimos, sahifaga qaytib qayta urinib ko\u02BBring.",
+      text: ct(lostLang, "Xatolik yuz berdi. Iltimos, sahifaga qaytib qayta urinib ko\u02BBring.", "Произошла ошибка. Вернитесь на страницу и попробуйте снова."),
       reply_markup: { remove_keyboard: true },
     });
     return;
@@ -3074,11 +3113,12 @@ async function handleBookingContact(
 
   if (!phone) {
     pendingBookingVerifications.set(chatId, sessionId);
+    const askLang = await clientChatLang(chatId);
     await callTelegram("sendMessage", {
       chat_id: chatId,
-      text: "Telefon raqam olinmadi. Iltimos, tugmani bosing:",
+      text: ct(askLang, "Telefon raqam olinmadi. Iltimos, tugmani bosing:", "Номер не получен. Нажмите кнопку:"),
       reply_markup: {
-        keyboard: [[{ text: "\uD83D\uDCF1 Telefon raqamni yuborish", request_contact: true }]],
+        keyboard: [[{ text: askLang === "ru" ? PHONE_BUTTON_ALT_RU : PHONE_BUTTON_ALT_UZ, request_contact: true }]],
         resize_keyboard: true,
         one_time_keyboard: true,
       },
@@ -3093,11 +3133,13 @@ async function handleBookingContact(
     .limit(1);
 
   if (!session || session.status !== "pending") {
+    let contactLang: ClientLang = "uz";
+    try { contactLang = asClientLang((JSON.parse(session?.bookingData || "{}") as BookingData).lang); } catch { /* uz */ }
     await callTelegram("sendMessage", {
       chat_id: chatId,
       text: session?.status === "confirmed"
-        ? "Bu bron allaqachon tasdiqlangan \u2705"
-        : "Bron muddati tugagan. Iltimos, sahifaga qaytib qayta bron qiling.",
+        ? ct(contactLang, "Bu bron allaqachon tasdiqlangan \u2705", "Эта запись уже подтверждена \u2705")
+        : ct(contactLang, "Bron muddati tugagan. Iltimos, sahifaga qaytib qayta bron qiling.", "Время записи истекло. Вернитесь на страницу и запишитесь снова."),
       reply_markup: { remove_keyboard: true },
     });
     return;
@@ -3108,10 +3150,10 @@ async function handleBookingContact(
   await confirmBookingSession(chatId, sessionId, tgUserId, firstName, tgUsername, phone, "web");
 }
 
-function moneyLabel(value: number): string {
+function moneyLabel(value: number, lang: ClientLang = "uz"): string {
   const amount = Math.max(0, Math.round(Number(value) || 0));
   const grouped = String(amount).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return `${grouped} so'm`;
+  return `${grouped} ${ct(lang, "so'm", "сум")}`;
 }
 
 function safeMapUrl(raw: string | null | undefined): string {
@@ -3127,35 +3169,36 @@ async function sendUnifiedBookingReceipt(
   _phone: string | null,
   barberId: string,
 ) {
+  const lang = asClientLang(data.lang);
   const [barber] = await db.select().from(usersTable).where(eq(usersTable.id, barberId)).limit(1);
-  const master = barber?.brandName || barber?.name || data.barberName || "Usta";
-  const service = data.services.map((s) => s.name).join(", ") || "Xizmat";
+  const master = barber?.brandName || barber?.name || data.barberName || ct(lang, "Usta", "Мастер");
+  const service = serviceLabel(lang, data.services, ct(lang, "Xizmat", "Услуга"));
   const barberPhone = plusPhone(barber?.phone);
   const map = safeMapUrl(barber?.mapLink || data.mapLink);
   const lines = [
-    `🎉 <b>Broningiz qabul qilindi, ${escapeHtml(clientName)}!</b>`,
+    ct(lang, `🎉 <b>Broningiz qabul qilindi, ${escapeHtml(clientName)}!</b>`, `🎉 <b>Запись принята, ${escapeHtml(clientName)}!</b>`),
     "",
-    `👤 Usta: ${escapeHtml(master)}`,
-    `✂️ Xizmat: ${escapeHtml(service)}`,
-    `💵 Narx: ${escapeHtml(moneyLabel(data.totalPrice))}`,
-    `📅 Sana: ${escapeHtml(formatDateLabel(data.date))}`,
-    `⏰ Vaqt: ${escapeHtml(data.time)}`,
+    `👤 ${ct(lang, "Usta", "Мастер")}: ${escapeHtml(master)}`,
+    `✂️ ${ct(lang, "Xizmat", "Услуга")}: ${escapeHtml(service)}`,
+    `💵 ${ct(lang, "Narx", "Цена")}: ${escapeHtml(moneyLabel(data.totalPrice, lang))}`,
+    `📅 ${ct(lang, "Sana", "Дата")}: ${escapeHtml(clientDateLabel(data.date, lang))}`,
+    `⏰ ${ct(lang, "Vaqt", "Время")}: ${escapeHtml(data.time)}`,
   ];
-  if (barberPhone) lines.push(`📞 Aloqa: ${escapeHtml(barberPhone)}`);
+  if (barberPhone) lines.push(`📞 ${ct(lang, "Aloqa", "Связь")}: ${escapeHtml(barberPhone)}`);
   if (map) {
-    lines.push(`🧭 Manzil: <a href="${escapeHtml(map)}">Xaritada koʻrish 🧭</a>`);
+    lines.push(`🧭 ${ct(lang, "Manzil", "Адрес")}: <a href="${escapeHtml(map)}">${ct(lang, "Xaritada koʻrish 🧭", "Открыть карту 🧭")}</a>`);
   }
   lines.push(
     "",
-    "💡 Iltimos, belgilangan vaqtdan 5-10 daqiqa ertaroq keling.",
+    ct(lang, "💡 Iltimos, belgilangan vaqtdan 5-10 daqiqa ertaroq keling.", "💡 Пожалуйста, приходите на 5–10 минут раньше."),
     "",
     "━━━━━━━━━━━━━━━━━━━━",
-    "🤖 <b>Bot haqida eslatma:</b>",
-    "Ushbu bot sizning shaxsiy yordamchingiz:",
-    "• Navbatingizga oz qolganda eslatma yuboradi",
-    "• Istalgan vaqtda qayta bron qilishga yordam beradi",
+    ct(lang, "🤖 <b>Bot haqida eslatma:</b>", "🤖 <b>О боте:</b>"),
+    ct(lang, "Ushbu bot sizning shaxsiy yordamchingiz:", "Этот бот — ваш помощник:"),
+    ct(lang, "• Navbatingizga oz qolganda eslatma yuboradi", "• Напомнит, когда до записи останется немного"),
+    ct(lang, "• Istalgan vaqtda qayta bron qilishga yordam beradi", "• Поможет записаться снова в любое время"),
     "",
-    "Chatni o'chirmang, qulaylikdan foydalaning!",
+    ct(lang, "Chatni o'chirmang, qulaylikdan foydalaning!", "Не удаляйте чат — так удобнее."),
   );
   const text = lines.join("\n");
   await callTelegram("sendMessage", {
@@ -3163,7 +3206,7 @@ async function sendUnifiedBookingReceipt(
     text,
     parse_mode: "HTML",
     disable_web_page_preview: true,
-    reply_markup: clientReplyKeyboard(),
+    reply_markup: clientReplyKeyboard(lang),
   });
 }
 
@@ -3179,25 +3222,27 @@ async function latestClientBarber(chatId: number) {
 }
 
 async function handleClientMenu(chatId: number, text: string) {
+  const kind = menuKind(text);
+  const lang = await clientChatLang(chatId);
   const barber = await latestClientBarber(chatId);
-  if (text === CLIENT_MENU_REBOOK || text === CLIENT_MENU_REBOOK_OLD) {
+  if (kind === "rebook") {
     const slug = barber?.username?.trim();
     const url = slug ? `${publicSiteUrl()}/${encodeURIComponent(slug)}?bron=1` : publicSiteUrl();
     await callTelegram("sendMessage", {
       chat_id: chatId,
-      text: "Qayta bron qilish uchun pastdagi tugmani bosing.",
+      text: ct(lang, "Qayta bron qilish uchun pastdagi tugmani bosing.", "Чтобы записаться снова, нажмите кнопку ниже."),
       reply_markup: {
-        inline_keyboard: [[{ text: "🔄 Qayta bron qilish", web_app: { url } }]],
+        inline_keyboard: [[{ text: ct(lang, "🔄 Qayta bron qilish", "🔄 Записаться снова"), web_app: { url } }]],
       },
     });
     return;
   }
-  if (text === CLIENT_MENU_CONTACT) {
+  if (kind === "contact") {
     if (!barber) {
       await callTelegram("sendMessage", {
         chat_id: chatId,
-        text: "Hali bog'laniladigan usta yo'q. Avval bron qiling.",
-        reply_markup: clientReplyKeyboard(),
+        text: ct(lang, "Hali bog'laniladigan usta yo'q. Avval bron qiling.", "Пока нет мастера для связи. Сначала запишитесь."),
+        reply_markup: clientReplyKeyboard(lang),
       });
       return;
     }
@@ -3206,20 +3251,20 @@ async function handleClientMenu(chatId: number, text: string) {
     const address = barber.address?.trim() || "";
     const map = safeMapUrl(barber.mapLink);
     const lines = [
-      shop ? `💈 Barbershop: ${escapeHtml(shop)}` : "",
-      `👤 Usta: ${escapeHtml(barber.name?.trim() || "Usta")}`,
-      phone ? `📞 Tel: ${escapeHtml(phone)}` : "",
+      shop ? `💈 ${ct(lang, "Barbershop", "Барбершоп")}: ${escapeHtml(shop)}` : "",
+      `👤 ${ct(lang, "Usta", "Мастер")}: ${escapeHtml(barber.name?.trim() || ct(lang, "Usta", "Мастер"))}`,
+      phone ? `📞 ${ct(lang, "Tel", "Тел.")}: ${escapeHtml(phone)}` : "",
     ];
     if (address && map) {
-      lines.push(`📍 Manzil: ${escapeHtml(address)}`);
-      lines.push(`📍 Xarita: <a href="${escapeHtml(map)}">Xaritadan ko'rish</a>`);
+      lines.push(`📍 ${ct(lang, "Manzil", "Адрес")}: ${escapeHtml(address)}`);
+      lines.push(`📍 ${ct(lang, "Xarita", "Карта")}: <a href="${escapeHtml(map)}">${ct(lang, "Xaritadan ko'rish", "Открыть карту")}</a>`);
     }
     await callTelegram("sendMessage", {
       chat_id: chatId,
       text: lines.filter(Boolean).join("\n"),
       parse_mode: "HTML",
       disable_web_page_preview: true,
-      reply_markup: clientReplyKeyboard(),
+      reply_markup: clientReplyKeyboard(lang),
     });
     return;
   }
@@ -3234,8 +3279,8 @@ async function handleClientMenu(chatId: number, text: string) {
   if (!rows.length) {
     await callTelegram("sendMessage", {
       chat_id: chatId,
-      text: "Hozircha kelajakdagi bron yo'q.",
-      reply_markup: clientReplyKeyboard(),
+      text: ct(lang, "Hozircha kelajakdagi bron yo'q.", "Пока нет будущих записей."),
+      reply_markup: clientReplyKeyboard(lang),
     });
     return;
   }
@@ -3251,23 +3296,25 @@ async function handleClientMenu(chatId: number, text: string) {
     if (minutesLeft > limit) {
       lines.push(`${i + 1}. ${when}`);
       if (buttons.length < 8) {
-        const label = rows.length === 1 ? "❌ Bronni bekor qilish" : `❌ ${time} bronni bekor qilish`;
+        const label = rows.length === 1
+          ? ct(lang, "❌ Bronni bekor qilish", "❌ Отменить запись")
+          : ct(lang, `❌ ${time} bronni bekor qilish`, `❌ Отменить ${time}`);
         buttons.push([{ text: label, callback_data: `cancel_${row.id}` }]);
       }
     } else {
       const warn = phone
-        ? `⚠️ Bekor qilish vaqti tugagan. Aloqa: ${phone}`
-        : "⚠️ Bekor qilish vaqti tugagan.";
+        ? ct(lang, `⚠️ Bekor qilish vaqti tugagan. Aloqa: ${phone}`, `⚠️ Время отмены прошло. Связь: ${phone}`)
+        : ct(lang, "⚠️ Bekor qilish vaqti tugagan.", "⚠️ Время отмены прошло.");
       lines.push(`${i + 1}. ${when}\n${warn}`);
     }
   }
   await callTelegram("sendMessage", {
     chat_id: chatId,
-    text: `📅 <b>Mening bronlarim</b>\n\n${lines.join("\n\n")}`,
+    text: `📅 <b>${ct(lang, "Mening bronlarim", "Мои записи")}</b>\n\n${lines.join("\n\n")}`,
     parse_mode: "HTML",
     ...(buttons.length
       ? { reply_markup: { inline_keyboard: buttons } }
-      : { reply_markup: clientReplyKeyboard() }),
+      : { reply_markup: clientReplyKeyboard(lang) }),
   });
 }
 

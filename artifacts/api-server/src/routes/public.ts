@@ -20,6 +20,7 @@ import { randomBytes } from "crypto";
 import { sendBarberBookingNotification } from "../lib/telegram-bot";
 import { getTelegramBotUsername } from "../lib/telegram-token";
 import { clientIp, consumeRateLimit } from "../lib/rate-limit";
+import { asClientLang } from "../lib/client-lang";
 
 const router = Router();
 
@@ -35,6 +36,7 @@ const TOO_MANY = { error: "too_many", message: "Ko'p urinish. Biroz kuting." };
 const BOOKING_COLUMN_FIXES = [
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "client_confirmed" boolean DEFAULT true NOT NULL`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "client_telegram_id" text`,
+  `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "client_lang" text DEFAULT 'uz' NOT NULL`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_24h" boolean DEFAULT false NOT NULL`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_1h" boolean DEFAULT false NOT NULL`,
   `ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "reminded_followup" boolean DEFAULT false NOT NULL`,
@@ -254,6 +256,7 @@ router.post("/sessions", async (req, res) => {
     const sessionId = generateSessionId();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
+    const pageLang = asClientLang(req.body?.lang);
     const bookingData = {
       barberName:     barberName || barberRow.brandName || barberRow.name || "Barber",
       barberAddress:  barberAddress || barberRow.address || "",
@@ -261,11 +264,12 @@ router.post("/sessions", async (req, res) => {
       barberPageLink: barberPageLink || `${getAppUrl()}`,
       isTeam:         !!isTeam,
       teamBarberName: teamBarberName || null,
-      services:       catalog.services.map((s) => ({ name: s.name, price: s.price, duration: s.duration })),
+      services:       catalog.services.map((s) => ({ name: s.name, nameRu: s.nameRu, price: s.price, duration: s.duration })),
       totalPrice:     catalog.totalPrice,
       totalDuration:  catalog.totalDuration,
       date:           isoDate,
       time:           startTime,
+      lang:           pageLang,
     };
 
     if (canConfirmNow) {
@@ -336,6 +340,7 @@ router.post("/sessions", async (req, res) => {
           endTime: endTimeStr,
           price: String(catalog.totalPrice),
           status: "confirmed" as const,
+          clientLang: pageLang,
           clientConfirmed: true,
           ...(tgIdStr ? { clientTelegramId: tgIdStr } : {}),
           ...(safeClientPhone ? { notes: `Tel: ${safeClientPhone}` } : {}),
@@ -432,6 +437,7 @@ router.post("/sessions", async (req, res) => {
       endTime: endTimeStr,
       price: String(catalog.totalPrice),
       status: "pending",
+      clientLang: pageLang,
     }).returning({ id: bookingsTable.id });
 
     await db.insert(bookingSessionsTable).values({

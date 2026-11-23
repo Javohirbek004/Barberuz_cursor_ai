@@ -594,6 +594,7 @@ function PublicBookingModal({
         services, totalPrice, totalDuration, date: dateOpt, time,
         clientName: clientName.trim(),
         clientPhone: direct ? clientPhone.trim() : "",
+        lang,
         ...(direct ? customer.body : {}),
         ...(replacingBookingId ? { replacingBookingId } : {}),
       }),
