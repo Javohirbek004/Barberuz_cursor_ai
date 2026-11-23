@@ -25,7 +25,7 @@
 
 import { randomBytes } from "crypto";
 import { db, usersTable, bookingSessionsTable, bookingsTable, clientsTable, phoneUpdateIntentsTable } from "@workspace/db";
-import { eq, and, isNull, desc, sql, gte, inArray } from "drizzle-orm";
+import { eq, and, isNull, ne, desc, sql, gte, inArray } from "drizzle-orm";
 import { syncClientMetrics } from "./client-metrics";
 import { findClientByPhone } from "./client-lookup";
 import { BotPhoneTakenError, findBarberBySharedContact, planSharedBarberPhone } from "./barber-contact-phone";
@@ -665,6 +665,41 @@ async function handleClientInviteStart(
   });
 }
 
+async function findOtherBarberByTelegram(chatId: number, userId: string) {
+  const [row] = await db
+    .select({ id: usersTable.id, name: usersTable.name, username: usersTable.username })
+    .from(usersTable)
+    .where(and(
+      eq(usersTable.telegramId, String(chatId)),
+      isNull(usersTable.deletedAt),
+      ne(usersTable.id, userId),
+    ))
+    .limit(1);
+  return row ?? null;
+}
+
+function boundAccountName(row: { name: string | null; username: string | null }): string {
+  const name = (row.name || "").replace(/\s+/g, " ").trim();
+  if (name) return name;
+  return (row.username || "").trim();
+}
+
+async function sendTelegramAlreadyLinked(chatId: number, accountName: string) {
+  const name = escapeHtml(accountName);
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    parse_mode: "HTML",
+    text:
+      `Bu raqam boshqa hisobga ulangan: <b>${name}</b>.\n` +
+      `Shu sababli bu hisobga qayta ulanmaydi.\n\n` +
+      `Eslatma va bron xabarlari o\u2018sha ulangan hisobga yuboriladi \u2014 o\u2018sha hisob nomi va paroli bilan kiring.`,
+    reply_markup: {
+      remove_keyboard: true,
+      inline_keyboard: [[{ text: "Kirish", url: `${getAppUrl()}/login` }]],
+    },
+  });
+}
+
 async function handleBotConnectStart(
   chatId: number,
   userId: string,
@@ -683,6 +718,14 @@ async function handleBotConnectStart(
   pendingNoPayloadLogins.delete(chatId);
   pendingPasswordResets.delete(chatId);
   pendingVerifications.delete(chatId);
+
+  const already = await findOtherBarberByTelegram(chatId, user.id);
+  if (already) {
+    pendingBotConnect.delete(chatId);
+    await sendTelegramAlreadyLinked(chatId, boundAccountName(already));
+    return;
+  }
+
   pendingBotConnect.set(chatId, user.id);
 
   const telegramUsername = typeof from?.username === "string" ? from.username : null;
@@ -695,9 +738,14 @@ async function handleBotConnectStart(
   } catch (err) {
     console.error("[TelegramBot] Could not save the connect chat:", err);
     pendingBotConnect.delete(chatId);
+    const owner = await findOtherBarberByTelegram(chatId, user.id);
+    if (owner) {
+      await sendTelegramAlreadyLinked(chatId, boundAccountName(owner));
+      return;
+    }
     await callTelegram("sendMessage", {
       chat_id: chatId,
-      text: "Bu Telegram boshqa hisobga ulangan. O\u2018sha hisobdan kiring.",
+      text: "Xatolik yuz berdi. Iltimos, qayta harakat qiling.",
     });
     return;
   }
