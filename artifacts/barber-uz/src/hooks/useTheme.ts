@@ -1,32 +1,11 @@
-import { useState, useEffect } from "react";
-
-export type Theme = "system" | "light" | "dark";
-
-export function applyTheme(theme: Theme) {
+/** The app stays on the dark look. Light mode is not offered. */
+export function applyTheme() {
   const root = document.documentElement;
-  root.classList.remove("light", "dark");
-  if (theme === "system") {
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    root.classList.add(prefersDark ? "dark" : "light");
-  } else {
-    root.classList.add(theme);
+  root.classList.remove("light");
+  root.classList.add("dark");
+  try {
+    localStorage.setItem("barber_theme", "dark");
+  } catch {
+    /* storage can be blocked */
   }
-}
-
-export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => {
-    return (localStorage.getItem("barber_theme") as Theme) ?? "dark";
-  });
-
-  useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
-
-  const changeTheme = (t: Theme) => {
-    localStorage.setItem("barber_theme", t);
-    setTheme(t);
-    applyTheme(t);
-  };
-
-  return { theme, changeTheme };
 }

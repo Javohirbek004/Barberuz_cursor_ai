@@ -6,7 +6,6 @@ import { ChevronLeft, ChevronRight, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { pick } from "@/i18n/pick";
-import { useTheme, type Theme } from "@/hooks/useTheme";
 import type { Language } from "@/i18n/translations";
 
 function LinkRow({
@@ -41,16 +40,9 @@ const LANG_NAMES: Record<Language, string> = {
   ru: "Русский",
 };
 
-function themeName(lang: string, theme: Theme): string {
-  if (theme === "light") return pick(lang, "Yorqin rejim", "Светлая тема");
-  if (theme === "dark") return pick(lang, "Qorong'u rejim", "Тёмная тема");
-  return pick(lang, "Tizim bo'yicha", "Как в системе");
-}
-
 export default function GeneralSettings() {
   const { logout } = useAuth();
   const { lang } = useTranslation();
-  const { theme } = useTheme();
   const [showConfirm, setShowConfirm] = useState(false);
 
   function handleLogoutConfirm() {
@@ -74,7 +66,6 @@ export default function GeneralSettings() {
         <LinkRow index={0} href="/settings/notifications" emoji="🔔" label={pick(lang, "Bildirishnomalar", "Уведомления")} sub={pick(lang, "Xabarnoma sozlamalari", "Настройки сообщений")} />
         <LinkRow index={1} href="/settings/security"      emoji="🔐" label={pick(lang, "Xavfsizlik", "Безопасность")}       sub={pick(lang, "Parol va himoya", "Пароль и защита")} />
         <LinkRow index={2} href="/settings/language"      emoji="🌐" label={pick(lang, "Til", "Язык")}              sub={LANG_NAMES[lang]} />
-        <LinkRow index={3} href="/settings/theme"         emoji="🎨" label={pick(lang, "Ilova dizayni", "Оформление")}    sub={themeName(lang, theme)} />
       </div>
 
       <div className="mt-10 pt-6 border-t border-white/8">

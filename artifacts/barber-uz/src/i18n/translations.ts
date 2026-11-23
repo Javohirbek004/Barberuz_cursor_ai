@@ -179,12 +179,6 @@ export const translations = {
     'settings.telegram.connect_btn': "Ulanish",
     'settings.coming_soon': "Tez kunda qo'shiladi 🔒",
 
-    // Settings — appearance
-    'settings.appearance': "Ilova ko'rinishi",
-    'settings.appearance.system': "Tizim",
-    'settings.appearance.light': "Yorug'",
-    'settings.appearance.dark': "Qorong'i",
-
     // Settings — salon (team)
     'settings.salon.name': "Barbershop nomi",
     'settings.salon.name_placeholder': "Masalan: Royal Barbershop",
@@ -498,12 +492,6 @@ export const translations = {
     'settings.telegram.connect_msg': "Подключите для получения сообщений",
     'settings.telegram.connect_btn': "Подключить",
     'settings.coming_soon': "Скоро будет добавлено 🔒",
-
-    // Settings — appearance
-    'settings.appearance': "Внешний вид",
-    'settings.appearance.system': "Система",
-    'settings.appearance.light': "Светлая",
-    'settings.appearance.dark': "Тёмная",
 
     // Settings — salon (team)
     'settings.salon.name': "Название барбершопа",

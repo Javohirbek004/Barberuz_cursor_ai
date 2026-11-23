@@ -1,11 +1,10 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
-import { applyTheme, type Theme } from "./hooks/useTheme";
+import { applyTheme } from "./hooks/useTheme";
 
-// Apply saved theme before first render to avoid flash
-const saved = (localStorage.getItem("barber_theme") as Theme) ?? "dark";
-applyTheme(saved);
+// Dark look only. A previously saved light choice is cleared here.
+applyTheme();
 
 // Remember a return from the bot before any page code can drop the address.
 try {

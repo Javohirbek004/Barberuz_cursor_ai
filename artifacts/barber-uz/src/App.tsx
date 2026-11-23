@@ -23,7 +23,6 @@ import PersonalPage from "@/pages/settings/PersonalPage";
 import FeedbackPage from "@/pages/settings/FeedbackPage";
 import GeneralSettings from "@/pages/settings/GeneralSettings";
 import LanguageSettings from "@/pages/settings/LanguageSettings";
-import ThemeSettings from "@/pages/settings/ThemeSettings";
 import BarberSetup from "@/pages/BarberSetup";
 import BarberPublicPage from "@/pages/BarberPublicPage";
 import BarberByIdPage from "@/pages/BarberByIdPage";
@@ -72,7 +71,7 @@ function AppRoutes() {
       <Route path="/settings/feedback" component={FeedbackPage} />
       <Route path="/settings/general" component={GeneralSettings} />
       <Route path="/settings/language" component={LanguageSettings} />
-      <Route path="/settings/theme" component={ThemeSettings} />
+      <Route path="/settings/theme">{() => <Redirect to="/settings/general" />}</Route>
       <Route path="/barber-setup/:token" component={BarberSetup} />
 
       {/* Permanent ID-based public barber page */}
