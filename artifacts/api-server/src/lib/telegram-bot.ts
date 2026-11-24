@@ -90,6 +90,8 @@ function getAppUrl(): string {
   }
   const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
   if (renderHost) return `https://${renderHost}`;
+  const railwayHost = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+  if (railwayHost) return `https://${railwayHost}`;
   if (process.env.APP_URL) {
     const appUrl = process.env.APP_URL.replace(/\/$/, "");
     if (!/replit\./i.test(appUrl) && !/vercel\.app$/i.test(appUrl)) return appUrl;

@@ -17,6 +17,8 @@ export function webhookSecretToken(): string {
 export function productionHost(): string {
   const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
   if (renderHost) return renderHost;
+  const railwayHost = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+  if (railwayHost) return railwayHost;
 
   if (process.env.APP_URL) {
     try {
@@ -38,7 +40,7 @@ export function isRenderHost(): boolean {
 }
 
 export function isProductionRuntime(): boolean {
-  return isRenderHost() || process.env.NODE_ENV === "production";
+  return isRenderHost() || process.env.RAILWAY_ENVIRONMENT === "production" || process.env.NODE_ENV === "production";
 }
 
 const DEFAULT_BOT_USERNAME = "BARBERUZ_YORDAMCHI_BOT";
