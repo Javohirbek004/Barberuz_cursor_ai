@@ -26,14 +26,15 @@ export function signupSlug(raw: string): string {
 }
 
 export function inspectSignupName(raw: string): NameProblem {
-  if (!raw.trim()) return "empty";
-  if (raw.length < 3) return "short";
-  if (raw.length > 25) return "long";
-  if (/^\d+$/.test(raw)) return "digits";
-  if (!LETTER.test(raw)) return "symbols";
-  if (!ALLOWED.test(raw)) return "symbols";
-  if (SEPARATOR.test(raw[0]) || SEPARATOR.test(raw[raw.length - 1])) return "symbols";
-  if (/[_ '’‘]{2,}/.test(raw)) return "symbols";
-  if (/^[.\-]|[.\-]$/.test(raw)) return "symbols";
+  const name = raw.trim();
+  if (!name) return "empty";
+  if (name.length < 3) return "short";
+  if (name.length > 25) return "long";
+  if (/^\d+$/.test(name)) return "digits";
+  if (!LETTER.test(name)) return "symbols";
+  if (!ALLOWED.test(name)) return "symbols";
+  if (SEPARATOR.test(name[0]) || SEPARATOR.test(name[name.length - 1])) return "symbols";
+  if (/[_ '’‘]{2,}/.test(name)) return "symbols";
+  if (/^[.\-]|[.\-]$/.test(name)) return "symbols";
   return "ok";
 }

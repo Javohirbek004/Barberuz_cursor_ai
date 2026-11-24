@@ -120,8 +120,9 @@ router.put("/profile", authenticate, async (req, res) => {
     const telegramUsername = typeof rawTelegram === "string"
       ? rawTelegram.trim().replace(/^https?:\/\//i, "").replace(/^(www\.)?(t\.me|telegram\.me)\//i, "").replace(/^@+/, "").split(/[/?#\s]/)[0]
       : undefined;
-    if (name !== undefined && typeof name === "string" && name !== user.name) {
-      const nameCheck = await lookupNameSlug(name, user.id);
+    const cleanName = typeof name === "string" ? name.trim() : name;
+    if (cleanName !== undefined && typeof cleanName === "string" && cleanName !== user.name) {
+      const nameCheck = await lookupNameSlug(cleanName, user.id);
       if (nameCheck.status !== "free") {
         res.status(nameCheck.status === "taken" ? 409 : 400).json({
           error: nameCheck.status === "taken" ? "name_taken" : "name_invalid",
@@ -152,7 +153,7 @@ router.put("/profile", authenticate, async (req, res) => {
     }
     const [updated] = await db.update(usersTable)
       .set({
-        ...(name !== undefined && { name }),
+        ...(cleanName !== undefined && { name: cleanName }),
         ...(pageName !== undefined && { pageName: typeof pageName === "string" && pageName.trim() ? pageName : null }),
         ...(brandName !== undefined && { brandName }),
         ...(mode !== undefined && { mode }),

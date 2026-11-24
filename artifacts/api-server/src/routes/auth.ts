@@ -72,7 +72,8 @@ router.post("/register", async (req, res) => {
       res.status(400).json({ error: "validation", message: "Password must be at least 6 characters" });
       return;
     }
-    const nameCheck = await lookupNameSlug(name);
+    const cleanName = name.trim();
+    const nameCheck = await lookupNameSlug(cleanName);
     if (nameCheck.status === "taken") {
       res.status(409).json({ error: "name_taken", suggestions: nameCheck.suggestions });
       return;
@@ -86,7 +87,7 @@ router.post("/register", async (req, res) => {
     // The account opens now. Telegram can be linked later from the profile.
     void providedUsername;
     const pending = await savePendingRegistration({
-      name,
+      name: cleanName,
       brandName: brandName || null,
       passwordHash: await makePasswordHash(password),
       mode: mode === "team" ? "team" : "solo",

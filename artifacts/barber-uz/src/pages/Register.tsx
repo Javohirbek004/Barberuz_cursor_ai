@@ -213,7 +213,8 @@ export default function Register() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (registerMutation.isPending || waitPhase) return;
-    const nameProblem = inspectSignupName(formData.name);
+    const cleanName = formData.name.trim();
+    const nameProblem = inspectSignupName(cleanName);
     if (nameProblem !== "empty" && nameProblem !== "ok") {
       setNameState(nameProblem);
       return;
@@ -239,7 +240,7 @@ export default function Register() {
       return;
     }
 
-    const fresh = await fetchNameCheck(formData.name);
+    const fresh = await fetchNameCheck(cleanName);
     if (fresh?.status === "taken") {
       pickedName.current = null;
       setNameState("taken");
@@ -251,8 +252,8 @@ export default function Register() {
     waitTimer.current = window.setTimeout(() => setWaitPhase("pages"), 1500);
     registerMutation.mutate({
       data: {
-        name: formData.name,
-        username: generateUsername(formData.name),
+        name: cleanName,
+        username: generateUsername(cleanName),
         brandName: formData.brandName.trim() || undefined,
         password: formData.password,
         mode: formData.mode,

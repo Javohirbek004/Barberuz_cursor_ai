@@ -396,7 +396,7 @@ function InfoForm({
     }
     setSaving(true);
     const ok = await saveProfile({
-      name:      form.name,
+      name:      form.name.trim(),
       brandName: form.brandName || null,
       phone:     form.phone     || null,
       avatarUrl: form.avatarUrl || null,
