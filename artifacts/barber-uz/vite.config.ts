@@ -9,6 +9,7 @@ const appDir = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, appDir, "VITE_");
   const port = 5173;
+  const previewPort = Number(process.env.PORT) || port;
   const basePath = process.env.BASE_PATH || "/";
   const apiTarget = env.VITE_API_BASE_URL || process.env.VITE_API_BASE_URL || "http://localhost:4000";
 
@@ -43,7 +44,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     preview: {
-      port,
+      port: previewPort,
       host: "0.0.0.0",
       allowedHosts: true,
       proxy: {
