@@ -25,7 +25,7 @@ export default defineConfig(({ mode }) => {
     },
     root: appDir,
     build: {
-      outDir: path.resolve(appDir, "dist/public"),
+      outDir: "dist/public",
       emptyOutDir: true,
     },
     server: {
