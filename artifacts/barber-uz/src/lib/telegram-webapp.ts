@@ -10,7 +10,9 @@ type TgWebApp = {
   ready?: () => void;
   expand?: () => void;
   close?: () => void;
+  initData?: string;
   initDataUnsafe?: { user?: TgUser };
+  openTelegramLink?: (url: string) => void;
   requestContact?: (cb?: (shared: boolean, extra?: unknown) => void) => void;
   onEvent?: (event: string, cb: (data: unknown) => void) => void;
   offEvent?: (event: string, cb: (data: unknown) => void) => void;
@@ -23,6 +25,21 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 export function getTelegramWebApp(): TgWebApp | null {
   if (typeof window === "undefined") return null;
   return (window as Window & { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp ?? null;
+}
+
+/** True only when the app is opened inside Telegram, not in Chrome or Safari. */
+export function isTelegramWebApp(): boolean {
+  return Boolean(getTelegramWebApp()?.initData);
+}
+
+export function openTelegramPhone(number: string) {
+  const tg = getTelegramWebApp();
+  const clean = number.replace(/\s/g, "");
+  if (isTelegramWebApp() && tg?.openTelegramLink) {
+    tg.openTelegramLink(`https://t.me/${clean}`);
+    return;
+  }
+  window.location.href = `tg://resolve?phone=${encodeURIComponent(clean)}`;
 }
 
 export function wakeTelegramWebApp() {

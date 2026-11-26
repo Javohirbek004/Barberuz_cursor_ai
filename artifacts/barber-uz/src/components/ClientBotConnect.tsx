@@ -3,6 +3,7 @@ import { Loader2, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetClientQueryKey, getListClientsQueryKey } from "@workspace/api-client-react";
 import { useBotUsername } from "@/lib/bot-link";
+import { isTelegramWebApp, openTelegramPhone } from "@/lib/telegram-webapp";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { pick } from "@/i18n/pick";
 
@@ -98,6 +99,10 @@ export function ClientBotConnect({
   const infoRef = useRef<HTMLButtonElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<number | null>(null);
+  const telegramWait = useRef<number | null>(null);
+  const telegramVis = useRef<(() => void) | null>(null);
+  const [webWait, setWebWait] = useState(false);
+  const [webNote, setWebNote] = useState<null | "missing" | "copied">(null);
   const [digits, setDigits] = useState("");
   const [checking, setChecking] = useState(false);
   const [hit, setHit] = useState<PhoneHit | null>(null);
@@ -140,8 +145,42 @@ export function ClientBotConnect({
     };
   }, [digits, phoneOpen]);
 
+  function stopTelegramWait() {
+    if (telegramWait.current != null) window.clearTimeout(telegramWait.current);
+    telegramWait.current = null;
+    if (telegramVis.current) {
+      document.removeEventListener("visibilitychange", telegramVis.current);
+      telegramVis.current = null;
+    }
+    setWebWait(false);
+  }
+
+  function watchTelegramOpen() {
+    stopTelegramWait();
+    setWebNote(null);
+    setWebWait(true);
+    const onHidden = () => {
+      if (document.hidden) stopTelegramWait();
+    };
+    telegramVis.current = onHidden;
+    document.addEventListener("visibilitychange", onHidden);
+    telegramWait.current = window.setTimeout(() => {
+      telegramWait.current = null;
+      if (telegramVis.current) {
+        document.removeEventListener("visibilitychange", telegramVis.current);
+        telegramVis.current = null;
+      }
+      if (!document.hidden) {
+        setWebWait(false);
+        setWebNote("missing");
+      }
+    }, 2500);
+  }
+
   useEffect(() => () => {
     if (hideTimer.current != null) window.clearTimeout(hideTimer.current);
+    if (telegramWait.current != null) window.clearTimeout(telegramWait.current);
+    if (telegramVis.current) document.removeEventListener("visibilitychange", telegramVis.current);
   }, []);
 
   function openUnderSheet() {
@@ -159,6 +198,8 @@ export function ClientBotConnect({
 
   function start() {
     setTargetId(clientId);
+    stopTelegramWait();
+    setWebNote(null);
     openUnderSheet();
     if (noticeSeen()) return;
     setNoticeHiding(false);
@@ -206,6 +247,8 @@ export function ClientBotConnect({
   }
 
   function closeChannel() {
+    stopTelegramWait();
+    setWebNote(null);
     setChannelOpen(false);
   }
 
@@ -252,15 +295,27 @@ export function ClientBotConnect({
   }
 
   async function sendTelegram() {
+    if (webWait) return;
     const text = inviteText(barberName || "usta", botUsername, targetId);
     await copyText(text);
     const number = knownPhone || `+998${digits}`;
+    if (isTelegramWebApp()) {
+      watchTelegramOpen();
+      openTelegramPhone(number);
+      return;
+    }
     window.location.href = `tg://resolve?phone=${encodeURIComponent(number)}`;
   }
 
-  function sendSms() {
+  async function sendSms() {
     const text = inviteText(barberName || "usta", botUsername, targetId);
     const number = knownPhone || `+998${digits}`;
+    if (isTelegramWebApp()) {
+      stopTelegramWait();
+      await copyText(text);
+      setWebNote("copied");
+      return;
+    }
     setChannelOpen(false);
     setPhoneOpen(false);
     openSms(number, text);
@@ -372,11 +427,31 @@ export function ClientBotConnect({
             <p className="mt-3 text-sm leading-snug text-muted-foreground">
               {pick(lang, "Mijozni botga ulash va bron tafsilotlarini yuborish uchun qaysi aloqa turini tanlaysiz?", "Как отправить клиенту подключение к боту и детали записи?")}
             </p>
-            <button type="button" onClick={() => void sendTelegram()} className="mt-4 h-12 w-full rounded-xl bg-primary text-sm font-extrabold text-black">
-              {pick(lang, "✈️ Telegram orqali", "✈️ Через Telegram")}
+            {webNote === "missing" && (
+              <p className="mt-3 text-sm font-medium leading-snug text-yellow-400">
+                {pick(
+                  lang,
+                  "Bu raqamda Telegram topilmadi yoki profil sozlamalari yopiq. Endi SMS orqali yuborib ko‘ring.",
+                  "В этом номере Telegram не найден или профиль закрыт. Попробуйте отправить через SMS.",
+                )}
+              </p>
+            )}
+            {webNote === "copied" && (
+              <p className="mt-3 text-sm font-medium leading-snug text-green-400">
+                {pick(
+                  lang,
+                  "Xabar matni nusxalandi. Endi o‘zingizning SMS ilovangizga kirib, ushbu matnni mijoz raqamiga  yuborishingiz mumkun.",
+                  "Текст сообщения скопирован. Теперь откройте своё SMS-приложение и отправьте этот текст на номер клиента.",
+                )}
+              </p>
+            )}
+            <button type="button" disabled={webWait} onClick={() => void sendTelegram()} className="mt-4 h-12 w-full rounded-xl bg-primary text-sm font-extrabold text-black disabled:opacity-40">
+              {webWait
+                ? pick(lang, "Tekshirilmoqda...", "Проверка...")
+                : pick(lang, "✈️ Telegram orqali", "✈️ Через Telegram")}
             </button>
-            <button type="button" onClick={sendSms} className="mt-2 h-12 w-full rounded-xl border border-white/15 text-sm font-semibold text-foreground">
-              {pick(lang, "💬 SMS orqali", "💬 Через SMS")}
+            <button type="button" disabled={webWait} onClick={() => void sendSms()} className="mt-2 h-12 w-full rounded-xl border border-white/15 text-sm font-semibold text-foreground disabled:opacity-40">
+              {pick(lang, webNote === "missing" ? "💬 SMS orqali yuborish" : "💬 SMS orqali", webNote === "missing" ? "💬 Отправить по SMS" : "💬 Через SMS")}
             </button>
             <button type="button" onClick={closeChannel} className="mt-3 h-11 w-full rounded-xl text-sm text-muted-foreground">
               {pick(lang, "Bekor qilish", "Отмена")}
