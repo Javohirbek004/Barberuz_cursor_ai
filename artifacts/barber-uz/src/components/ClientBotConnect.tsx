@@ -43,6 +43,30 @@ async function copyText(value: string): Promise<void> {
   }
 }
 
+const NOTICE_KEY = "zumio_bot_link_notice";
+
+function accountId(): string {
+  try {
+    const user = JSON.parse(localStorage.getItem("barber_user") || "null") as { id?: string } | null;
+    if (user?.id) return String(user.id);
+  } catch { /* the saved account can be unreadable */ }
+  return localStorage.getItem("zumio_device_account_id") || "account";
+}
+
+function noticeSeen(): boolean {
+  try {
+    return localStorage.getItem(`${NOTICE_KEY}:${accountId()}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markNoticeSeen() {
+  try {
+    localStorage.setItem(`${NOTICE_KEY}:${accountId()}`, "1");
+  } catch { /* a private browser can refuse storage */ }
+}
+
 function openSms(phone: string, body: string) {
   const isiOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
   const href = isiOS
@@ -136,6 +160,7 @@ export function ClientBotConnect({
   function start() {
     setTargetId(clientId);
     openUnderSheet();
+    if (noticeSeen()) return;
     setNoticeHiding(false);
     setNoticeOpen(true);
   }
@@ -155,6 +180,7 @@ export function ClientBotConnect({
 
   function continueAfterNotice() {
     if (noticeHiding) return;
+    markNoticeSeen();
     if (!phoneOpen && !channelOpen) openUnderSheet();
     const info = infoRef.current;
     const card = cardRef.current;
