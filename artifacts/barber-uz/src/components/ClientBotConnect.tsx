@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetClientQueryKey, getListClientsQueryKey } from "@workspace/api-client-react";
@@ -69,6 +69,11 @@ export function ClientBotConnect({
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [channelOpen, setChannelOpen] = useState(false);
   const [noticeOpen, setNoticeOpen] = useState(false);
+  const [noticeHiding, setNoticeHiding] = useState(false);
+  const [infoPulse, setInfoPulse] = useState(false);
+  const infoRef = useRef<HTMLButtonElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const hideTimer = useRef<number | null>(null);
   const [digits, setDigits] = useState("");
   const [checking, setChecking] = useState(false);
   const [hit, setHit] = useState<PhoneHit | null>(null);
@@ -111,22 +116,62 @@ export function ClientBotConnect({
     };
   }, [digits, phoneOpen]);
 
-  function start() {
-    setTargetId(clientId);
-    setNoticeOpen(true);
-  }
+  useEffect(() => () => {
+    if (hideTimer.current != null) window.clearTimeout(hideTimer.current);
+  }, []);
 
-  function continueAfterNotice() {
-    setNoticeOpen(false);
-    if (phoneOpen || channelOpen) return;
+  function openUnderSheet() {
     if (knownPhone) {
+      setPhoneOpen(false);
       setChannelOpen(true);
       return;
     }
+    setChannelOpen(false);
     setDigits("");
     setHit(null);
     setChecking(false);
     setPhoneOpen(true);
+  }
+
+  function start() {
+    setTargetId(clientId);
+    openUnderSheet();
+    setNoticeHiding(false);
+    setNoticeOpen(true);
+  }
+
+  function finishNotice() {
+    setNoticeOpen(false);
+    setNoticeHiding(false);
+    const card = cardRef.current;
+    if (card) {
+      card.style.transition = "";
+      card.style.transform = "";
+      card.style.opacity = "";
+    }
+    setInfoPulse(true);
+    window.setTimeout(() => setInfoPulse(false), 900);
+  }
+
+  function continueAfterNotice() {
+    if (noticeHiding) return;
+    if (!phoneOpen && !channelOpen) openUnderSheet();
+    const info = infoRef.current;
+    const card = cardRef.current;
+    if (!info || !card) {
+      finishNotice();
+      return;
+    }
+    const infoBox = info.getBoundingClientRect();
+    const cardBox = card.getBoundingClientRect();
+    const dx = infoBox.left + infoBox.width / 2 - (cardBox.left + cardBox.width / 2);
+    const dy = infoBox.top + infoBox.height / 2 - (cardBox.top + cardBox.height / 2);
+    setNoticeHiding(true);
+    card.style.transition = "transform 520ms cubic-bezier(.22,.8,.2,1), opacity 520ms ease";
+    card.style.transform = `translate(${dx}px, ${dy}px) scale(0.06)`;
+    card.style.opacity = "0";
+    if (hideTimer.current != null) window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(finishNotice, 540);
   }
 
   function closePhone() {
@@ -225,19 +270,22 @@ export function ClientBotConnect({
       {phoneOpen && (
         <div className="fixed inset-0 z-[230] flex items-end bg-black/70 sm:items-center sm:justify-center">
           <div className="w-full max-w-md rounded-t-3xl bg-[#1a1a1f] border border-white/10 p-4 sm:rounded-3xl">
-            <div className="flex items-start justify-between gap-3">
-              <button
-                type="button"
-                aria-label={pick(lang, "Eslatma", "Напоминание")}
-                onClick={() => setNoticeOpen(true)}
-                className="h-9 w-9 shrink-0 rounded-full border border-white/20 text-sm font-bold text-foreground"
-              >
-                i
-              </button>
-              <h2 className="flex-1 pt-1.5 text-base font-bold text-foreground">⚠️ Telefon raqami kiritilmagan</h2>
-              <button type="button" aria-label="Yopish" onClick={closePhone} className="h-9 w-9 shrink-0 rounded-xl bg-white/8 text-muted-foreground">
-                <X className="mx-auto h-4 w-4" />
-              </button>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="min-w-0 flex-1 text-base font-bold text-foreground">⚠️ Telefon raqami kiritilmagan</h2>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  ref={infoRef}
+                  type="button"
+                  aria-label={pick(lang, "Eslatma", "Напоминание")}
+                  onClick={() => setNoticeOpen(true)}
+                  className={`h-9 w-9 rounded-full border border-white/20 text-sm font-bold text-foreground ${infoPulse ? "ring-2 ring-primary" : ""}`}
+                >
+                  i
+                </button>
+                <button type="button" aria-label="Yopish" onClick={closePhone} className="h-9 w-9 rounded-xl bg-white/8 text-muted-foreground">
+                  <X className="mx-auto h-4 w-4" />
+                </button>
+              </div>
             </div>
             <p className="mt-3 text-sm leading-snug text-muted-foreground">
               Mijozni botga ulash uchun uning telefon raqami kiritilgan bo‘lishi kerak. Iltimos, avval raqamni kiriting.
@@ -278,42 +326,42 @@ export function ClientBotConnect({
       {channelOpen && (
         <div className="fixed inset-0 z-[230] flex items-end bg-black/70 sm:items-center sm:justify-center">
           <div className="w-full max-w-md rounded-t-3xl bg-[#1a1a1f] border border-white/10 p-4 sm:rounded-3xl">
-            <div className="flex items-start justify-between gap-3">
-              <button
-                type="button"
-                aria-label={pick(lang, "Eslatma", "Напоминание")}
-                onClick={() => setNoticeOpen(true)}
-                className="h-9 w-9 shrink-0 rounded-full border border-white/20 text-sm font-bold text-foreground"
-              >
-                i
-              </button>
-              <h2 className="flex-1 pt-1.5 text-base font-bold text-foreground">⚠️ Botga ulash</h2>
-              <button type="button" aria-label="Yopish" onClick={closeChannel} className="h-9 w-9 shrink-0 rounded-xl bg-white/8 text-muted-foreground">
-                <X className="mx-auto h-4 w-4" />
-              </button>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="pl-6 text-base font-bold text-foreground">{pick(lang, "Botga ulash", "Подключить к боту")}</h2>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  ref={infoRef}
+                  type="button"
+                  aria-label={pick(lang, "Eslatma", "Напоминание")}
+                  onClick={() => setNoticeOpen(true)}
+                  className={`h-9 w-9 rounded-full border border-white/20 text-sm font-bold text-foreground ${infoPulse ? "ring-2 ring-primary" : ""}`}
+                >
+                  i
+                </button>
+                <button type="button" aria-label="Yopish" onClick={closeChannel} className="h-9 w-9 rounded-xl bg-white/8 text-muted-foreground">
+                  <X className="mx-auto h-4 w-4" />
+                </button>
+              </div>
             </div>
             <p className="mt-3 text-sm leading-snug text-muted-foreground">
-              Mijozni botga ulash va bron tafsilotlarini yuborish uchun qaysi aloqa turini tanlaysiz?
+              {pick(lang, "Mijozni botga ulash va bron tafsilotlarini yuborish uchun qaysi aloqa turini tanlaysiz?", "Как отправить клиенту подключение к боту и детали записи?")}
             </p>
             <button type="button" onClick={() => void sendTelegram()} className="mt-4 h-12 w-full rounded-xl bg-primary text-sm font-extrabold text-black">
-              ✈️ Telegram orqali
+              {pick(lang, "✈️ Telegram orqali", "✈️ Через Telegram")}
             </button>
             <button type="button" onClick={sendSms} className="mt-2 h-12 w-full rounded-xl border border-white/15 text-sm font-semibold text-foreground">
-              💬 SMS orqali
+              {pick(lang, "💬 SMS orqali", "💬 Через SMS")}
             </button>
-            <p className="mt-3 text-center text-xs leading-snug text-muted-foreground">
-              (Agar mijozda Telegram topilmasa, ilovaga qaytib SMS orqali yuborishingiz mumkin!)
-            </p>
             <button type="button" onClick={closeChannel} className="mt-3 h-11 w-full rounded-xl text-sm text-muted-foreground">
-              Bekor qilish
+              {pick(lang, "Bekor qilish", "Отмена")}
             </button>
           </div>
         </div>
       )}
 
       {noticeOpen && (
-        <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#1a1a1f] p-5">
+        <div className={`fixed inset-0 z-[260] flex items-center justify-center p-4 transition-colors duration-300 ${noticeHiding ? "pointer-events-none bg-transparent" : "bg-black/70"}`}>
+          <div ref={cardRef} className="w-full max-w-md rounded-3xl border border-white/10 bg-[#1a1a1f] p-5">
             <h2 className="text-xl font-bold text-foreground">{pick(lang, "Eslatma!", "Напоминание!")}</h2>
             <p className="mt-4 text-sm leading-snug text-muted-foreground">
               <span className="font-semibold text-foreground">{pick(lang, "Telegram orqali: ", "Через Telegram: ")}</span>
