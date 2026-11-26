@@ -68,14 +68,12 @@ export function ClientBotConnect({
   const [knownPhone, setKnownPhone] = useState((phone || "").trim());
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [channelOpen, setChannelOpen] = useState(false);
-  const [smsOpen, setSmsOpen] = useState(false);
+  const [noticeOpen, setNoticeOpen] = useState(false);
   const [digits, setDigits] = useState("");
   const [checking, setChecking] = useState(false);
   const [hit, setHit] = useState<PhoneHit | null>(null);
   const [saving, setSaving] = useState(false);
   const [targetId, setTargetId] = useState(clientId);
-  const [toastOn, setToastOn] = useState(false);
-  const [toastShown, setToastShown] = useState(false);
 
   useEffect(() => {
     setKnownPhone((phone || "").trim());
@@ -113,19 +111,14 @@ export function ClientBotConnect({
     };
   }, [digits, phoneOpen]);
 
-  useEffect(() => {
-    if (!toastOn) return;
-    setToastShown(true);
-    const fade = window.setTimeout(() => setToastShown(false), 3500);
-    const gone = window.setTimeout(() => setToastOn(false), 3900);
-    return () => {
-      window.clearTimeout(fade);
-      window.clearTimeout(gone);
-    };
-  }, [toastOn]);
-
   function start() {
     setTargetId(clientId);
+    setNoticeOpen(true);
+  }
+
+  function continueAfterNotice() {
+    setNoticeOpen(false);
+    if (phoneOpen || channelOpen) return;
     if (knownPhone) {
       setChannelOpen(true);
       return;
@@ -142,7 +135,6 @@ export function ClientBotConnect({
   }
 
   function closeChannel() {
-    setSmsOpen(false);
     setChannelOpen(false);
   }
 
@@ -191,7 +183,6 @@ export function ClientBotConnect({
   async function sendTelegram() {
     const text = inviteText(barberName || "usta", botUsername, targetId);
     await copyText(text);
-    setToastOn(true);
     const number = knownPhone || `+998${digits}`;
     window.location.href = `tg://resolve?phone=${encodeURIComponent(number)}`;
   }
@@ -199,7 +190,6 @@ export function ClientBotConnect({
   function sendSms() {
     const text = inviteText(barberName || "usta", botUsername, targetId);
     const number = knownPhone || `+998${digits}`;
-    setSmsOpen(false);
     setChannelOpen(false);
     setPhoneOpen(false);
     openSms(number, text);
@@ -236,7 +226,15 @@ export function ClientBotConnect({
         <div className="fixed inset-0 z-[230] flex items-end bg-black/70 sm:items-center sm:justify-center">
           <div className="w-full max-w-md rounded-t-3xl bg-[#1a1a1f] border border-white/10 p-4 sm:rounded-3xl">
             <div className="flex items-start justify-between gap-3">
-              <h2 className="text-base font-bold text-foreground">⚠️ Telefon raqami kiritilmagan</h2>
+              <button
+                type="button"
+                aria-label={pick(lang, "Eslatma", "Напоминание")}
+                onClick={() => setNoticeOpen(true)}
+                className="h-9 w-9 shrink-0 rounded-full border border-white/20 text-sm font-bold text-foreground"
+              >
+                i
+              </button>
+              <h2 className="flex-1 pt-1.5 text-base font-bold text-foreground">⚠️ Telefon raqami kiritilmagan</h2>
               <button type="button" aria-label="Yopish" onClick={closePhone} className="h-9 w-9 shrink-0 rounded-xl bg-white/8 text-muted-foreground">
                 <X className="mx-auto h-4 w-4" />
               </button>
@@ -281,7 +279,15 @@ export function ClientBotConnect({
         <div className="fixed inset-0 z-[230] flex items-end bg-black/70 sm:items-center sm:justify-center">
           <div className="w-full max-w-md rounded-t-3xl bg-[#1a1a1f] border border-white/10 p-4 sm:rounded-3xl">
             <div className="flex items-start justify-between gap-3">
-              <h2 className="text-base font-bold text-foreground">⚠️ Botga ulash</h2>
+              <button
+                type="button"
+                aria-label={pick(lang, "Eslatma", "Напоминание")}
+                onClick={() => setNoticeOpen(true)}
+                className="h-9 w-9 shrink-0 rounded-full border border-white/20 text-sm font-bold text-foreground"
+              >
+                i
+              </button>
+              <h2 className="flex-1 pt-1.5 text-base font-bold text-foreground">⚠️ Botga ulash</h2>
               <button type="button" aria-label="Yopish" onClick={closeChannel} className="h-9 w-9 shrink-0 rounded-xl bg-white/8 text-muted-foreground">
                 <X className="mx-auto h-4 w-4" />
               </button>
@@ -292,7 +298,7 @@ export function ClientBotConnect({
             <button type="button" onClick={() => void sendTelegram()} className="mt-4 h-12 w-full rounded-xl bg-primary text-sm font-extrabold text-black">
               ✈️ Telegram orqali
             </button>
-            <button type="button" onClick={() => setSmsOpen(true)} className="mt-2 h-12 w-full rounded-xl border border-white/15 text-sm font-semibold text-foreground">
+            <button type="button" onClick={sendSms} className="mt-2 h-12 w-full rounded-xl border border-white/15 text-sm font-semibold text-foreground">
               💬 SMS orqali
             </button>
             <p className="mt-3 text-center text-xs leading-snug text-muted-foreground">
@@ -305,32 +311,34 @@ export function ClientBotConnect({
         </div>
       )}
 
-      {smsOpen && (
-        <div className="fixed inset-0 z-[240] flex items-end bg-black/70 sm:items-center sm:justify-center">
-          <div className="w-full max-w-md rounded-t-3xl bg-[#1a1a1f] border border-white/10 p-4 sm:rounded-3xl">
-            <h2 className="text-base font-bold text-foreground">💬 SMS orqali yuborish</h2>
-            <p className="mt-3 text-sm leading-snug text-muted-foreground">
-              ℹ️ Eslatma: Xabar sizning mobil aloqa tarifingiz hisobidagi SMS paketingiz orqali yuboriladi.
+      {noticeOpen && (
+        <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#1a1a1f] p-5">
+            <h2 className="text-xl font-bold text-foreground">{pick(lang, "Eslatma!", "Напоминание!")}</h2>
+            <p className="mt-4 text-sm leading-snug text-muted-foreground">
+              <span className="font-semibold text-foreground">{pick(lang, "Telegram orqali: ", "Через Telegram: ")}</span>
+              {pick(
+                lang,
+                "Yuborish tanlanganda mijoz raqami bo‘yicha Telegram qidiriladi. Profil topilsa, chat avtomatik ochiladi va yuboriladigan xabar nusxalanadi — siz shunchaki shu xabarni chatga joylab yuborishingiz kerak. Agar chat ochilmasa yoki profil topilmasa, SMS xizmatidan foydalanishingiz mumkin.",
+                "При выборе отправки Telegram ищется по номеру клиента. Если профиль найден, чат откроется сам, а текст сообщения скопируется — вам останется вставить его в чат и отправить. Если чат не открылся или профиль не найден, можно воспользоваться SMS.",
+              )}
             </p>
-            <div className="mt-4 flex gap-2">
-              <button type="button" onClick={() => setSmsOpen(false)} className="h-12 flex-1 rounded-xl border border-white/15 text-sm font-semibold">
-                Bekor qilish
-              </button>
-              <button type="button" onClick={sendSms} className="h-12 flex-1 rounded-xl bg-primary text-sm font-extrabold text-black">
-                Davom etish
-              </button>
-            </div>
+            <p className="mt-3 text-sm leading-snug text-muted-foreground">
+              <span className="font-semibold text-foreground">{pick(lang, "SMS orqali: ", "Через SMS: ")}</span>
+              {pick(
+                lang,
+                "Yuboriladigan xabar telefoningizdagi aloqa paketi yoki SMS hisobingizdan ketadi.",
+                "Сообщение спишется с пакета связи или SMS-баланса вашего телефона.",
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={continueAfterNotice}
+              className="mt-5 h-12 w-full rounded-xl bg-primary text-sm font-extrabold text-black"
+            >
+              {pick(lang, "Tushunarli", "Понятно")}
+            </button>
           </div>
-        </div>
-      )}
-
-      {toastOn && (
-        <div
-          className={`fixed left-1/2 z-[250] w-[min(92vw,22rem)] -translate-x-1/2 rounded-[12px] bg-[#1E1E1E] px-4 py-3 text-center text-sm leading-snug text-white shadow-lg transition-opacity duration-300 ${toastShown ? "opacity-100" : "opacity-0"}`}
-          style={{ bottom: "calc(5.5rem + 24px)" }}
-        >
-          <p>✅ Mijozga yuboriladigan xabar matni nusxalandi!</p>
-          <p className="mt-1">Chat ochilgach bu nusxalangan xabarni yuborishingiz mumkin. Telegram ochilmoqda...</p>
         </div>
       )}
     </>
