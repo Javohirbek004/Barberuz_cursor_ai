@@ -11,11 +11,11 @@
   "rewrites": [
     {
       "source": "/api",
-      "destination": "https://barber-uz-clq6.onrender.com/api"
+      "destination": "https://workspaceapi-server-production-c5e26df8.up.railway.app/api"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://barber-uz-clq6.onrender.com/api/:path*"
+      "destination": "https://workspaceapi-server-production-c5e26df8.up.railway.app/api/:path*"
     },
     {
       "source": "/((?!api/).*)",
