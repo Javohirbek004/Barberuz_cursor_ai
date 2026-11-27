@@ -1,22 +1,12 @@
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { signAppEntry } from "./auth";
+import { publicAppUrl } from "./telegram-token";
 
 export const BARBER_ENTRY_BUTTON = "🌐 Ilovaga kirish";
 
 function appBase(): string {
-  if (process.env.NODE_ENV === "development" && process.env.REPLIT_DEV_DOMAIN) {
-    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  }
-  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
-  if (renderHost) return `https://${renderHost}`;
-  const railwayHost = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
-  if (railwayHost) return `https://${railwayHost}`;
-  if (process.env.APP_URL) {
-    const appUrl = process.env.APP_URL.replace(/\/$/, "");
-    if (!/replit\./i.test(appUrl) && !/vercel\.app$/i.test(appUrl)) return appUrl;
-  }
-  return "https://barber-uz-clq6.onrender.com";
+  return publicAppUrl();
 }
 
 /** Bottom button that opens this barber's own profile. Null until the third notice. */

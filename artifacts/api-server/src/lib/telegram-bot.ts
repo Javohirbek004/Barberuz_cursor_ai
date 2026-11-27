@@ -49,7 +49,7 @@ import {
   rebookUrl,
   sendReminderPreview,
 } from "./client-notifications";
-import { getTelegramBotToken, getTelegramBotUsername, hasLearnedBotUsername, rememberBotUsername, webhookSecretToken } from "./telegram-token";
+import { getTelegramBotToken, getTelegramBotUsername, hasLearnedBotUsername, publicAppUrl, rememberBotUsername, webhookSecretToken } from "./telegram-token";
 import {
   asClientLang,
   ct,
@@ -84,25 +84,7 @@ function getToken(): string {
  * users (login URLs, booking links) point to the correct production app.
  */
 function getAppUrl(): string {
-  // In development, REPLIT_DEV_DOMAIN is the live dev workspace URL (sisko.replit.dev).
-  if (process.env.NODE_ENV === "development") {
-    if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  }
-  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
-  if (renderHost) return `https://${renderHost}`;
-  const railwayHost = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
-  if (railwayHost) return `https://${railwayHost}`;
-  if (process.env.APP_URL) {
-    const appUrl = process.env.APP_URL.replace(/\/$/, "");
-    if (!/replit\./i.test(appUrl) && !/vercel\.app$/i.test(appUrl)) return appUrl;
-  }
-  const domains = (process.env.REPLIT_DOMAINS || "")
-    .split(",")
-    .map(d => d.trim())
-    .filter(d => d && !d.includes("sisko.replit.dev") && !d.includes("replit."));
-  const preferred = domains[0];
-  if (preferred) return `https://${preferred}`;
-  return "https://barber-uz-clq6.onrender.com";
+  return publicAppUrl();
 }
 
 function publicSiteUrl(): string {
@@ -591,7 +573,7 @@ async function sendBotConnectAsk(chatId: number, name: string | null | undefined
   });
 }
 
-async function sendBotConnectDone(chatId: number) {
+async function sendBotConnectDone(chatId: number, userId: string) {
   const text = "Telegram bot muvaffaqiyatli ulandi. \u2705\n\nEndi yangi bronlar, bekor qilingan navbatlar va eslatmalar sizga darhol shu yerdan yuboriladi.";
   const hidden = await callTelegram("sendMessage", {
     chat_id: chatId,
@@ -599,11 +581,12 @@ async function sendBotConnectDone(chatId: number) {
     disable_notification: true,
     reply_markup: { remove_keyboard: true },
   }) as { result?: { message_id?: number } } | null;
+  const backUrl = `${getAppUrl()}/dashboard?entry=${encodeURIComponent(signAppEntry(userId))}&bot=ulandi`;
   await callTelegram("sendMessage", {
     chat_id: chatId,
     text,
     reply_markup: {
-      inline_keyboard: [[{ text: "Ilovaga qaytish", url: `${getAppUrl()}/dashboard?bot=ulandi` }]],
+      inline_keyboard: [[{ text: "Ilovaga qaytish", url: backUrl }]],
     },
   });
   const hiddenId = hidden?.result?.message_id;
@@ -797,7 +780,7 @@ async function finishBotConnect(
     updatedAt: new Date(),
   }).where(eq(usersTable.id, userId));
   pendingBotConnect.delete(chatId);
-  await sendBotConnectDone(chatId);
+  await sendBotConnectDone(chatId, userId);
 }
 
 async function waitingBotConnectId(chatId: number): Promise<string | null> {

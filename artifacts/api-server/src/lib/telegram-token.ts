@@ -12,20 +12,37 @@ export function webhookSecretToken(): string {
 }
 
 /**
+ * The address people open in the browser. A custom name like zumio.uz wins over Railway's own link.
+ */
+export function publicAppUrl(): string {
+  if (process.env.NODE_ENV === "development" && process.env.REPLIT_DEV_DOMAIN) {
+    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  }
+  const appUrl = process.env.APP_URL?.trim().replace(/\/$/, "");
+  if (appUrl && !/replit\./i.test(appUrl) && !/vercel\.app$/i.test(appUrl)) return appUrl;
+  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
+  if (renderHost) return `https://${renderHost}`;
+  const railwayHost = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+  if (railwayHost) return `https://${railwayHost}`;
+  const firstDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+  if (firstDomain) return `https://${firstDomain}`;
+  return "https://barber-uz-clq6.onrender.com";
+}
+
+/**
  * The server's own public host. Telegram talks to the server directly, not through the website.
  */
 export function productionHost(): string {
-  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
-  if (renderHost) return renderHost;
-  const railwayHost = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
-  if (railwayHost) return railwayHost;
-
   if (process.env.APP_URL) {
     try {
       const host = new URL(process.env.APP_URL).hostname;
       if (host && !host.includes("replit") && !host.endsWith("vercel.app")) return host;
     } catch { /* ignore */ }
   }
+  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
+  if (renderHost) return renderHost;
+  const railwayHost = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+  if (railwayHost) return railwayHost;
 
   return "barber-uz-clq6.onrender.com";
 }

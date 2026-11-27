@@ -1066,7 +1066,10 @@ function ProfileEntry({ entry, onDone }: { entry: string; onDone: () => void }) 
         if (cancelled || !data?.token || !data?.user) throw new Error("entry");
         localStorage.setItem("barber_token", data.token);
         localStorage.setItem("barber_user", JSON.stringify(data.user));
-        window.history.replaceState({}, "", "/dashboard");
+        const stay = new URLSearchParams(window.location.search).get("bot") === "ulandi"
+          ? "/dashboard?bot=ulandi"
+          : "/dashboard";
+        window.history.replaceState({}, "", stay);
         onDone();
       } catch {
         if (!cancelled) navigate("/login");
