@@ -6,7 +6,7 @@
 
 import { db, bookingsTable, bookingSessionsTable, clientsTable, usersTable } from "@workspace/db";
 import { syncClientMetrics } from "./client-metrics";
-import { getTelegramBotToken } from "./telegram-token";
+import { getTelegramBotToken, publicAppUrl } from "./telegram-token";
 import { barberEntryMarkup } from "./barber-entry-keyboard";
 import { bindBarberTelegramChat } from "./barber-telegram";
 import {
@@ -81,15 +81,12 @@ function token(): string {
   return getTelegramBotToken();
 }
 
-const PUBLIC_SITE = process.env.RENDER_EXTERNAL_HOSTNAME
-  ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME.trim()}`
-  : "https://barber-uz-clq6.onrender.com";
-
 /** Client rebook link: the barber's booking page, not the app home. */
 export function rebookUrl(username: string | null | undefined): string {
+  const site = publicAppUrl();
   const slug = (username || "").trim();
-  if (!slug) return PUBLIC_SITE;
-  return `${PUBLIC_SITE}/${encodeURIComponent(slug)}?bron=1`;
+  if (!slug) return site;
+  return `${site}/${encodeURIComponent(slug)}?bron=1`;
 }
 
 function esc(value: string): string {

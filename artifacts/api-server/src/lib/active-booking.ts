@@ -12,6 +12,7 @@ import { findBookingConflict, minsToTime, parseClockTime, timeToMins } from "./b
 import { phoneKey } from "./phone";
 import { slotOutsideWorkingHours } from "./schedule-guard";
 import { getTelegramBotToken } from "./telegram-token";
+import { bindBarberTelegramChat } from "./barber-telegram";
 
 const OPEN = ["pending", "confirmed"] as const;
 
@@ -328,8 +329,14 @@ async function notifyMove(
       `📅 Yangi vaqt: ${esc(newWhen)}`,
     ].join("\n"));
   }
-  if (row.barberTelegram) {
-    await sendTelegram(row.barberTelegram, [
+  const barberChat = await bindBarberTelegramChat({
+    id: row.barberId,
+    telegramId: row.barberTelegram,
+    phone: row.barberPhone,
+    name: row.masterName,
+  });
+  if (barberChat) {
+    await sendTelegram(barberChat, [
       "🔄 <b>Mijoz bron vaqtini o‘zgartirdi</b>",
       "",
       `👤 Mijoz: ${esc(row.clientName || "Mijoz")}`,
