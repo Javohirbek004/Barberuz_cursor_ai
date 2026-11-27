@@ -105,7 +105,7 @@ async function sendDueMorningDigests(todayStr: string, nowMinutes: number): Prom
     ));
 
   for (const barberUser of allBarbers) {
-    if (barberUser.telegramId && barberUser.telegramVerified === true) continue;
+    if (barberUser.telegramId) continue;
     const chat = await bindBarberTelegramChat(barberUser);
     if (chat) {
       barberUser.telegramId = chat;

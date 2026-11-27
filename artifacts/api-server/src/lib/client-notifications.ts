@@ -46,6 +46,7 @@ interface BarberCard {
   latitude: string | null;
   longitude: string | null;
   phone: string | null;
+  botPhone?: string | null;
   phoneVisible: boolean;
   username: string;
   telegramId: string | null;
@@ -614,6 +615,7 @@ async function loadBarber(barberId: string): Promise<BarberCard | null> {
       latitude: usersTable.latitude,
       longitude: usersTable.longitude,
       phone: usersTable.phone,
+      botPhone: usersTable.botPhone,
       phoneVisible: usersTable.phoneVisible,
       username: usersTable.username,
       telegramId: usersTable.telegramId,
