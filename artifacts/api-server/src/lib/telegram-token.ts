@@ -31,18 +31,20 @@ export function publicAppUrl(): string {
 
 /**
  * The server's own public host. Telegram talks to the server directly, not through the website.
+ * People-facing links use publicAppUrl(); this one stays on Railway so the bot keeps working.
  */
 export function productionHost(): string {
+  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
+  if (renderHost) return renderHost;
+  const railwayHost = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+  if (railwayHost) return railwayHost;
+
   if (process.env.APP_URL) {
     try {
       const host = new URL(process.env.APP_URL).hostname;
       if (host && !host.includes("replit") && !host.endsWith("vercel.app")) return host;
     } catch { /* ignore */ }
   }
-  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
-  if (renderHost) return renderHost;
-  const railwayHost = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
-  if (railwayHost) return railwayHost;
 
   return "barber-uz-clq6.onrender.com";
 }
