@@ -2390,17 +2390,24 @@ async function handleCustomerConfirmCancel(chatId: number, sessionId: string) {
     const serviceNames    = data.services.map(s => s.name).join(", ");
     let entryMarkup = null;
     try { entryMarkup = await barberEntryMarkup(cancelChat); } catch { /* keep the cancel text */ }
-    await callTelegram("sendMessage", {
-      chat_id: Number(cancelChat),
-      text:
+    const cancelText =
         `\u26A0\uFE0F <b>Bron bekor qilindi!</b>\n\n` +
         `\uD83D\uDC64 Mijoz: ${clientFirstName}${clientPhone}\n` +
         `\uD83D\uDCC5 Sana va vaqt: ${formatDateLabel(data.date)}, <b>${data.time}</b>\n` +
         `\u2702\uFE0F Xizmat: ${serviceNames}\n\n` +
-        `Ushbu vaqt slot kalendaringizda avtomatik bo\u02BBshatildi.`,
+        `Ushbu vaqt slot kalendaringizda avtomatik bo\u02BBshatildi.`;
+    const cancelBody = {
+      chat_id: Number(cancelChat),
+      text: cancelText,
       parse_mode: "HTML",
+    };
+    const cancelSent = await callTelegram("sendMessage", {
+      ...cancelBody,
       ...(entryMarkup ? { reply_markup: entryMarkup } : {}),
-    }).catch(() => {});
+    }).catch(() => null) as { ok?: boolean } | null;
+    if (!cancelSent?.ok && entryMarkup) {
+      await callTelegram("sendMessage", cancelBody).catch(() => {});
+    }
   }
 }
 
@@ -2596,12 +2603,19 @@ export async function sendBarberBookingNotification(
             { text: ru ? "❌ Отменить запись" : "❌ Bronni bekor qilish", callback_data: `cancel_booking_${sessionId}` },
           ]],
         };
-    const sent = await callTelegram("sendMessage", {
+    let sent = await callTelegram("sendMessage", {
       chat_id: Number(chat),
       text,
       parse_mode: "HTML",
       reply_markup: cancelButton,
     }) as { ok?: boolean } | null;
+    if (!sent?.ok) {
+      sent = await callTelegram("sendMessage", {
+        chat_id: Number(chat),
+        text,
+        parse_mode: "HTML",
+      }) as { ok?: boolean } | null;
+    }
     if (!sent?.ok) return;
     await rememberBarberNotice(session?.bookingId, sent);
 
@@ -2664,12 +2678,19 @@ export async function sendDirectBookingNotification(params: {
       `Ushbu bron sartarosh tomonidan ilova orqali qo\u2018shildi.`;
 
     try { await barberEntryMarkup(chat); } catch { /* the alert must still go out */ }
-    const sent = await callTelegram("sendMessage", {
+    const payload = {
       chat_id: Number(chat),
       text,
       parse_mode: "HTML",
+    };
+    let sent = await callTelegram("sendMessage", {
+      ...payload,
       reply_markup: barberCancelKeyboard(params.bookingId),
-    });
+    }) as { ok?: boolean } | null;
+    if (!sent?.ok) {
+      sent = await callTelegram("sendMessage", payload) as { ok?: boolean } | null;
+    }
+    if (!sent?.ok) return;
     await rememberBarberNotice(params.bookingId, sent);
 
     log("direct_booking_notified", { barberId: params.barberId, telegramUserId: chat });

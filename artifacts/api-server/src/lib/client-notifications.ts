@@ -571,7 +571,9 @@ async function sendToBarber(chatId: string, text: string): Promise<boolean> {
     const entryMarkup = await barberEntryMarkup(chatId);
     if (entryMarkup) extra = { reply_markup: entryMarkup };
   } catch { /* the cancel note must still go out */ }
-  return send(chatId, text, extra);
+  if (await send(chatId, text, extra)) return true;
+  if (extra.reply_markup) return send(chatId, text);
+  return false;
 }
 
 async function send(chatId: string, text: string, extra: Record<string, unknown> = {}): Promise<boolean> {

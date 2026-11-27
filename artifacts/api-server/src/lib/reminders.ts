@@ -29,25 +29,14 @@ function getToken(): string {
   return getTelegramBotToken();
 }
 
-async function sendTelegramMessage(
-  chatId: string,
-  text: string,
-  extra: Record<string, unknown> = {},
-): Promise<boolean> {
+async function postTelegramMessage(body: Record<string, unknown>): Promise<boolean> {
   const token = getToken();
   if (!token) return false;
-  const entryMarkup = extra.reply_markup ? null : await barberEntryMarkup(chatId);
   try {
     const res = await fetch(`${TELEGRAM_API}/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML",
-        ...extra,
-        ...(entryMarkup ? { reply_markup: entryMarkup } : {}),
-      }),
+      body: JSON.stringify(body),
     });
     const json = await res.json() as { ok?: boolean };
     return json.ok === true;
@@ -55,6 +44,26 @@ async function sendTelegramMessage(
     console.error("[Reminders] sendTelegramMessage failed:", err);
     return false;
   }
+}
+
+async function sendTelegramMessage(
+  chatId: string,
+  text: string,
+  extra: Record<string, unknown> = {},
+): Promise<boolean> {
+  const entryMarkup = extra.reply_markup ? null : await barberEntryMarkup(chatId).catch(() => null);
+  const base = {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+    ...extra,
+  };
+  if (await postTelegramMessage({
+    ...base,
+    ...(entryMarkup ? { reply_markup: entryMarkup } : {}),
+  })) return true;
+  if (entryMarkup) return postTelegramMessage(base);
+  return false;
 }
 
 const sentReminders = new Set<string>();

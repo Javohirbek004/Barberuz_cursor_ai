@@ -1,5 +1,6 @@
 import { db, usersTable } from "@workspace/db";
-import { and, eq, isNotNull, isNull, ne } from "drizzle-orm";
+import { and, isNotNull, isNull, ne } from "drizzle-orm";
+import { phoneKey } from "./phone";
 
 type BarberChat = {
   id: string;
@@ -9,58 +10,50 @@ type BarberChat = {
   name?: string | null;
 };
 
-/** The chat that should get barber alerts. A twin row from a second signup can hold the bot link. */
+function personKeys(row: { phone?: string | null; botPhone?: string | null }): string[] {
+  return [phoneKey(row.phone), phoneKey(row.botPhone)].filter(
+    (key): key is string => Boolean(key),
+  );
+}
+
+function sameName(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = (a || "").replace(/\s+/g, " ").trim().toLowerCase();
+  const right = (b || "").replace(/\s+/g, " ").trim().toLowerCase();
+  return Boolean(left) && left === right;
+}
+
+/**
+ * Chat that should get barber alerts.
+ * A second signup can leave the bot link on the other row — do not copy it
+ * (the database forbids two live rows sharing one Telegram id).
+ */
 export async function bindBarberTelegramChat(barber: BarberChat): Promise<string | null> {
   try {
-    return await resolveBarberTelegramChat(barber);
+    if (barber.telegramId) return String(barber.telegramId);
+
+    const twins = await db
+      .select({
+        telegramId: usersTable.telegramId,
+        phone: usersTable.phone,
+        botPhone: usersTable.botPhone,
+        name: usersTable.name,
+      })
+      .from(usersTable)
+      .where(and(
+        ne(usersTable.id, barber.id),
+        isNotNull(usersTable.telegramId),
+        isNull(usersTable.deletedAt),
+      ));
+
+    const keys = personKeys(barber);
+    const byPhone = twins.find((row) => {
+      const other = personKeys(row);
+      return keys.some((key) => other.includes(key));
+    });
+    const byName = twins.filter((row) => sameName(barber.name, row.name));
+    const twin = byPhone || (byName.length === 1 ? byName[0] : undefined);
+    return twin?.telegramId ? String(twin.telegramId) : null;
   } catch {
     return barber.telegramId ? String(barber.telegramId) : null;
   }
-}
-
-async function resolveBarberTelegramChat(barber: BarberChat): Promise<string | null> {
-  if (barber.telegramId) return String(barber.telegramId);
-
-  const twins = await db
-    .select({
-      telegramId: usersTable.telegramId,
-      telegramUsername: usersTable.telegramUsername,
-      phone: usersTable.phone,
-      botPhone: usersTable.botPhone,
-      name: usersTable.name,
-    })
-    .from(usersTable)
-    .where(and(
-      ne(usersTable.id, barber.id),
-      isNotNull(usersTable.telegramId),
-      isNull(usersTable.deletedAt),
-    ));
-
-  const phone = (barber.phone || "").trim();
-  const botPhone = (barber.botPhone || "").trim();
-  const name = (barber.name || "").replace(/\s+/g, " ").trim();
-
-  const byPhone = twins.find((row) => {
-    const otherPhone = (row.phone || "").trim();
-    const otherBot = (row.botPhone || "").trim();
-    return (phone && (otherPhone === phone || otherBot === phone))
-      || (botPhone && (otherPhone === botPhone || otherBot === botPhone));
-  });
-  const byName = twins.filter((row) => name && (row.name || "").replace(/\s+/g, " ").trim() === name);
-  const twin = byPhone || (byName.length === 1 ? byName[0] : undefined);
-  const chat = twin?.telegramId;
-  if (!chat) return null;
-
-  // The other row may still hold this chat. Sending must work even if copy fails.
-  try {
-    await db.update(usersTable).set({
-      telegramId: chat,
-      telegramVerified: true,
-      ...(twin.telegramUsername ? { telegramUsername: twin.telegramUsername } : {}),
-      updatedAt: new Date(),
-    }).where(eq(usersTable.id, barber.id));
-  } catch {
-    /* unique telegram id — still send to this chat */
-  }
-  return String(chat);
 }
