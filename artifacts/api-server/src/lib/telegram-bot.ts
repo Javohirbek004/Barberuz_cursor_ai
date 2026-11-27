@@ -586,7 +586,7 @@ async function sendBotConnectDone(chatId: number, userId: string) {
     chat_id: chatId,
     text,
     reply_markup: {
-      inline_keyboard: [[{ text: "Ilovaga qaytish", url: backUrl }]],
+      inline_keyboard: [[{ text: "Ilovaga qaytish", web_app: { url: backUrl } }]],
     },
   });
   const hiddenId = hidden?.result?.message_id;
@@ -791,7 +791,6 @@ async function waitingBotConnectId(chatId: number): Promise<string | null> {
     .from(usersTable)
     .where(and(
       eq(usersTable.telegramId, String(chatId)),
-      eq(usersTable.telegramVerified, false),
       isNull(usersTable.deletedAt),
     ))
     .limit(1);
@@ -2126,6 +2125,16 @@ async function handleNoPayloadContact(
   pendingNoPayloadLogins.delete(chatId);
 
   if (!phone) return;
+
+  const [knownChat] = await db
+    .select()
+    .from(usersTable)
+    .where(and(eq(usersTable.telegramId, tgUserId), isNull(usersTable.deletedAt)))
+    .limit(1);
+  if (knownChat) {
+    await sendVerificationSuccess(chatId, knownChat.id, contactMessageId ? [contactMessageId] : []);
+    return;
+  }
 
   const existingUser = await findUserByPhone(phone);
 

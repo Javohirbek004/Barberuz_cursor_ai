@@ -116,6 +116,23 @@ export async function createUserFromPending(
   pending: PendingRegistration,
   contact: { phone: string | null; telegramId: string; telegramUsername: string | null },
 ) {
+  const [sameId] = await db.select().from(usersTable).where(eq(usersTable.id, pending.id)).limit(1);
+  if (sameId) {
+    await db.delete(pendingRegistrationsTable).where(eq(pendingRegistrationsTable.id, pending.id));
+    return sameId;
+  }
+  if (contact.telegramId) {
+    const [sameChat] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.telegramId, contact.telegramId))
+      .limit(1);
+    if (sameChat) {
+      await db.delete(pendingRegistrationsTable).where(eq(pendingRegistrationsTable.id, pending.id));
+      return sameChat;
+    }
+  }
+
   let username = pending.username;
   if (!(await isSlugAvailable(username, pending.id))) {
     username = await allocatePublicSlug({

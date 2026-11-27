@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, Redirect, useLocation } from "wouter";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { useRegisterUser } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -62,6 +62,12 @@ export default function Register() {
   const { t, lang } = useTranslation();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const signupParams = new URLSearchParams(window.location.search);
+  const entryCode = signupParams.get("entry");
+  if (entryCode) {
+    const bot = signupParams.get("bot") === "ulandi" ? "&bot=ulandi" : "";
+    return <Redirect to={`/dashboard?entry=${encodeURIComponent(entryCode)}${bot}`} />;
+  }
 
   const [formData, setFormData] = useState({
     name: new URLSearchParams(window.location.search).get("name") || "",

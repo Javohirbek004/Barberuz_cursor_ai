@@ -40,6 +40,12 @@ const queryClient = new QueryClient({
 
 /** Smart root redirect — checks for token without blocking render */
 function RootRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const entry = params.get("entry");
+  if (entry) {
+    const bot = params.get("bot") === "ulandi" ? "&bot=ulandi" : "";
+    return <Redirect to={`/dashboard?entry=${encodeURIComponent(entry)}${bot}`} />;
+  }
   const token = localStorage.getItem("barber_token");
   if (!token) return <Redirect to="/register" />;
   return <Redirect to={pathAfterAuth()} />;
