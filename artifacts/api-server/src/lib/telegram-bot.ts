@@ -32,6 +32,7 @@ import { BotPhoneTakenError, findBarberBySharedContact, planSharedBarberPhone } 
 import { normalizePhone, phoneKey } from "./phone";
 import { generateToken, makePasswordHash, signAppEntry } from "./auth";
 import { barberEntryMarkup } from "./barber-entry-keyboard";
+import { bindBarberTelegramChat } from "./barber-telegram";
 import { bumpSessionEpoch } from "./session-epoch";
 import { consumeRateLimit } from "./rate-limit";
 import {
@@ -2382,13 +2383,15 @@ async function handleCustomerConfirmCancel(chatId: number, sessionId: string) {
 
   // Notify barber with full details
   const [barber] = await db.select().from(usersTable).where(eq(usersTable.id, session.barberId)).limit(1);
-  if (barber?.telegramId && barber.notifCancellation !== false) {
+  const cancelChat = barber ? await bindBarberTelegramChat(barber) : null;
+  if (cancelChat && barber.notifCancellation !== false) {
     const clientFirstName = session.clientName?.split(" ")[0] || "Mijoz";
     const clientPhone     = session.clientPhone ? `\n\uD83D\uDCDE ${session.clientPhone}` : "";
     const serviceNames    = data.services.map(s => s.name).join(", ");
-    const entryMarkup = await barberEntryMarkup(barber.telegramId);
+    let entryMarkup = null;
+    try { entryMarkup = await barberEntryMarkup(cancelChat); } catch { /* keep the cancel text */ }
     await callTelegram("sendMessage", {
-      chat_id: Number(barber.telegramId),
+      chat_id: Number(cancelChat),
       text:
         `\u26A0\uFE0F <b>Bron bekor qilindi!</b>\n\n` +
         `\uD83D\uDC64 Mijoz: ${clientFirstName}${clientPhone}\n` +
@@ -2465,13 +2468,20 @@ export async function editBarberBookingCancelled(booking: {
 }): Promise<void> {
   if (!booking.barberNoticeMessageId) return;
   const [barber] = await db
-    .select({ telegramId: usersTable.telegramId })
+    .select({
+      id: usersTable.id,
+      telegramId: usersTable.telegramId,
+      phone: usersTable.phone,
+      botPhone: usersTable.botPhone,
+      name: usersTable.name,
+    })
     .from(usersTable)
     .where(eq(usersTable.id, booking.barberId))
     .limit(1);
-  if (!barber?.telegramId) return;
+  const noticeChat = barber ? await bindBarberTelegramChat(barber) : null;
+  if (!noticeChat) return;
   await callTelegram("editMessageText", {
-    chat_id: Number(barber.telegramId),
+    chat_id: Number(noticeChat),
     message_id: Number(booking.barberNoticeMessageId),
     text: cancelledBookingText(booking.clientName, booking.date, booking.startTime.slice(0, 5)),
     reply_markup: { inline_keyboard: [] },
@@ -2480,13 +2490,20 @@ export async function editBarberBookingCancelled(booking: {
 
 export async function notifyBarberSelfCancel(barberId: string): Promise<void> {
   const [barber] = await db
-    .select({ telegramId: usersTable.telegramId })
+    .select({
+      id: usersTable.id,
+      telegramId: usersTable.telegramId,
+      phone: usersTable.phone,
+      botPhone: usersTable.botPhone,
+      name: usersTable.name,
+    })
     .from(usersTable)
     .where(eq(usersTable.id, barberId))
     .limit(1);
-  if (!barber?.telegramId) return;
+  const selfChat = barber ? await bindBarberTelegramChat(barber) : null;
+  if (!selfChat) return;
   await callTelegram("sendMessage", {
-    chat_id: Number(barber.telegramId),
+    chat_id: Number(selfChat),
     text: BARBER_SELF_CANCEL_TEXT,
   });
 }
@@ -2523,7 +2540,8 @@ export async function sendBarberBookingNotification(
       .where(eq(usersTable.id, barberId))
       .limit(1);
 
-    if (!barber?.telegramId) {
+    const chat = barber ? await bindBarberTelegramChat(barber) : null;
+    if (!chat) {
       log("barber_no_telegram", { barberId, sessionId });
       return;
     }
@@ -2570,7 +2588,7 @@ export async function sendBarberBookingNotification(
         `━━━━━━━━━━━━━━━━━━\n` +
         `🌐 <i>Ushbu bron mijoz tomonidan sahifa orqali band qilindi va kalendaringizga qo'shildi.</i>`;
 
-    await barberEntryMarkup(barber.telegramId);
+    try { await barberEntryMarkup(chat); } catch { /* the alert must still go out */ }
     const cancelButton = session?.bookingId
       ? barberCancelKeyboard(session.bookingId, ru)
       : {
@@ -2579,7 +2597,7 @@ export async function sendBarberBookingNotification(
           ]],
         };
     const sent = await callTelegram("sendMessage", {
-      chat_id: Number(barber.telegramId),
+      chat_id: Number(chat),
       text,
       parse_mode: "HTML",
       reply_markup: cancelButton,
@@ -2595,7 +2613,7 @@ export async function sendBarberBookingNotification(
     log("barber_notified", {
       barberId,
       sessionId,
-      telegramUserId: barber.telegramId,
+      telegramUserId: chat,
     });
   } catch (err) {
     log("barber_notification_error", { barberId, sessionId, error: String(err) });
@@ -2622,7 +2640,8 @@ export async function sendDirectBookingNotification(params: {
       .where(eq(usersTable.id, params.barberId))
       .limit(1);
 
-    if (!barber?.telegramId) return;
+    const chat = barber ? await bindBarberTelegramChat(barber) : null;
+    if (!chat) return;
     if (barber.notifNewBooking === false) return;
 
     const serviceLine = params.serviceName || "Belgilanmagan";
@@ -2644,16 +2663,16 @@ export async function sendDirectBookingNotification(params: {
       `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
       `Ushbu bron sartarosh tomonidan ilova orqali qo\u2018shildi.`;
 
-    await barberEntryMarkup(String(barber.telegramId));
+    try { await barberEntryMarkup(chat); } catch { /* the alert must still go out */ }
     const sent = await callTelegram("sendMessage", {
-      chat_id: Number(barber.telegramId),
+      chat_id: Number(chat),
       text,
       parse_mode: "HTML",
       reply_markup: barberCancelKeyboard(params.bookingId),
     });
     await rememberBarberNotice(params.bookingId, sent);
 
-    log("direct_booking_notified", { barberId: params.barberId, telegramUserId: String(barber.telegramId) });
+    log("direct_booking_notified", { barberId: params.barberId, telegramUserId: chat });
   } catch (err) {
     // Non-blocking — never crash the booking flow
     log("direct_booking_notify_error", { barberId: params.barberId, error: String(err) });

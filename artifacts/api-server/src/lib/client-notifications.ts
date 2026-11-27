@@ -8,6 +8,7 @@ import { db, bookingsTable, bookingSessionsTable, clientsTable, usersTable } fro
 import { syncClientMetrics } from "./client-metrics";
 import { getTelegramBotToken } from "./telegram-token";
 import { barberEntryMarkup } from "./barber-entry-keyboard";
+import { bindBarberTelegramChat } from "./barber-telegram";
 import {
   asClientLang,
   ct,
@@ -564,8 +565,12 @@ async function telegram(method: string, body: Record<string, unknown>): Promise<
 }
 
 async function sendToBarber(chatId: string, text: string): Promise<boolean> {
-  const entryMarkup = await barberEntryMarkup(chatId);
-  return send(chatId, text, entryMarkup ? { reply_markup: entryMarkup } : {});
+  let extra: Record<string, unknown> = {};
+  try {
+    const entryMarkup = await barberEntryMarkup(chatId);
+    if (entryMarkup) extra = { reply_markup: entryMarkup };
+  } catch { /* the cancel note must still go out */ }
+  return send(chatId, text, extra);
 }
 
 async function send(chatId: string, text: string, extra: Record<string, unknown> = {}): Promise<boolean> {
@@ -835,7 +840,8 @@ export async function handleClientCancelYes(
     reply_markup: rebookMarkup(barber.username, lang),
   });
 
-  if (barber.telegramId && barber.notifyCancel !== false) {
+  const barberChat = await bindBarberTelegramChat(barber);
+  if (barberChat && barber.notifyCancel !== false) {
     let phone: string | null = null;
     if (booking.clientId) {
       const [client] = await db
@@ -846,7 +852,7 @@ export async function handleClientCancelYes(
       phone = client?.phone ?? null;
     }
     await sendToBarber(
-      barber.telegramId,
+      barberChat,
       clientCancelledBarberText(
         booking.clientName,
         phone,

@@ -9,6 +9,7 @@ import { getLivePendingRegistration, openAccountFromPending, savePendingRegistra
 import { lookupNameSlug } from "../lib/public-slug";
 import { signupSlug } from "../lib/signup-name";
 import { getTelegramBotUsername } from "../lib/telegram-token";
+import { bindBarberTelegramChat } from "../lib/barber-telegram";
 
 const router = Router();
 
@@ -185,6 +186,11 @@ router.post("/entry", async (req, res) => {
     if (!user) {
       res.status(401).json({ error: "unauthorized" });
       return;
+    }
+    const chat = await bindBarberTelegramChat(user);
+    if (chat) {
+      user.telegramId = chat;
+      user.telegramVerified = true;
     }
     const token = generateToken(user.id, ENTRY_STAY_SEC, user.sessionEpoch ?? 0);
     res.json({ token, user: formatUser(user) });

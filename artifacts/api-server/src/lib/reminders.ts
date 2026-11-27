@@ -18,6 +18,7 @@ import { eq, and, inArray, isNull, or, ne } from "drizzle-orm";
 import { expirePendingHolds } from "./booking-conflicts";
 import { runClientNotificationCycle } from "./client-notifications";
 import { getTelegramBotToken } from "./telegram-token";
+import { bindBarberTelegramChat } from "./barber-telegram";
 import { barberEntryMarkup } from "./barber-entry-keyboard";
 import { buildBarberMorningSummary, dayWorkStartMinutes, isHourBeforeWork, uzDateLabel } from "./morning-digest";
 
@@ -90,6 +91,9 @@ async function sendDueMorningDigests(todayStr: string, nowMinutes: number): Prom
       id: usersTable.id,
       telegramId: usersTable.telegramId,
       telegramVerified: usersTable.telegramVerified,
+      phone: usersTable.phone,
+      botPhone: usersTable.botPhone,
+      name: usersTable.name,
       morningDigestOn: usersTable.morningDigestOn,
       workingHoursStart: usersTable.workingHoursStart,
       scheduleJson: usersTable.scheduleJson,
@@ -99,6 +103,15 @@ async function sendDueMorningDigests(todayStr: string, nowMinutes: number): Prom
       eq(usersTable.role, "barber"),
       isNull(usersTable.deletedAt),
     ));
+
+  for (const barberUser of allBarbers) {
+    if (barberUser.telegramId && barberUser.telegramVerified === true) continue;
+    const chat = await bindBarberTelegramChat(barberUser);
+    if (chat) {
+      barberUser.telegramId = chat;
+      barberUser.telegramVerified = true;
+    }
+  }
 
   const due = allBarbers.filter((barberUser) => {
     if (!barberUser.telegramId || barberUser.telegramVerified !== true) return false;
