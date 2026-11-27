@@ -11,11 +11,11 @@
   "rewrites": [
     {
       "source": "/api",
-      "destination": "https://workspaceapi-server-production-c5e26df8.up.railway.app/api"
+      "destination": "https://api.zumio.uz/api"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://workspaceapi-server-production-c5e26df8.up.railway.app/api/:path*"
+      "destination": "https://api.zumio.uz/api/:path*"
     },
     {
       "source": "/((?!api/).*)",

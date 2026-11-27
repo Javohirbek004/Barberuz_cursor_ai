@@ -1,4 +1,4 @@
-const FALLBACK_ORIGIN = "https://barber-uz-clq6.onrender.com";
+const FALLBACK_ORIGIN = "https://zumio.uz";
 export const APP_ORIGIN = typeof window !== "undefined" && window.location?.origin
   ? window.location.origin
   : FALLBACK_ORIGIN;

@@ -20,33 +20,21 @@ export function publicAppUrl(): string {
   }
   const appUrl = process.env.APP_URL?.trim().replace(/\/$/, "");
   if (appUrl && !/replit\./i.test(appUrl) && !/vercel\.app$/i.test(appUrl)) return appUrl;
-  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
-  if (renderHost) return `https://${renderHost}`;
   const railwayHost = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
   if (railwayHost) return `https://${railwayHost}`;
   const firstDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
   if (firstDomain) return `https://${firstDomain}`;
-  return "https://barber-uz-clq6.onrender.com";
+  return "https://zumio.uz";
 }
 
 /**
  * The server's own public host. Telegram talks to the server directly, not through the website.
- * People-facing links use publicAppUrl(); this one stays on Railway so the bot keeps working.
+ * People-facing links use publicAppUrl(); this one stays on the API domain so the bot keeps working.
  */
 export function productionHost(): string {
-  const renderHost = process.env.RENDER_EXTERNAL_HOSTNAME?.trim();
-  if (renderHost) return renderHost;
   const railwayHost = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
-  if (railwayHost) return railwayHost;
-
-  if (process.env.APP_URL) {
-    try {
-      const host = new URL(process.env.APP_URL).hostname;
-      if (host && !host.includes("replit") && !host.endsWith("vercel.app")) return host;
-    } catch { /* ignore */ }
-  }
-
-  return "barber-uz-clq6.onrender.com";
+  if (railwayHost && !/\.up\.railway\.app$/i.test(railwayHost)) return railwayHost;
+  return "api.zumio.uz";
 }
 
 /** Render and other hosted runtimes own the live bot. Local dev must not. */

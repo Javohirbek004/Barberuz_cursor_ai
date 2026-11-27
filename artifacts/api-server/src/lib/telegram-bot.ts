@@ -74,15 +74,7 @@ function getToken(): string {
 }
 
 /**
- * Returns the base URL for the frontend app.
- * Priority: REPLIT_DEV_DOMAIN (dev only, when NODE_ENV=development)
- *           → REPLIT_DOMAINS preferred entry (non-sisko first, e.g. barberuz.replit.app)
- *           → APP_URL (manual override / custom domain fallback)
- *           → barber-uz-clq6.onrender.com (hardcoded last resort)
- *
- * IMPORTANT: REPLIT_DOMAINS may contain both a sisko.replit.dev entry AND the
- * clean domain. We always prefer the clean domain so that bot links sent to
- * users (login URLs, booking links) point to the correct production app.
+ * Returns the base URL for the frontend app (people-facing site).
  */
 function getAppUrl(): string {
   return publicAppUrl();
