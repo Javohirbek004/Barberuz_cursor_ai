@@ -48,13 +48,25 @@ router.post("/", authenticate, async (req, res) => {
   const chatId = resolved.chatId;
   const botUsername = resolved.username;
 
-  if (!botToken || !chatId) {
-    console.warn("[Feedback] Bot token or destination chat is missing — message was not sent");
+  if (!botToken) {
+    console.warn("[Feedback] Bot token is missing — message was not sent");
     res.status(503).json({
       ok: false,
       sent: false,
       error: "bot_not_configured",
-      message: "Xabar ketmadi. Server feedback botini ko'rmayapti.",
+      message: "Xabar ketmadi. Fikr botining kaliti serverda topilmadi.",
+    });
+    return;
+  }
+
+  if (!chatId) {
+    const bot = botUsername ? `@${botUsername}` : "fikr botini";
+    console.warn("[Feedback] Destination chat is missing — open the feedback bot and press Start");
+    res.status(503).json({
+      ok: false,
+      sent: false,
+      error: "bot_not_started",
+      message: `Xabar ketmadi. Avval ${bot} ni ochib Start ni bosing, keyin qayta yuboring.`,
     });
     return;
   }

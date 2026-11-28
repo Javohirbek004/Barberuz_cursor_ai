@@ -49,6 +49,26 @@ async function telegramUsername(token: string): Promise<string> {
   }
 }
 
+/** Last person who opened this feedback bot and pressed Start. */
+async function lastPrivateChatId(token: string): Promise<string> {
+  try {
+    const data = await fetch(
+      `https://api.telegram.org/bot${token}/getUpdates?limit=100&allowed_updates=${encodeURIComponent('["message"]')}`,
+    ).then((r) => r.json()) as {
+      ok?: boolean;
+      result?: Array<{ message?: { chat?: { id?: number; type?: string } } }>;
+    };
+    if (!data.ok || !Array.isArray(data.result)) return "";
+    for (let i = data.result.length - 1; i >= 0; i--) {
+      const chat = data.result[i]?.message?.chat;
+      if (chat?.type === "private" && typeof chat.id === "number") return String(chat.id);
+    }
+  } catch {
+    /* keep empty — the route will ask them to open the bot */
+  }
+  return "";
+}
+
 /** Pick the token whose bot name matches FEEDBACKS_BOT_USERNAME, otherwise the first real token. */
 export async function resolveFeedbackBot(env: NodeJS.ProcessEnv = process.env): Promise<{
   token: string;
@@ -57,7 +77,7 @@ export async function resolveFeedbackBot(env: NodeJS.ProcessEnv = process.env): 
   wanted: string;
   found: Array<{ name: string; username: string }>;
 }> {
-  const chatId = [env.FEEDBACKS_BOT_ID, env.ADMIN_TELEGRAM_ID]
+  let chatId = [env.FEEDBACKS_BOT_ID, env.ADMIN_TELEGRAM_ID]
     .map((value) => firstFilled(value))
     .find(looksLikeChatId) || "";
   const wanted = firstFilled(env.FEEDBACKS_BOT_USERNAME).replace(/^@/, "");
@@ -78,5 +98,6 @@ export async function resolveFeedbackBot(env: NodeJS.ProcessEnv = process.env): 
       break;
     }
   }
+  if (token && !chatId) chatId = await lastPrivateChatId(token);
   return { token, chatId, username, wanted, found };
 }
