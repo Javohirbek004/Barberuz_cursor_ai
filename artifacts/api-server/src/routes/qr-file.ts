@@ -10,6 +10,19 @@ function loopback(host: string): boolean {
   return name === "localhost" || name === "127.0.0.1" || name === "::1";
 }
 
+function bareHost(host: string): string {
+  return host.replace(/:\d+$/, "").replace(/^\[|\]$/g, "").replace(/^www\./i, "").toLowerCase();
+}
+
+function relatedHost(a: string, b: string): boolean {
+  const ha = bareHost(a);
+  const hb = bareHost(b);
+  if (!ha || !hb) return false;
+  if (ha === hb) return true;
+  if (ha.endsWith(`.${hb}`) || hb.endsWith(`.${ha}`)) return true;
+  return false;
+}
+
 function sameSite(req: { get(name: string): string | undefined }): boolean {
   const host = req.get("host") || "";
   const origin = req.get("origin");
@@ -21,7 +34,7 @@ function sameSite(req: { get(name: string): string | undefined }): boolean {
   } catch {
     return false;
   }
-  if (sourceHost === host) return true;
+  if (relatedHost(sourceHost, host)) return true;
   return loopback(sourceHost) && loopback(host);
 }
 

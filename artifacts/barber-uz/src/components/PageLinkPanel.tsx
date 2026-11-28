@@ -4,7 +4,7 @@ import QRCode from "react-qr-code";
 import { APP_DISPLAY_HOST, APP_ORIGIN } from "@/lib/config";
 import { useTranslation } from "@/i18n/LanguageContext";
 import { monthNames, pick } from "@/i18n/pick";
-import { QR_CARD, canvasToPdfBase64, canvasToPngBase64, drawQrPoster } from "@/lib/qr-poster";
+import { QR_CARD, canvasToPdf, canvasToPdfBase64, canvasToPngBase64, canvasToPngBlob, drawQrPoster } from "@/lib/qr-poster";
 
 const CTA_UZ = "Onlayn navbat olish uchun skanerlang";
 const CTA_RU = "Отсканируйте, чтобы занять очередь онлайн";
@@ -421,9 +421,15 @@ function QrDownloadLink({
     lock.current = true;
     flushSync(() => setPhase("loading"));
     try {
-      const data = kind === "png" ? canvasToPngBase64(canvas) : canvasToPdfBase64(canvas);
-      if (!data) throw new Error("empty");
-      postQrDownload(kind, name, data);
+      const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (ios) {
+        const data = kind === "png" ? canvasToPngBase64(canvas) : canvasToPdfBase64(canvas);
+        if (!data) throw new Error("empty");
+        postQrDownload(kind, name, data);
+      } else {
+        const blob = kind === "png" ? canvasToPngBlob(canvas) : canvasToPdf(canvas);
+        saveBlob(blob, name);
+      }
       window.setTimeout(() => setPhase("done"), 700);
       window.setTimeout(() => {
         setPhase("idle");
@@ -447,6 +453,18 @@ function QrDownloadLink({
       {label}
     </button>
   );
+}
+
+function saveBlob(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
 function postQrDownload(kind: "png" | "pdf", name: string, data: string) {
